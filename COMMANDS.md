@@ -20,6 +20,12 @@ PYTHONPATH=src python3 -m ouroboros find-headers --header-dir example/inc --head
 PYTHONPATH=src python3 -m ouroboros find-headers --header-dir ../genesis/lib/ --header-file ../genesis/lib/genesis/genesis.hpp
 ```
 
+Run the bundled example script and update `example/python/active_headers.hpp`:
+
+```bash
+PYTHONPATH=src python3 example/python/generate.py
+```
+
 ## Run the installed CLI
 
 After installing the package, the project-wide command is:
