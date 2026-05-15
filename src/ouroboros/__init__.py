@@ -3,11 +3,27 @@
 from typing import TYPE_CHECKING, Any
 
 
-__all__ = ["HeaderFile", "find_all_headers", "find_included_headers"]
+__all__ = [
+    "ActivationHeaderUpdateResult",
+    "HeaderFile",
+    "find_all_headers",
+    "find_included_headers",
+    "parse_activation_header",
+    "print_update_report",
+    "update_activation_header",
+    "write_activation_header",
+]
 
 
 if TYPE_CHECKING:
     from .find_headers import HeaderFile, find_all_headers, find_included_headers
+    from .select_headers import (
+        ActivationHeaderUpdateResult,
+        parse_activation_header,
+        print_update_report,
+        update_activation_header,
+        write_activation_header,
+    )
 
 
 def __getattr__(name: str) -> Any:
@@ -15,10 +31,22 @@ def __getattr__(name: str) -> Any:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
     from .find_headers import HeaderFile, find_all_headers, find_included_headers
+    from .select_headers import (
+        ActivationHeaderUpdateResult,
+        parse_activation_header,
+        print_update_report,
+        update_activation_header,
+        write_activation_header,
+    )
 
     exports = {
+        "ActivationHeaderUpdateResult": ActivationHeaderUpdateResult,
         "HeaderFile": HeaderFile,
         "find_all_headers": find_all_headers,
         "find_included_headers": find_included_headers,
+        "parse_activation_header": parse_activation_header,
+        "print_update_report": print_update_report,
+        "update_activation_header": update_activation_header,
+        "write_activation_header": write_activation_header,
     }
     return exports[name]

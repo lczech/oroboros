@@ -42,6 +42,7 @@ class HeaderFile:
 
     full_path: Path
     relative_path: Path
+    active: bool = True
 
 
 def _normalize_path(path: Path) -> Path:
