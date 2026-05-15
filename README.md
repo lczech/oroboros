@@ -1,2 +1,2 @@
-# ouroboros
-Yet another C++ to Python binding generator for nanobind and pybind11
+# oroboros
+Yet another generator for bindings from C++ to Python with nanobind

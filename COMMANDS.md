@@ -1,23 +1,23 @@
 # Commands
 
-Useful commands for developing and testing Ouroboros.
+Useful commands for developing and testing Oroboros.
 
 ## Run the CLI from the source tree
 
 List all headers in a directory:
 
 ```bash
-PYTHONPATH=src python3 -m ouroboros find-headers --header-dir example/inc
+PYTHONPATH=src python3 -m oroboros find-headers --header-dir example/inc
 ```
 
 List headers included from a root header in include order:
 
 ```bash
-PYTHONPATH=src python3 -m ouroboros find-headers --header-dir example/inc --header-file example/inc/cosmos/cosmos.hpp
+PYTHONPATH=src python3 -m oroboros find-headers --header-dir example/inc --header-file example/inc/cosmos/cosmos.hpp
 ```
 
 ```bash
-PYTHONPATH=src python3 -m ouroboros find-headers --header-dir ../genesis/lib/ --header-file ../genesis/lib/genesis/genesis.hpp
+PYTHONPATH=src python3 -m oroboros find-headers --header-dir ../genesis/lib/ --header-file ../genesis/lib/genesis/genesis.hpp
 ```
 
 Run the bundled example script and update `example/python/active_headers.hpp`:
@@ -31,7 +31,7 @@ PYTHONPATH=src python3 example/python/generate.py
 After installing the package, the project-wide command is:
 
 ```bash
-ouroboros find-headers --header-dir example/inc --header-file example/inc/cosmos/cosmos.hpp
+oroboros find-headers --header-dir example/inc --header-file example/inc/cosmos/cosmos.hpp
 ```
 
 ## Run tests

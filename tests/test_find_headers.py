@@ -4,7 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from ouroboros.find_headers import HeaderFile, find_all_headers, find_included_headers
+from oroboros.find_headers import HeaderFile, find_all_headers, find_included_headers
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

@@ -1,4 +1,4 @@
-"""Public package exports for Ouroboros."""
+"""Public package exports for Oroboros."""
 
 from typing import TYPE_CHECKING, Any
 

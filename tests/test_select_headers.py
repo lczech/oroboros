@@ -6,8 +6,8 @@ from tempfile import TemporaryDirectory
 import unittest
 import warnings
 
-from ouroboros.find_headers import HeaderFile
-from ouroboros.select_headers import (
+from oroboros.find_headers import HeaderFile
+from oroboros.select_headers import (
     parse_activation_header,
     print_update_report,
     update_activation_header,

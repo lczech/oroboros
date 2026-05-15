@@ -5,7 +5,7 @@ from io import StringIO
 from pathlib import Path
 import unittest
 
-from ouroboros.__main__ import main
+from oroboros.__main__ import main
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

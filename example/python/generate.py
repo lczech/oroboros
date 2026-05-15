@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-"""Example Ouroboros driver for the bundled cosmos library."""
+"""Example Oroboros driver for the bundled cosmos library."""
 
 from pathlib import Path
 
-from ouroboros import (
+from oroboros import (
     find_included_headers,
     print_update_report,
     update_activation_header,

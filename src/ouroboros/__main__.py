@@ -23,7 +23,7 @@ def _run_find_headers(args: argparse.Namespace) -> int:
 
 
 def _build_argument_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Ouroboros command line interface.")
+    parser = argparse.ArgumentParser(description="Oroboros command line interface.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     find_headers_parser = subparsers.add_parser(
@@ -45,7 +45,7 @@ def _build_argument_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run the project-wide Ouroboros command line interface."""
+    """Run the project-wide Oroboros command line interface."""
 
     parser = _build_argument_parser()
     args = parser.parse_args(argv)
