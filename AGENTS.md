@@ -177,6 +177,7 @@ Typical contents:
 - parameters
 - return type
 - bases
+- scoped alias metadata for `using` and `typedef` declarations
 - template parameters
 - enum values
 - overload and signature information
@@ -191,15 +192,25 @@ Examples:
 
 Types should not remain plain strings for long. The model should preserve spelled C++ text, but also introduce a structured type model early. At minimum, that type model should distinguish:
 
-- value types
+- named types
+- builtin types
 - pointers
 - lvalue references
 - rvalue references
+- arrays
+- function types
 - const qualification
 - pointee or referred type
 - template instantiations
 
-More specialized type forms such as function pointer types, array-like types, optional-like types, and variant-like types can be added later as needed.
+The recursive wrapper pattern should be preserved in the type model:
+
+- `NamedCppType` stores the original spelled name, an optional declaration target, and an optional canonical underlying type for reasoning
+- `BuiltinCppType` stores true language fundamental types such as `int`, `bool`, and `std::nullptr_t`
+- pointer, reference, and array types wrap inner `CppType` objects
+- function pointers should be represented structurally as a pointer or reference that wraps a `FunctionCppType`
+
+More specialized type forms such as member pointers, optional-like types, and variant-like types can be added later as needed.
 
 Users should generally not mutate `.cpp` except for advanced internal transforms.
 
@@ -603,7 +614,8 @@ Overloaded functions and methods should preserve declaration order. This matters
 
 Examples of later additions:
 
-- aliases / typedefs / using declarations
+- first-class alias declarations if they become necessary for binding policy
+- template aliases
 - operators as special function forms
 - properties synthesized from getter/setter pairs
 - friend declarations if they become relevant
@@ -688,6 +700,7 @@ Possible first layout:
 - `model/element.py`
 - `model/location.py`
 - `model/comment.py`
+- `model/alias.py`
 - `model/type.py`
 - `model/operator_.py`
 - `model/module.py`

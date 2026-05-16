@@ -10,6 +10,7 @@ from .element import CppElement
 from .location import SourceLocation
 
 if TYPE_CHECKING:
+    from .alias import CppAliasInfo
     from .class_ import CppClass, CppClassBindFacet
     from .enum import CppEnum, CppEnumBindFacet
     from .function import CppFunction, CppFunctionBindFacet
@@ -31,6 +32,7 @@ class CppNamespaceCppFacet:
     comment: str | None = None
     doc: CppDoc | None = None
     is_inline: bool = False
+    aliases: list["CppAliasInfo"] = field(default_factory=list)
 
 
 @dataclass(slots=True)

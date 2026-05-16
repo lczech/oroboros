@@ -12,6 +12,7 @@ from .type import CppType
 from .visibility import CppVisibility
 
 if TYPE_CHECKING:
+    from .alias import CppAliasInfo
     from .enum import CppEnum, CppEnumBindFacet
     from .function import CppFunctionBindFacet
     from .member import CppConstructor, CppMethod
@@ -48,6 +49,7 @@ class CppClassCppFacet:
     doc: CppDoc | None = None
     kind: Literal["class", "struct"] = "class"
     visibility: CppVisibility | None = None
+    aliases: list["CppAliasInfo"] = dataclass_field(default_factory=list)
     bases: list[CppClassBase] = dataclass_field(default_factory=list)
 
 

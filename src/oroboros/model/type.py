@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-"""Structured C++ type objects for semantic declarations."""
+"""Structured recursive C++ type objects for semantic declarations."""
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from .element import CppElement
 
 
 # ==================================================================================================
@@ -12,7 +16,11 @@ from dataclasses import dataclass, field
 
 @dataclass(slots=True)
 class CppType:
-    """Represent a structured C++ type."""
+    """Represent one recursive C++ type expression.
+
+    Plain value and builtin types are the leaves. Pointer, reference, and
+    template-instantiated types wrap other ``CppType`` objects recursively.
+    """
 
     is_const: bool = False
 
@@ -22,11 +30,24 @@ class CppType:
         raise NotImplementedError
 
 
+# ------------------------------------------------------------------------------
+#     Named Types
+# ------------------------------------------------------------------------------
+
+
 @dataclass(slots=True)
 class NamedCppType(CppType):
-    """Represent a plain named C++ type."""
+    """Represent a plain named C++ type such as ``Widget`` or ``std::string``.
+
+    The optional ``declaration`` links this leaf type back to the semantic
+    declaration node it names when that node is known in the model. The
+    optional ``canonical`` stores a resolved underlying type for reasoning,
+    while ``name`` remains the original spelling used for rendering and emission.
+    """
 
     name: str = ""
+    declaration: CppElement | None = None
+    canonical: CppType | None = None
 
     def render(self) -> str:
         qualifier = "const " if self.is_const else ""
@@ -35,11 +56,13 @@ class NamedCppType(CppType):
 
 @dataclass(slots=True)
 class PointerCppType(CppType):
-    """Represent a pointer C++ type."""
+    """Represent a pointer type that wraps one pointee ``CppType``."""
 
     pointee: CppType | None = None
 
     def render(self) -> str:
+        if isinstance(self.pointee, FunctionCppType):
+            return self.pointee.render_with_declarator("*", is_const=self.is_const)
         qualifier = "const " if self.is_const else ""
         pointee = self.pointee.render() if self.pointee is not None else ""
         return f"{qualifier}{pointee}*"
@@ -47,11 +70,13 @@ class PointerCppType(CppType):
 
 @dataclass(slots=True)
 class LValueReferenceCppType(CppType):
-    """Represent an lvalue reference C++ type."""
+    """Represent an lvalue reference type that wraps one referred ``CppType``."""
 
     referred: CppType | None = None
 
     def render(self) -> str:
+        if isinstance(self.referred, FunctionCppType):
+            return self.referred.render_with_declarator("&", is_const=self.is_const)
         qualifier = "const " if self.is_const else ""
         referred = self.referred.render() if self.referred is not None else ""
         return f"{qualifier}{referred}&"
@@ -59,19 +84,61 @@ class LValueReferenceCppType(CppType):
 
 @dataclass(slots=True)
 class RValueReferenceCppType(CppType):
-    """Represent an rvalue reference C++ type."""
+    """Represent an rvalue reference type that wraps one referred ``CppType``."""
 
     referred: CppType | None = None
 
     def render(self) -> str:
+        if isinstance(self.referred, FunctionCppType):
+            return self.referred.render_with_declarator("&&", is_const=self.is_const)
         qualifier = "const " if self.is_const else ""
         referred = self.referred.render() if self.referred is not None else ""
         return f"{qualifier}{referred}&&"
 
 
 @dataclass(slots=True)
+class ArrayCppType(CppType):
+    """Represent an array type that wraps one element ``CppType`` recursively."""
+
+    element_type: CppType | None = None
+    extent: str | None = None
+
+    def render(self) -> str:
+        qualifier = "const " if self.is_const else ""
+        element_type = self.element_type.render() if self.element_type is not None else ""
+        extent = self.extent if self.extent is not None else ""
+        return f"{qualifier}{element_type}[{extent}]"
+
+
+@dataclass(slots=True)
+class FunctionCppType(CppType):
+    """Represent a function type with recursive return and parameter types."""
+
+    return_type: CppType | None = None
+    parameters: list[CppType] = field(default_factory=list)
+    is_variadic: bool = False
+
+    def render(self) -> str:
+        return self.render_with_declarator()
+
+    def render_with_declarator(self, declarator: str = "", *, is_const: bool | None = None) -> str:
+        """Render the function type, optionally inserting a pointer/ref declarator."""
+
+        effective_const = self.is_const if is_const is None else is_const
+        qualifier = "const " if effective_const else ""
+        return_type = self.return_type.render() if self.return_type is not None else ""
+        rendered_parameters = [parameter.render() for parameter in self.parameters]
+        if self.is_variadic:
+            rendered_parameters.append("...")
+        parameters = ", ".join(rendered_parameters)
+        if declarator:
+            return f"{qualifier}{return_type} ({declarator})({parameters})"
+        return f"{qualifier}{return_type} ({parameters})"
+
+
+@dataclass(slots=True)
 class TemplateInstanceCppType(CppType):
-    """Represent one template-instantiated C++ type."""
+    """Represent one template-instantiated type with recursive argument types."""
 
     template_name: str = ""
     arguments: list[CppType] = field(default_factory=list)
@@ -80,3 +147,66 @@ class TemplateInstanceCppType(CppType):
         qualifier = "const " if self.is_const else ""
         rendered_arguments = ", ".join(argument.render() for argument in self.arguments)
         return f"{qualifier}{self.template_name}<{rendered_arguments}>"
+
+
+# ------------------------------------------------------------------------------
+#     Builtin Types
+# ------------------------------------------------------------------------------
+
+
+@dataclass(slots=True)
+class BuiltinCppType(CppType):
+    """Represent one C++ language builtin value type such as ``int`` or ``bool``."""
+
+    kind: Literal[
+        "void",
+        "nullptr_t",
+        "bool",
+        "char",
+        "signed_char",
+        "unsigned_char",
+        "wchar_t",
+        "char8_t",
+        "char16_t",
+        "char32_t",
+        "short",
+        "unsigned_short",
+        "int",
+        "unsigned_int",
+        "long",
+        "unsigned_long",
+        "long_long",
+        "unsigned_long_long",
+        "float",
+        "double",
+        "long_double",
+    ] = "int"
+
+    def render(self) -> str:
+        qualifier = "const " if self.is_const else ""
+        return f"{qualifier}{_BUILTIN_CPP_TYPE_SPELLINGS[self.kind]}"
+
+
+_BUILTIN_CPP_TYPE_SPELLINGS: dict[str, str] = {
+    "void": "void",
+    "nullptr_t": "std::nullptr_t",
+    "bool": "bool",
+    "char": "char",
+    "signed_char": "signed char",
+    "unsigned_char": "unsigned char",
+    "wchar_t": "wchar_t",
+    "char8_t": "char8_t",
+    "char16_t": "char16_t",
+    "char32_t": "char32_t",
+    "short": "short",
+    "unsigned_short": "unsigned short",
+    "int": "int",
+    "unsigned_int": "unsigned int",
+    "long": "long",
+    "unsigned_long": "unsigned long",
+    "long_long": "long long",
+    "unsigned_long_long": "unsigned long long",
+    "float": "float",
+    "double": "double",
+    "long_double": "long double",
+}

@@ -10,6 +10,7 @@ from .comment import CppDoc, PyDoc
 from .element import CppElement
 
 if TYPE_CHECKING:
+    from .alias import CppAliasInfo
     from .class_ import CppClass, CppClassBindFacet
     from .enum import CppEnum, CppEnumBindFacet
     from .function import CppFunction, CppFunctionBindFacet
@@ -29,6 +30,7 @@ class CppModuleCppFacet:
     header_files: list[Path] = field(default_factory=list)
     comment: str | None = None
     doc: CppDoc | None = None
+    aliases: list["CppAliasInfo"] = field(default_factory=list)
 
 
 @dataclass(slots=True)

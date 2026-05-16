@@ -3,6 +3,9 @@ from __future__ import annotations
 import unittest
 
 from oroboros.model import (
+    ArrayCppType,
+    BuiltinCppType,
+    CppAliasInfo,
     CppClass,
     CppClassBase,
     CppClassBindFacet,
@@ -21,6 +24,7 @@ from oroboros.model import (
     CppFunction,
     CppFunctionBindFacet,
     CppFunctionTemplate,
+    FunctionCppType,
     CppMethod,
     CppModule,
     CppModuleDefaults,
@@ -42,7 +46,9 @@ from oroboros.model import (
     CppFunctionTemplateInstance,
     CppVisibility,
     add_template_instance,
+    find_aliases,
     NamedCppType,
+    PointerCppType,
     add_class_template_instance,
     add_function_template_instance,
     add_observed_template_instances,
@@ -62,6 +68,13 @@ class ModelScaffoldTest(unittest.TestCase):
             methods=[method],
             enums=[enum_],
         )
+        cls.cpp.aliases.append(
+            CppAliasInfo(
+                name="SizeType",
+                qualified_name="demo::Widget::SizeType",
+                target=NamedCppType(name="std::size_t"),
+            )
+        )
         namespace = CppNamespace(name="demo", classes=[cls])
         module = CppModule(name="bindings", namespaces=[namespace])
 
@@ -76,6 +89,58 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertEqual(cls.qualified_name, "demo::Widget")
         self.assertEqual(method.qualified_name, "demo::Widget::size")
         self.assertEqual(parameter.qualified_name, "demo::Widget::size::value")
+        self.assertEqual(cls.cpp.aliases[0].qualified_name, "demo::Widget::SizeType")
+
+    def test_aliases_preserve_target_type_and_can_be_found_in_scope_metadata(self) -> None:
+        namespace = CppNamespace(name="demo")
+        namespace.cpp.aliases.append(
+            CppAliasInfo(
+                name="Index",
+                qualified_name="demo::Index",
+                target=NamedCppType(name="std::size_t"),
+                kind="using",
+            )
+        )
+
+        self.assertEqual(namespace.cpp.aliases[0].qualified_name, "demo::Index")
+        self.assertEqual(namespace.cpp.aliases[0].target.render(), "std::size_t")
+        self.assertEqual(namespace.cpp.aliases[0].kind, "using")
+
+    def test_find_aliases_discovers_class_aliases_across_subtrees(self) -> None:
+        cls = CppClass(name="Widget")
+        cls.cpp.qualified_name = "demo::Widget"
+        namespace = CppNamespace(name="demo", classes=[cls])
+        namespace.cpp.aliases.extend(
+            [
+                CppAliasInfo(
+                    name="WidgetAlias",
+                    qualified_name="demo::WidgetAlias",
+                    target=NamedCppType(name="demo::Widget"),
+                ),
+                CppAliasInfo(
+                    name="SizeType",
+                    qualified_name="demo::SizeType",
+                    target=NamedCppType(name="std::size_t"),
+                ),
+            ]
+        )
+        nested = CppNamespace(name="detail")
+        nested.cpp.aliases.append(
+            CppAliasInfo(
+                name="WidgetHandle",
+                qualified_name="demo::detail::WidgetHandle",
+                target=NamedCppType(name="demo::Widget"),
+            )
+        )
+        namespace.namespaces.append(nested)
+        namespace.adopt_children(namespace.namespaces)
+
+        aliases = find_aliases(namespace, cls)
+
+        self.assertEqual(
+            [alias.name for alias in aliases],
+            ["WidgetAlias", "WidgetHandle"],
+        )
 
     def test_parse_stage_starts_with_default_bind_and_default_py_facets(self) -> None:
         parameter = CppParameter(name="value")
@@ -426,9 +491,77 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertEqual(py_doc.notes, ["This is only an example."])
 
     def test_named_cpp_type_renders_const_qualified_names(self) -> None:
-        cpp_type = NamedCppType(name="std::string", is_const=True)
+        cls = CppClass(name="Widget")
+        cpp_type = NamedCppType(name="std::string", is_const=True, declaration=cls)
 
         self.assertEqual(cpp_type.render(), "const std::string")
+        self.assertIs(cpp_type.declaration, cls)
+
+    def test_named_cpp_type_preserves_original_name_when_canonical_is_present(self) -> None:
+        cpp_type = NamedCppType(
+            name="uint64_t",
+            canonical=BuiltinCppType(kind="unsigned_long"),
+        )
+
+        self.assertEqual(cpp_type.render(), "uint64_t")
+        self.assertEqual(cpp_type.canonical.render(), "unsigned long")
+
+    def test_builtin_cpp_type_renders_language_builtin_names(self) -> None:
+        cpp_type = BuiltinCppType(kind="int", is_const=True)
+
+        self.assertEqual(cpp_type.render(), "const int")
+
+    def test_builtin_cpp_type_renders_nullptr_type(self) -> None:
+        cpp_type = BuiltinCppType(kind="nullptr_t")
+
+        self.assertEqual(cpp_type.render(), "std::nullptr_t")
+
+    def test_array_cpp_type_renders_fixed_extent_arrays(self) -> None:
+        cpp_type = ArrayCppType(
+            element_type=BuiltinCppType(kind="int"),
+            extent="4",
+        )
+
+        self.assertEqual(cpp_type.render(), "int[4]")
+
+    def test_array_cpp_type_renders_nested_arrays_recursively(self) -> None:
+        cpp_type = ArrayCppType(
+            element_type=ArrayCppType(
+                element_type=NamedCppType(name="Widget"),
+                extent="4",
+            ),
+            extent="3",
+        )
+
+        self.assertEqual(cpp_type.render(), "Widget[4][3]")
+
+    def test_function_cpp_type_renders_plain_function_types(self) -> None:
+        cpp_type = FunctionCppType(
+            return_type=BuiltinCppType(kind="void"),
+            parameters=[
+                BuiltinCppType(kind="int"),
+                NamedCppType(name="Widget"),
+            ],
+        )
+
+        self.assertEqual(cpp_type.render(), "void (int, Widget)")
+
+    def test_pointer_cpp_type_can_wrap_function_cpp_type(self) -> None:
+        cpp_type = PointerCppType(
+            pointee=FunctionCppType(
+                return_type=BuiltinCppType(kind="void"),
+                parameters=[BuiltinCppType(kind="int")],
+            )
+        )
+
+        self.assertEqual(cpp_type.render(), "void (*)(int)")
+
+    def test_named_and_builtin_cpp_types_cover_different_use_cases(self) -> None:
+        builtin_type = BuiltinCppType(kind="int")
+        named_type = NamedCppType(name="demo::Widget")
+
+        self.assertEqual(builtin_type.render(), "int")
+        self.assertEqual(named_type.render(), "demo::Widget")
 
 
 if __name__ == "__main__":
