@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from .class_ import CppClass, CppClassBindFacet
     from .enum import CppEnum, CppEnumBindFacet
     from .function import CppFunction, CppFunctionBindFacet
+    from .template_ import CppClassTemplate, CppFunctionTemplate
 
 
 # ==================================================================================================
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class CppNamespaceCppFacet:
-    """Store parsed C++ facts for one namespace."""
+    """Store parsed C++ details for one namespace."""
 
     original_name: str | None = None
     qualified_name: str | None = None
@@ -92,13 +93,25 @@ def _make_enum_bind_facet() -> "CppEnumBindFacet":
 class CppNamespace(CppElement):
     """Represent one namespace scope in the semantic model."""
 
+    # Parsed C++ details for this namespace.
     cpp: CppNamespaceCppFacet = field(default_factory=CppNamespaceCppFacet)
+    # Binding settings for this namespace itself.
     bind: CppNamespaceBindFacet = field(default_factory=CppNamespaceBindFacet)
+    # Python-facing choices for this namespace.
     py: CppNamespacePyFacet = field(default_factory=CppNamespacePyFacet)
+    # Inherited defaults applied to declarations inside this namespace.
     defaults: CppNamespaceDefaults = field(default_factory=CppNamespaceDefaults)
+    # Nested namespaces declared inside this namespace.
     namespaces: list["CppNamespace"] = field(default_factory=list)
+    # Top-level classes declared directly inside this namespace.
     classes: list["CppClass"] = field(default_factory=list)
+    # Class template families declared directly inside this namespace.
+    class_templates: list["CppClassTemplate"] = field(default_factory=list)
+    # Free functions declared directly inside this namespace.
     functions: list["CppFunction"] = field(default_factory=list)
+    # Function template families declared directly inside this namespace.
+    function_templates: list["CppFunctionTemplate"] = field(default_factory=list)
+    # Enums declared directly inside this namespace.
     enums: list["CppEnum"] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -106,5 +119,7 @@ class CppNamespace(CppElement):
 
         self.adopt_children(self.namespaces)
         self.adopt_children(self.classes)
+        self.adopt_children(self.class_templates)
         self.adopt_children(self.functions)
+        self.adopt_children(self.function_templates)
         self.adopt_children(self.enums)

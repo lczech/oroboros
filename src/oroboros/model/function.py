@@ -23,7 +23,7 @@ from .type import CppType
 
 @dataclass(slots=True)
 class CppParameterCppFacet:
-    """Store parsed C++ facts for one function parameter."""
+    """Store parsed C++ details for one function parameter."""
 
     original_name: str | None = None
     type: CppType | None = None
@@ -56,7 +56,7 @@ class CppParameterPyFacet:
 
 @dataclass(slots=True)
 class CppFunctionCppFacet:
-    """Store parsed C++ facts for one free function."""
+    """Store parsed C++ details for one free function."""
 
     original_name: str | None = None
     qualified_name: str | None = None
@@ -107,9 +107,13 @@ class CppParameter(CppElement):
 class CppFunction(CppElement):
     """Represent one free function in the semantic model."""
 
+    # Parsed C++ details for this free function.
     cpp: CppFunctionCppFacet = field(default_factory=CppFunctionCppFacet)
+    # Binding settings for this free function itself.
     bind: CppFunctionBindFacet = field(default_factory=CppFunctionBindFacet)
+    # Python-facing choices for this free function.
     py: CppFunctionPyFacet = field(default_factory=CppFunctionPyFacet)
+    # Parameters declared directly on this free function.
     parameters: list[CppParameter] = field(default_factory=list)
 
     def __post_init__(self) -> None:

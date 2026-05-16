@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from .enum import CppEnum, CppEnumBindFacet
     from .function import CppFunctionBindFacet
     from .member import CppConstructor, CppMethod
+    from .template_ import CppClassTemplate, CppFunctionTemplate
 
 
 # ==================================================================================================
@@ -37,7 +38,7 @@ class CppClassBase:
 
 @dataclass(slots=True)
 class CppClassCppFacet:
-    """Store parsed C++ facts for one class or struct."""
+    """Store parsed C++ details for one class or struct."""
 
     original_name: str | None = None
     qualified_name: str | None = None
@@ -75,7 +76,7 @@ class CppClassPyFacet:
 
 @dataclass(slots=True)
 class CppFieldCppFacet:
-    """Store parsed C++ facts for one field."""
+    """Store parsed C++ details for one field."""
 
     original_name: str | None = None
     type: CppType | None = None
@@ -141,27 +142,23 @@ def _make_enum_bind_facet() -> "CppEnumBindFacet":
 
 
 @dataclass(slots=True)
-class CppField(CppElement):
-    """Represent one field owned by a class."""
+class CppClassMembers(CppElement):
+    """Share class member collections between concrete and template declarations."""
 
-    cpp: CppFieldCppFacet = dataclass_field(default_factory=CppFieldCppFacet)
-    bind: CppFieldBindFacet = dataclass_field(default_factory=CppFieldBindFacet)
-    py: CppFieldPyFacet = dataclass_field(default_factory=CppFieldPyFacet)
-
-
-@dataclass(slots=True)
-class CppClass(CppElement):
-    """Represent one class or struct scope in the semantic model."""
-
-    cpp: CppClassCppFacet = dataclass_field(default_factory=CppClassCppFacet)
-    bind: CppClassBindFacet = dataclass_field(default_factory=CppClassBindFacet)
-    py: CppClassPyFacet = dataclass_field(default_factory=CppClassPyFacet)
-    defaults: CppClassDefaults = dataclass_field(default_factory=CppClassDefaults)
+    # Nested non-template classes declared inside this class scope.
     classes: list["CppClass"] = dataclass_field(default_factory=list)
+    # Constructors declared directly inside this class scope.
     constructors: list["CppConstructor"] = dataclass_field(default_factory=list)
+    # Methods declared directly inside this class scope.
     methods: list["CppMethod"] = dataclass_field(default_factory=list)
-    fields: list[CppField] = dataclass_field(default_factory=list)
+    # Fields declared directly inside this class scope.
+    fields: list["CppField"] = dataclass_field(default_factory=list)
+    # Enums declared directly inside this class scope.
     enums: list["CppEnum"] = dataclass_field(default_factory=list)
+    # Nested class template families declared inside this class scope.
+    class_templates: list["CppClassTemplate"] = dataclass_field(default_factory=list)
+    # Nested function template families declared inside this class scope.
+    function_templates: list["CppFunctionTemplate"] = dataclass_field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Adopt all typed child declaration collections."""
@@ -171,3 +168,28 @@ class CppClass(CppElement):
         self.adopt_children(self.methods)
         self.adopt_children(self.fields)
         self.adopt_children(self.enums)
+        self.adopt_children(self.class_templates)
+        self.adopt_children(self.function_templates)
+
+
+@dataclass(slots=True)
+class CppField(CppElement):
+    """Represent one field owned by a class."""
+
+    cpp: CppFieldCppFacet = dataclass_field(default_factory=CppFieldCppFacet)
+    bind: CppFieldBindFacet = dataclass_field(default_factory=CppFieldBindFacet)
+    py: CppFieldPyFacet = dataclass_field(default_factory=CppFieldPyFacet)
+
+
+@dataclass(slots=True)
+class CppClass(CppClassMembers):
+    """Represent one concrete class or struct scope in the semantic model."""
+
+    # Parsed C++ details for this concrete class or struct.
+    cpp: CppClassCppFacet = dataclass_field(default_factory=CppClassCppFacet)
+    # Binding settings for this class or struct itself.
+    bind: CppClassBindFacet = dataclass_field(default_factory=CppClassBindFacet)
+    # Python-facing choices for this class or struct.
+    py: CppClassPyFacet = dataclass_field(default_factory=CppClassPyFacet)
+    # Inherited defaults applied to descendants of this class scope.
+    defaults: CppClassDefaults = dataclass_field(default_factory=CppClassDefaults)

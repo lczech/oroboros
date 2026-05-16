@@ -7,6 +7,10 @@ from oroboros.model import (
     CppClassBase,
     CppClassBindFacet,
     CppClassDefaults,
+    CppClassTemplate,
+    CppClassTemplateDecl,
+    CppClassTemplateDefaults,
+    CppClassTemplateInstance,
     CppConstructor,
     CppDoc,
     CppEnum,
@@ -16,16 +20,31 @@ from oroboros.model import (
     CppFieldBindFacet,
     CppFunction,
     CppFunctionBindFacet,
+    CppFunctionTemplate,
     CppMethod,
     CppModule,
     CppModuleDefaults,
     CppNamespace,
     CppNamespaceBindFacet,
     CppNamespaceDefaults,
+    CppNonTypeTemplateArgument,
+    CppObservedTemplateInstance,
     CppOperator,
     CppOperatorBind,
     CppParameter,
+    CppFunctionTemplateDecl,
+    CppFunctionTemplateDefaults,
+    CppNonTypeTemplateParameter,
+    CppTemplateTemplateArgument,
+    CppTemplateTemplateParameter,
+    CppTypeTemplateArgument,
+    CppTypeTemplateParameter,
+    CppFunctionTemplateInstance,
+    add_template_instance,
     NamedCppType,
+    add_class_template_instance,
+    add_function_template_instance,
+    add_observed_template_instances,
     build_py_doc_from_cpp_doc,
 )
 
@@ -131,6 +150,8 @@ class ModelScaffoldTest(unittest.TestCase):
         module_defaults = CppModuleDefaults()
         namespace_defaults = CppNamespaceDefaults()
         class_defaults = CppClassDefaults()
+        class_template_defaults = CppClassTemplateDefaults()
+        function_template_defaults = CppFunctionTemplateDefaults()
 
         self.assertIsInstance(module_defaults.namespace, CppNamespaceBindFacet)
         self.assertIsInstance(module_defaults.class_, CppClassBindFacet)
@@ -145,6 +166,13 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertIsInstance(class_defaults.constructor, CppFunctionBindFacet)
         self.assertIsInstance(class_defaults.field, CppFieldBindFacet)
         self.assertIsInstance(class_defaults.enum, CppEnumBindFacet)
+        self.assertIsInstance(class_template_defaults.instance, CppClassBindFacet)
+        self.assertIsInstance(class_template_defaults.class_, CppClassBindFacet)
+        self.assertIsInstance(class_template_defaults.method, CppFunctionBindFacet)
+        self.assertIsInstance(class_template_defaults.constructor, CppFunctionBindFacet)
+        self.assertIsInstance(class_template_defaults.field, CppFieldBindFacet)
+        self.assertIsInstance(class_template_defaults.enum, CppEnumBindFacet)
+        self.assertIsInstance(function_template_defaults.instance, CppFunctionBindFacet)
 
     def test_class_cpp_facet_uses_cpp_class_base_objects(self) -> None:
         base = CppClassBase(type=NamedCppType(name="Base"))
@@ -177,6 +205,199 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertFalse(field.bind.active)
         self.assertTrue(enum_.bind.active)
         self.assertFalse(enumerator.bind.active)
+
+    def test_manual_template_instance_creation_uses_template_wrappers(self) -> None:
+        class_template = CppClassTemplate(name="Vector")
+        function_template = CppFunctionTemplate(name="make_value")
+        class_template.declaration.cpp.template_parameters.append(
+            CppTypeTemplateParameter(name="T")
+        )
+        function_template.declaration.cpp.template_parameters.append(
+            CppNonTypeTemplateParameter(name="N")
+        )
+        namespace = CppNamespace(
+            name="demo",
+            class_templates=[class_template],
+            function_templates=[function_template],
+        )
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        class_instance = add_class_template_instance(
+            class_template,
+            [CppTypeTemplateArgument(type=NamedCppType(name="int"))],
+        )
+        function_instance = add_template_instance(
+            function_template,
+            [CppNonTypeTemplateArgument(value="4")],
+        )
+
+        self.assertIs(class_template.owner, namespace)
+        self.assertIs(function_template.owner, namespace)
+        self.assertIs(class_template.declaration.owner, class_template)
+        self.assertIs(function_template.declaration.owner, function_template)
+        self.assertIs(class_instance.owner, class_template)
+        self.assertIs(function_instance.owner, function_template)
+        self.assertEqual(class_template.qualified_name, "demo")
+        self.assertEqual(function_template.qualified_name, "demo")
+        self.assertEqual(class_template.declaration.qualified_name, "demo::Vector")
+        self.assertEqual(function_template.declaration.qualified_name, "demo::make_value")
+        self.assertEqual(class_instance.qualified_name, "demo::Vector")
+        self.assertEqual(function_instance.qualified_name, "demo::make_value")
+        self.assertIs(module.namespaces[0], namespace)
+
+    def test_observed_template_instances_materialize_recursively_in_subtrees(self) -> None:
+        inner_function_template = CppFunctionTemplate(name="make_inner")
+        inner_function_template.declaration.cpp.template_parameters.append(
+            CppTypeTemplateParameter(name="T")
+        )
+        inner_function_template.declaration.cpp.observed_instances.append(
+            CppObservedTemplateInstance(
+                arguments=[CppTypeTemplateArgument(type=NamedCppType(name="double"))],
+            )
+        )
+        class_template = CppClassTemplate(
+            name="Vector",
+            declaration=CppClassTemplateDecl(
+                name="Vector",
+                function_templates=[inner_function_template],
+            ),
+        )
+        class_template.declaration.cpp.template_parameters.append(
+            CppTypeTemplateParameter(name="T")
+        )
+        class_template.declaration.cpp.observed_instances.append(
+            CppObservedTemplateInstance(
+                arguments=[CppTypeTemplateArgument(type=NamedCppType(name="int"))],
+            )
+        )
+        namespace = CppNamespace(
+            name="demo",
+            class_templates=[class_template],
+        )
+
+        created_instances = add_observed_template_instances(namespace)
+
+        self.assertEqual(len(created_instances), 2)
+        self.assertEqual(len(class_template.instances), 1)
+        self.assertEqual(len(inner_function_template.instances), 1)
+        self.assertIsInstance(class_template.instances[0], CppClassTemplateInstance)
+        self.assertIsInstance(
+            inner_function_template.instances[0],
+            CppFunctionTemplateInstance,
+        )
+        self.assertEqual(
+            class_template.instances[0].cpp.template_arguments[0].render(),
+            "int",
+        )
+        self.assertEqual(
+            inner_function_template.instances[0].cpp.template_arguments[0].render(),
+            "double",
+        )
+
+    def test_observed_template_instance_materialization_can_filter_function_templates(self) -> None:
+        function_template = CppFunctionTemplate(name="make_value")
+        function_template.declaration.cpp.template_parameters.append(
+            CppTypeTemplateParameter(name="T")
+        )
+        function_template.declaration.cpp.observed_instances.append(
+            CppObservedTemplateInstance(
+                arguments=[CppTypeTemplateArgument(type=NamedCppType(name="int"))],
+            )
+        )
+        namespace = CppNamespace(
+            name="demo",
+            function_templates=[function_template],
+        )
+
+        created_instances = add_observed_template_instances(
+            namespace,
+            include_function_templates=False,
+        )
+
+        self.assertEqual(created_instances, [])
+        self.assertEqual(function_template.instances, [])
+
+    def test_template_instance_validation_rejects_wrong_argument_kind(self) -> None:
+        class_template = CppClassTemplate(name="Vector")
+        class_template.declaration.cpp.template_parameters.append(
+            CppTypeTemplateParameter(name="T")
+        )
+
+        with self.assertRaisesRegex(ValueError, "expects a type argument"):
+            add_class_template_instance(
+                class_template,
+                [CppNonTypeTemplateArgument(value="4")],
+            )
+
+    def test_template_instance_validation_allows_omitting_defaulted_arguments(self) -> None:
+        function_template = CppFunctionTemplate(name="make_value")
+        function_template.declaration.cpp.template_parameters.extend(
+            [
+                CppTypeTemplateParameter(name="T"),
+                CppNonTypeTemplateParameter(
+                    name="N",
+                    default=CppNonTypeTemplateArgument(value="4"),
+                ),
+            ]
+        )
+
+        instance = add_function_template_instance(
+            function_template,
+            [CppTypeTemplateArgument(type=NamedCppType(name="int"))],
+        )
+
+        self.assertEqual(len(instance.cpp.template_arguments), 1)
+        self.assertEqual(instance.cpp.template_arguments[0].render(), "int")
+
+    def test_template_instance_validation_rejects_missing_required_arguments(self) -> None:
+        function_template = CppFunctionTemplate(name="make_value")
+        function_template.declaration.cpp.template_parameters.extend(
+            [
+                CppTypeTemplateParameter(name="T"),
+                CppNonTypeTemplateParameter(name="N"),
+            ]
+        )
+
+        with self.assertRaisesRegex(ValueError, "missing a template argument"):
+            add_function_template_instance(
+                function_template,
+                [CppTypeTemplateArgument(type=NamedCppType(name="int"))],
+            )
+
+    def test_template_instance_validation_checks_nested_template_template_shape(self) -> None:
+        allocator_parameter = CppTemplateTemplateParameter(
+            name="Alloc",
+            parameters=[CppTypeTemplateParameter(name="T")],
+        )
+        class_template = CppClassTemplate(name="Vector")
+        class_template.declaration.cpp.template_parameters.append(allocator_parameter)
+
+        invalid_argument = CppTemplateTemplateArgument(
+            name="BadAlloc",
+            parameters=[CppNonTypeTemplateParameter(name="N")],
+        )
+
+        with self.assertRaisesRegex(ValueError, "wrong kind"):
+            add_class_template_instance(
+                class_template,
+                [invalid_argument],
+            )
+
+    def test_recursive_template_template_parameters_are_supported(self) -> None:
+        innermost_parameter = CppTypeTemplateParameter(name="T")
+        middle_parameter = CppTemplateTemplateParameter(
+            name="Alloc",
+            parameters=[innermost_parameter],
+        )
+        outer_parameter = CppTemplateTemplateParameter(
+            name="Container",
+            parameters=[middle_parameter],
+        )
+
+        self.assertEqual(
+            outer_parameter.render(),
+            "template <template <typename T> class Alloc> class Container",
+        )
 
     def test_build_py_doc_from_cpp_doc_copies_nested_data(self) -> None:
         cpp_doc = CppDoc(

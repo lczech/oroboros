@@ -24,7 +24,7 @@ from .type import CppType
 
 @dataclass(slots=True)
 class CppMethodCppFacet:
-    """Store parsed C++ facts for one class method."""
+    """Store parsed C++ details for one class method."""
 
     original_name: str | None = None
     qualified_name: str | None = None
@@ -39,6 +39,9 @@ class CppMethodCppFacet:
     is_virtual: bool = False
     is_pure_virtual: bool = False
     is_noexcept: bool = False
+
+
+@dataclass(slots=True)
 class CppMethodPyFacet:
     """Store Python-facing choices for one class method."""
 
@@ -53,7 +56,7 @@ class CppMethodPyFacet:
 
 @dataclass(slots=True)
 class CppConstructorCppFacet:
-    """Store parsed C++ facts for one constructor."""
+    """Store parsed C++ details for one constructor."""
 
     original_name: str | None = None
     qualified_name: str | None = None

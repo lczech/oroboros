@@ -76,8 +76,9 @@ As this is a lot of functionality, we will build the Oroboros code incrementally
 - Store direct binding settings on the element itself via `.bind`, and store inherited child defaults in `.defaults`.
 - Resolve optional binding settings by inheritance through the declaration tree, walking upward through scopes until an explicit override is found.
 - Support activation and deactivation inside the model as part of the binding customization layer, so whole namespaces, classes, or individual members can be disabled incrementally before Python-facing translation.
-- Model template declarations and template instances separately.
-  Template instances shall be first-class customizable objects with their own `.cpp`, `.bind`, `.py`, and `.defaults`, while inheriting generic defaults from their template declaration.
+- Model template families, generic template declarations, and template instances separately.
+  A `CppClassTemplate` or `CppFunctionTemplate` groups one generic parsed declaration in `.declaration`, any selected concrete `.instances`, and `.defaults` that apply to those instances and their descendants.
+  Template instances shall be first-class customizable objects with their own `.cpp`, `.bind`, `.py`, and `.defaults`.
 - Prefer external C++ add-on hooks for custom bindings, while still allowing Python-driven model customization.
 - Mirror C++ namespaces as Python submodules within a single compiled extension module.
 - Make the handling of the top-level namespace configurable.
@@ -94,14 +95,14 @@ The semantic model is intended to be the central working object graph of Oroboro
 - Use one semantic tree of declaration objects.
 - Avoid a completely flat list of declarations, because ownership and scope matter.
 - Avoid a raw AST mirror, because syntax-level details that are irrelevant for binding generation would add complexity without enough value.
-- Treat the model as a semantic declaration tree: namespaces own declarations, classes own members, and template declarations own their chosen instances.
+- Treat the model as a semantic declaration tree: namespaces own declarations, classes own members, and template family nodes group one generic declaration with its chosen instances.
 
 This means:
 
 - the module owns top-level namespaces and top-level declarations
 - a namespace owns nested namespaces, classes, enums, and free functions
 - a class or struct owns constructors, methods, fields, nested enums, and nested classes
-- template declarations own explicit template instances to be bound
+- template family nodes group explicit template instances to be bound
 
 Every node should know:
 
@@ -135,8 +136,10 @@ Examples:
 - `CppConstructor`
 - `CppField`
 - `CppClassTemplate`
+- `CppClassTemplateDecl`
 - `CppClassTemplateInstance`
 - `CppFunctionTemplate`
+- `CppFunctionTemplateDecl`
 - `CppFunctionTemplateInstance`
 
 The intention is:
@@ -607,7 +610,7 @@ Examples of later additions:
 
 ### Templates
 
-Template declarations and template instances should be modeled separately.
+Template families, template declarations, and template instances should be modeled separately.
 
 This is important because binding decisions may differ greatly between instances of the same template.
 
@@ -626,12 +629,26 @@ The instance may need:
 
 Therefore:
 
-- template declarations should hold generic parsed facts and generic defaults
+- each template family should be represented by a wrapper node such as `CppClassTemplate` or `CppFunctionTemplate`
+- the wrapper should expose `.declaration`, `.instances`, and `.defaults`
+- `.declaration` should hold the generic parsed template declaration only
+- parser-discovered instantiations should be recorded on the declaration side via `declaration.cpp.observed_instances`
 - template instances should be first-class nodes in the model
 - instances should have their own `.cpp`, `.bind`, `.py`, and `.defaults`
-- instances should inherit generic defaults from their template declaration unless they override them
+- template-family `.defaults.instance` should apply to the selected instances themselves, while the other default buckets should apply to descendants inside those instances
+- the template-family wrapper should own both the generic declaration and the selected instance nodes in the model tree, while remaining transparent for C++ qualified-name purposes
 
 The same principle should apply to function templates.
+
+The template selection workflow should distinguish between:
+
+- observed instances found during parsing
+- chosen instances that will actually be bound
+
+Observed instances should remain parser facts on the declaration side via `declaration.cpp.observed_instances`.
+Chosen instances should be materialized later as real `CppClassTemplateInstance` or `CppFunctionTemplateInstance` nodes attached to the template-family wrapper.
+
+A helper such as `add_observed_template_instances(...)` should support materializing observed instances recursively within a chosen subtree, for example a whole module, one namespace, one class, or one specific template family.
 
 This means the binding pipeline answers two separate questions:
 
@@ -679,7 +696,7 @@ Possible first layout:
 - `model/function.py`
 - `model/member.py`
 - `model/enum.py`
-- `model/templates.py`
+- `model/template_.py`
 
 The exact split can evolve, but the main idea is:
 

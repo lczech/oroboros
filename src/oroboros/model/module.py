@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from .enum import CppEnum, CppEnumBindFacet
     from .function import CppFunction, CppFunctionBindFacet
     from .namespace import CppNamespace, CppNamespaceBindFacet
+    from .template_ import CppClassTemplate, CppFunctionTemplate
 
 
 # ==================================================================================================
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class CppModuleCppFacet:
-    """Store parsed C++ facts attached to the semantic module root."""
+    """Store parsed C++ details attached to the semantic module root."""
 
     header_files: list[Path] = field(default_factory=list)
     comment: str | None = None
@@ -96,13 +97,25 @@ def _make_enum_bind_facet() -> "CppEnumBindFacet":
 class CppModule(CppElement):
     """Represent the semantic root that owns top-level declarations."""
 
+    # Parsed C++ details attached to the semantic module root.
     cpp: CppModuleCppFacet = field(default_factory=CppModuleCppFacet)
+    # Binding settings attached to the semantic module root itself.
     bind: CppModuleBindFacet = field(default_factory=CppModuleBindFacet)
+    # Python-facing choices attached to the semantic module root.
     py: CppModulePyFacet = field(default_factory=CppModulePyFacet)
+    # Inherited defaults applied to top-level declarations.
     defaults: CppModuleDefaults = field(default_factory=CppModuleDefaults)
+    # Top-level namespaces parsed into this semantic module.
     namespaces: list["CppNamespace"] = field(default_factory=list)
+    # Top-level non-template classes parsed into this semantic module.
     classes: list["CppClass"] = field(default_factory=list)
+    # Top-level class template families parsed into this semantic module.
+    class_templates: list["CppClassTemplate"] = field(default_factory=list)
+    # Top-level free functions parsed into this semantic module.
     functions: list["CppFunction"] = field(default_factory=list)
+    # Top-level function template families parsed into this semantic module.
+    function_templates: list["CppFunctionTemplate"] = field(default_factory=list)
+    # Top-level enums parsed into this semantic module.
     enums: list["CppEnum"] = field(default_factory=list)
 
     @property
@@ -116,5 +129,7 @@ class CppModule(CppElement):
 
         self.adopt_children(self.namespaces)
         self.adopt_children(self.classes)
+        self.adopt_children(self.class_templates)
         self.adopt_children(self.functions)
+        self.adopt_children(self.function_templates)
         self.adopt_children(self.enums)
