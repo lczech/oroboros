@@ -88,6 +88,7 @@ from .type import (
     RValueReferenceCppType,
     TemplateInstanceCppType,
 )
+from .visibility import CppVisibility
 
 __all__ = [
     "CppClass",
@@ -166,6 +167,7 @@ __all__ = [
     "RValueReferenceCppType",
     "SourceLocation",
     "TemplateInstanceCppType",
+    "CppVisibility",
     "add_template_instance",
     "add_class_template_instance",
     "add_function_template_instance",

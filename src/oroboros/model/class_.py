@@ -9,6 +9,7 @@ from .comment import CppDoc, PyDoc
 from .element import CppElement
 from .location import SourceLocation
 from .type import CppType
+from .visibility import CppVisibility
 
 if TYPE_CHECKING:
     from .enum import CppEnum, CppEnumBindFacet
@@ -32,7 +33,7 @@ class CppClassBase:
     """Store one base-class relationship of a class or struct."""
 
     type: CppType
-    access: Literal["public", "protected", "private"] | None = None
+    visibility: CppVisibility | None = None
     is_virtual: bool = False
 
 
@@ -46,6 +47,7 @@ class CppClassCppFacet:
     comment: str | None = None
     doc: CppDoc | None = None
     kind: Literal["class", "struct"] = "class"
+    visibility: CppVisibility | None = None
     bases: list[CppClassBase] = dataclass_field(default_factory=list)
 
 
@@ -84,6 +86,7 @@ class CppFieldCppFacet:
     comment: str | None = None
     doc: CppDoc | None = None
     is_static: bool = False
+    visibility: CppVisibility | None = None
 
 
 @dataclass(slots=True)

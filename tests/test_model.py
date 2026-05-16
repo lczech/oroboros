@@ -40,6 +40,7 @@ from oroboros.model import (
     CppTypeTemplateArgument,
     CppTypeTemplateParameter,
     CppFunctionTemplateInstance,
+    CppVisibility,
     add_template_instance,
     NamedCppType,
     add_class_template_instance,
@@ -175,11 +176,14 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertIsInstance(function_template_defaults.instance, CppFunctionBindFacet)
 
     def test_class_cpp_facet_uses_cpp_class_base_objects(self) -> None:
-        base = CppClassBase(type=NamedCppType(name="Base"))
+        base = CppClassBase(type=NamedCppType(name="Base"), visibility=CppVisibility.PUBLIC)
         cls = CppClass(name="Derived")
         cls.cpp.bases.append(base)
+        cls.cpp.visibility = CppVisibility.PRIVATE
 
         self.assertIs(cls.cpp.bases[0], base)
+        self.assertEqual(cls.cpp.bases[0].visibility, CppVisibility.PUBLIC)
+        self.assertEqual(cls.cpp.visibility, CppVisibility.PRIVATE)
 
     def test_active_flag_lives_in_bind_facets(self) -> None:
         namespace = CppNamespace(name="demo")

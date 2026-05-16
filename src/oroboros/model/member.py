@@ -10,6 +10,7 @@ from .function import CppFunctionBindFacet, CppParameter
 from .location import SourceLocation
 from .operator_ import CppOperator
 from .type import CppType
+from .visibility import CppVisibility
 
 
 # ==================================================================================================
@@ -39,6 +40,7 @@ class CppMethodCppFacet:
     is_virtual: bool = False
     is_pure_virtual: bool = False
     is_noexcept: bool = False
+    visibility: CppVisibility | None = None
 
 
 @dataclass(slots=True)
@@ -66,6 +68,7 @@ class CppConstructorCppFacet:
     overload_index: int | None = None
     is_explicit: bool = False
     is_noexcept: bool = False
+    visibility: CppVisibility | None = None
 
 
 @dataclass(slots=True)

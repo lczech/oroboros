@@ -8,6 +8,7 @@ from .comment import CppDoc, PyDoc
 from .element import CppElement
 from .location import SourceLocation
 from .type import CppType
+from .visibility import CppVisibility
 
 
 # ==================================================================================================
@@ -22,7 +23,7 @@ from .type import CppType
 
 @dataclass(slots=True)
 class CppEnumeratorCppFacet:
-    """Store parsed C++ facts for one enumerator."""
+    """Store parsed C++ details for one enumerator."""
 
     original_name: str | None = None
     value_spelling: str | None = None
@@ -53,7 +54,7 @@ class CppEnumeratorPyFacet:
 
 @dataclass(slots=True)
 class CppEnumCppFacet:
-    """Store parsed C++ facts for one enum."""
+    """Store parsed C++ details for one enum."""
 
     original_name: str | None = None
     qualified_name: str | None = None
@@ -62,6 +63,7 @@ class CppEnumCppFacet:
     comment: str | None = None
     doc: CppDoc | None = None
     is_scoped: bool = False
+    visibility: CppVisibility | None = None
 
 
 @dataclass(slots=True)
