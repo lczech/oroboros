@@ -1,0 +1,118 @@
+from __future__ import annotations
+
+"""Free-function and parameter semantic model objects."""
+
+from dataclasses import dataclass, field
+
+from .comment import CppDoc, PyDoc
+from .element import CppElement
+from .location import SourceLocation
+from .operator_ import CppOperator, CppOperatorBind
+from .type import CppType
+
+
+# ==================================================================================================
+#     Facets
+# ==================================================================================================
+
+
+# ------------------------------------------------------------------------------
+#     Parameter Facets
+# ------------------------------------------------------------------------------
+
+
+@dataclass(slots=True)
+class CppParameterCppFacet:
+    """Store parsed C++ facts for one function parameter."""
+
+    original_name: str | None = None
+    type: CppType | None = None
+    default_value: str | None = None
+    location: SourceLocation | None = None
+    doc: str | None = None
+
+
+@dataclass(slots=True)
+class CppParameterBindFacet:
+    """Store binding settings for one function parameter."""
+
+    none_accepted: bool | None = None
+    no_convert: bool | None = None
+    rendered_default: str | None = None
+
+
+@dataclass(slots=True)
+class CppParameterPyFacet:
+    """Store Python-facing choices for one function parameter."""
+
+    name: str | None = None
+    doc: str | None = None
+
+
+# ------------------------------------------------------------------------------
+# Function Facets
+# ------------------------------------------------------------------------------
+
+
+@dataclass(slots=True)
+class CppFunctionCppFacet:
+    """Store parsed C++ facts for one free function."""
+
+    original_name: str | None = None
+    qualified_name: str | None = None
+    operator: CppOperator | None = None
+    return_type: CppType | None = None
+    location: SourceLocation | None = None
+    comment: str | None = None
+    doc: CppDoc | None = None
+    overload_index: int | None = None
+    is_noexcept: bool = False
+
+
+@dataclass(slots=True)
+class CppFunctionBindFacet:
+    """Store binding settings for one function-like declaration."""
+
+    active: bool | None = None
+    operator: CppOperatorBind | None = None
+    return_value_policy: str | None = None
+    keep_alive: tuple[int, int] | None = None
+    call_guards: list[str] = field(default_factory=list)
+    hooks: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class CppFunctionPyFacet:
+    """Store Python-facing choices for one free function."""
+
+    name: str | None = None
+    doc: PyDoc | None = None
+
+
+# ==================================================================================================
+#     Elements
+# ==================================================================================================
+
+
+@dataclass(slots=True)
+class CppParameter(CppElement):
+    """Represent one parameter owned by a function-like declaration."""
+
+    cpp: CppParameterCppFacet = field(default_factory=CppParameterCppFacet)
+    bind: CppParameterBindFacet = field(default_factory=CppParameterBindFacet)
+    py: CppParameterPyFacet = field(default_factory=CppParameterPyFacet)
+
+
+@dataclass(slots=True)
+class CppFunction(CppElement):
+    """Represent one free function in the semantic model."""
+
+    cpp: CppFunctionCppFacet = field(default_factory=CppFunctionCppFacet)
+    bind: CppFunctionBindFacet = field(default_factory=CppFunctionBindFacet)
+    py: CppFunctionPyFacet = field(default_factory=CppFunctionPyFacet)
+    parameters: list[CppParameter] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        """Adopt the owned parameter nodes."""
+
+        self.adopt_children(self.parameters)

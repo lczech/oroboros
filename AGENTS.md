@@ -64,15 +64,20 @@ As this is a lot of functionality, we will build the Oroboros code incrementally
 - Use Python-only configuration APIs.
 - Keep header dependency order and header activation as separate inputs.
 - Use one semantic tree of C++ declaration objects rather than a flat list or a raw AST.
-- Split each declaration object into facets: `.cpp` for parsed C++ facts, `.py` for Python-facing exposure choices, `.bind` for binding-generation settings, and `.defaults` for inherited descendant defaults.
-- Keep the parsed `.cpp` facet read-mostly, and express user customization mainly through `.py`, `.bind`, and `.defaults`.
+- Split each declaration object into facets: `.cpp` for parsed C++ facts, `.bind` for binding-generation settings, `.py` for Python-facing exposure choices, and `.defaults` for inherited descendant defaults.
+- Keep the parsed `.cpp` facet read-mostly, and express user customization mainly through `.bind`, `.py`, and `.defaults`.
+- The intended high-level stages are `parse`, `translate`, and `emit`.
+  Parsing creates the semantic tree with `.cpp` filled and both `.bind` and `.py` default-constructed.
+  Translation derives or fills `.py` from `.cpp` and `.bind`.
+  By default, translation should populate only missing Python-facing values and preserve user edits, unless an explicit overwrite mode is requested.
+  Emission generates the final backend code from the translated model.
 - Use typed descendant defaults rather than putting every possible binding setting on every node.
   For example, namespaces may expose `.defaults.class_`, `.defaults.function`, and `.defaults.enum`, while classes may expose `.defaults.method`, `.defaults.constructor`, `.defaults.field`, and `.defaults.enum`.
 - Store direct binding settings on the element itself via `.bind`, and store inherited child defaults in `.defaults`.
 - Resolve optional binding settings by inheritance through the declaration tree, walking upward through scopes until an explicit override is found.
-- Support activation and deactivation inside the model as part of the Python-facing customization layer, so whole namespaces, classes, or individual members can be disabled incrementally.
+- Support activation and deactivation inside the model as part of the binding customization layer, so whole namespaces, classes, or individual members can be disabled incrementally before Python-facing translation.
 - Model template declarations and template instances separately.
-  Template instances shall be first-class customizable objects with their own `.cpp`, `.py`, `.bind`, and `.defaults`, while inheriting generic defaults from their template declaration.
+  Template instances shall be first-class customizable objects with their own `.cpp`, `.bind`, `.py`, and `.defaults`, while inheriting generic defaults from their template declaration.
 - Prefer external C++ add-on hooks for custom bindings, while still allowing Python-driven model customization.
 - Mirror C++ namespaces as Python submodules within a single compiled extension module.
 - Make the handling of the top-level namespace configurable.
@@ -147,8 +152,8 @@ Each semantic element should expose multiple facets instead of splitting parsed 
 The main facets are:
 
 - `.cpp`
-- `.py`
 - `.bind`
+- `.py`
 - `.defaults`
 
 This gives users one object graph to work with, while still keeping concerns separated inside each object.
@@ -238,9 +243,11 @@ This keeps parameters first-class and customizable without over-promoting them i
 
 This facet stores Python-facing exposure choices. It answers: “how should this element appear in Python?”
 
+This facet should be default-constructed during the initial parse phase, but translation should later fill it from `.cpp` and `.bind`.
+By default, translation should only fill fields that are still unset, so users may customize `.py` early without losing those edits.
+
 Typical contents:
 
-- `active`
 - Python name override
 - docstring override
 - Python submodule override
@@ -248,11 +255,10 @@ Typical contents:
 
 Examples:
 
-- `cls.py.active = False`
 - `func.py.name = "to_string"`
 - `ns.py.submodule = "placement"`
 
-This layer is where activation and deactivation should live, because it is a user-facing exposure choice rather than a parsed C++ fact.
+Users may customize `.bind` and `.py` incrementally from the start, but the usual workflow is still to decide binding behavior in `.bind` first and then refine Python-facing polish in `.py` after translation has filled default values.
 
 #### `.bind`
 
@@ -262,6 +268,7 @@ Typical contents differ by element kind.
 
 For functions and methods:
 
+- active / inactive state
 - return value policy
 - keep_alive rules
 - call guards
@@ -272,6 +279,7 @@ For functions and methods:
 
 For classes:
 
+- active / inactive state
 - holder type
 - trampoline settings
 - custom init policy
@@ -280,11 +288,13 @@ For classes:
 
 For fields:
 
+- active / inactive state
 - readonly / readwrite policy
 - getter/setter customization
 
 For enums:
 
+- active / inactive state
 - export style
 - scoped/unscoped exposure choices
 
@@ -296,9 +306,14 @@ Recommended default behavior:
 
 - operators that have a sensible Python mapping should be translated automatically to the corresponding dunder method
 - the `.cpp` facet should preserve which C++ operator declaration was parsed
+- a structured `CppOperator` object should be stored inside the `.cpp` facet of free functions and methods when the declaration is an operator
 - the `.py` and `.bind` facets should control how that operator is exposed
 
+The operator-specific binding choices should live in a small structured object inside `.bind`, separate from the parsed `CppOperator` facts stored in `.cpp`.
+
 If a user disables dunder-style exposure and instead binds an operator as a normal function, the Python-facing name should be validated, because names such as `operator++` are not valid Python function names.
+
+If named operator exposure is selected and no explicit Python-facing name override is provided, the emitter should generate a valid fallback name automatically, for example `operator_plus`, `operator_brackets`, or similar readable forms derived from the C++ operator.
 
 Custom binding extensions should also live in `.bind`, via an explicit `.bind.hooks` collection rather than via a single opaque code string.
 
@@ -465,7 +480,7 @@ The rough rule is:
 
 ### Activation and deactivation
 
-Activation should be part of the Python-facing customization layer, because it controls what will be exposed rather than what exists in C++.
+Activation should be part of the binding customization layer, because it controls what bindings are generated before Python-facing translation occurs.
 
 Recommended behavior:
 
@@ -481,6 +496,8 @@ Examples:
 - disable one overloaded function or one problematic field
 
 This allows incremental binding development without having to remove declarations from the parsed model.
+
+Parameter objects should not support this activation flag. Hiding or reshaping parameters is a later wrapper or adaptor concern, not ordinary activation/deactivation of parsed declarations.
 
 ### Comments and source locations
 
@@ -531,7 +548,7 @@ The intended flow is:
 1. parse the raw source comment into `cpp.comment`
 2. derive a structured `CppDoc` into `cpp.doc`
 3. translate `cpp.doc` into a default `PyDoc`
-4. store that result in `py.doc`
+4. store that result in `py.doc`, unless the user already provided a custom value and overwrite was not requested
 5. allow users to customize `py.doc` before emission
 
 This separation keeps all three useful representations:
@@ -611,7 +628,7 @@ Therefore:
 
 - template declarations should hold generic parsed facts and generic defaults
 - template instances should be first-class nodes in the model
-- instances should have their own `.cpp`, `.py`, `.bind`, and `.defaults`
+- instances should have their own `.cpp`, `.bind`, `.py`, and `.defaults`
 - instances should inherit generic defaults from their template declaration unless they override them
 
 The same principle should apply to function templates.
@@ -629,7 +646,7 @@ Examples:
 
 ```python
 ns.defaults.function.return_value_policy = "reference_internal"
-cls.py.active = False
+cls.bind.active = False
 cls.defaults.method.keep_alive = (1, 0)
 func.py.name = "to_string"
 vector_bool.py.name = "BoolVector"
@@ -638,30 +655,37 @@ vector_bool.bind.holder_type = "std::shared_ptr<VectorBool>"
 
 Users should not need to jump between a parsed tree and a disconnected binding overlay tree for ordinary customization.
 
+Typical customization order should be:
+
+1. customize `.bind`
+2. optionally customize `.py` early
+3. run translation to fill missing `.py` values
+4. customize `.py` further if needed
+
 ### Suggested package layout
 
 The semantic model should live in a `model/` package and be split by concern rather than in one large file.
 
 Possible first layout:
 
-- `model/base.py`
+- `model/element.py`
 - `model/location.py`
-- `model/comments.py`
-- `model/types.py`
-- `model/bind.py`
-- `model/defaults.py`
+- `model/comment.py`
+- `model/type.py`
+- `model/operator_.py`
 - `model/module.py`
-- `model/namespaces.py`
-- `model/classes.py`
-- `model/functions.py`
-- `model/enums.py`
+- `model/namespace.py`
+- `model/class_.py`
+- `model/function.py`
+- `model/member.py`
+- `model/enum.py`
 - `model/templates.py`
 
 The exact split can evolve, but the main idea is:
 
 - shared infrastructure in a few base files
 - declaration kinds in their own files
-- binding and defaults support in dedicated model-side files
+- bind, Python, and defaults facets colocated with the declaration kinds they belong to
 
 ### Recommended pipeline
 
@@ -670,10 +694,12 @@ The intended long-term pipeline is:
 1. discover project headers
 2. select active headers
 3. parse active headers with clang
-4. build the semantic declaration tree
-5. let users customize `.py`, `.bind`, and `.defaults`
-6. resolve effective settings by inheritance
-7. emit nanobind or pybind11 code
+4. build the semantic declaration tree with `.cpp` filled and `.bind` plus `.py` default-constructed
+5. let users customize `.bind`, `.py`, and `.defaults`
+6. translate the model to fill missing `.py` values from `.cpp` and `.bind`, unless overwrite is requested
+7. let users further customize `.py` if desired
+8. resolve effective settings by inheritance
+9. emit nanobind or pybind11 code
 
 The semantic model is the main handoff object between parsing, customization, and emission.
 
