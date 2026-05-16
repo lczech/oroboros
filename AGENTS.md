@@ -214,6 +214,32 @@ More specialized type forms such as member pointers, optional-like types, and va
 
 Users should generally not mutate `.cpp` except for advanced internal transforms.
 
+Standard-library and other well-known framework types should not be modeled as special declaration nodes in the semantic tree. Instead:
+
+- preserve the original spelled type text for later emission
+- preserve a canonical or normalized underlying type for semantic reasoning
+- recognize standard-library families such as `std::vector`, `std::map`, `std::optional`, `std::variant`, and `std::function` from the canonical structural type, not from the raw source spelling
+
+This is important because the source may use:
+
+- unqualified spellings enabled by `using namespace std`
+- aliases such as `using IntVec = std::vector<int>`
+- implementation-specific or ABI-decorated spellings that appear in diagnostics
+
+The intended rule is:
+
+- emit the original source spelling by default, so generated bindings remain portable and follow the library headers closely
+- use the canonical type only to detect semantic families and apply binding policy
+
+This should make it possible to generate portable binding code such as `uint64_t` or `std::vector<int>` without rewriting those types into platform-dependent underlying spellings such as `unsigned long`.
+
+Binding policy for recognized library types should be configured outside the declaration tree, at project or generation configuration level. That policy should support both:
+
+- family defaults, for example all `std::vector<...>` use cast mode by default
+- exact-instance overrides, for example `std::vector<int>` uses binding mode while `std::vector<Widget>` still uses cast mode
+
+This two-level policy is intended to support backend choices such as nanobind type casters versus explicit helper bindings for the same template family.
+
 #### Parameters
 
 Function and method parameters should be first-class model objects, but they do not need to be full peers of declaration nodes.
@@ -658,9 +684,10 @@ The template selection workflow should distinguish between:
 - chosen instances that will actually be bound
 
 Observed instances should remain parser facts on the declaration side via `declaration.cpp.observed_instances`.
+Here, "observed" means concrete instantiations seen somewhere in the parsed C++ codebase, not instances inferred from binding configuration alone.
 Chosen instances should be materialized later as real `CppClassTemplateInstance` or `CppFunctionTemplateInstance` nodes attached to the template-family wrapper.
 
-A helper such as `add_observed_template_instances(...)` should support materializing observed instances recursively within a chosen subtree, for example a whole module, one namespace, one class, or one specific template family.
+A helper such as `add_observed_template_instances(...)` should support materializing those parser-observed C++ instances recursively within a chosen subtree, for example a whole module, one namespace, one class, or one specific template family.
 
 This means the binding pipeline answers two separate questions:
 
@@ -707,6 +734,8 @@ Possible first layout:
 - `model/namespace.py`
 - `model/class_.py`
 - `model/function.py`
+- `model/class_template.py`
+- `model/function_template.py`
 - `model/member.py`
 - `model/enum.py`
 - `model/template_.py`
