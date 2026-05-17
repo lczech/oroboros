@@ -109,4 +109,9 @@ class CppEnum(CppElement):
     def __post_init__(self) -> None:
         """Adopt the owned enumerator nodes."""
 
-        self.adopt_children(self.enumerators)
+        self._adopt_children(self.enumerators)
+
+    def add_enumerator(self, enumerator: CppEnumerator) -> CppEnumerator:
+        """Attach one enumerator to this enum."""
+
+        return self._append_child(self.enumerators, enumerator)

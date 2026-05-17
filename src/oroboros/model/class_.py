@@ -175,13 +175,48 @@ class CppClassMembers(CppElement):
     def __post_init__(self) -> None:
         """Adopt all typed child declaration collections."""
 
-        self.adopt_children(self.classes)
-        self.adopt_children(self.constructors)
-        self.adopt_children(self.methods)
-        self.adopt_children(self.fields)
-        self.adopt_children(self.enums)
-        self.adopt_children(self.class_templates)
-        self.adopt_children(self.function_templates)
+        self._adopt_children(self.classes)
+        self._adopt_children(self.constructors)
+        self._adopt_children(self.methods)
+        self._adopt_children(self.fields)
+        self._adopt_children(self.enums)
+        self._adopt_children(self.class_templates)
+        self._adopt_children(self.function_templates)
+
+    def add_class(self, class_: "CppClass") -> "CppClass":
+        """Attach one nested class to this class scope."""
+
+        return self._append_child(self.classes, class_)
+
+    def add_constructor(self, constructor: "CppConstructor") -> "CppConstructor":
+        """Attach one constructor to this class scope."""
+
+        return self._append_child(self.constructors, constructor)
+
+    def add_method(self, method: "CppMethod") -> "CppMethod":
+        """Attach one method to this class scope."""
+
+        return self._append_child(self.methods, method)
+
+    def add_field(self, field: "CppField") -> "CppField":
+        """Attach one field to this class scope."""
+
+        return self._append_child(self.fields, field)
+
+    def add_enum(self, enum: "CppEnum") -> "CppEnum":
+        """Attach one nested enum to this class scope."""
+
+        return self._append_child(self.enums, enum)
+
+    def add_class_template(self, template: "CppClassTemplate") -> "CppClassTemplate":
+        """Attach one nested class template family to this class scope."""
+
+        return self._append_child(self.class_templates, template)
+
+    def add_function_template(self, template: "CppFunctionTemplate") -> "CppFunctionTemplate":
+        """Attach one nested function template family to this class scope."""
+
+        return self._append_child(self.function_templates, template)
 
 
 @dataclass(slots=True)

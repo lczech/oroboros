@@ -71,7 +71,12 @@ class CppFunctionTemplateDecl(CppElement):
     def __post_init__(self) -> None:
         """Adopt the owned parameter nodes."""
 
-        self.adopt_children(self.parameters)
+        self._adopt_children(self.parameters)
+
+    def add_parameter(self, parameter: CppParameter) -> CppParameter:
+        """Attach one parameter to this generic function template declaration."""
+
+        return self._append_child(self.parameters, parameter)
 
 
 @dataclass(slots=True)
@@ -108,8 +113,13 @@ class CppFunctionTemplate(CppElement):
         _synchronize_template_name(self, declaration)
         self.declaration = declaration
 
-        self.adopt_children([self.declaration])
-        self.adopt_children(self.instances)
+        self._adopt_children([self.declaration])
+        self._adopt_children(self.instances)
+
+    def add_instance(self, instance: CppFunctionTemplateInstance) -> CppFunctionTemplateInstance:
+        """Attach one selected function template instance to this family."""
+
+        return self._append_child(self.instances, instance)
 
 
 # ==================================================================================================
@@ -157,9 +167,7 @@ def add_function_template_instance(
         ),
         parameters=_copy_children(declaration.parameters),
     )
-    template.instances.append(instance)
-    template.adopt_children([instance])
-    return instance
+    return template.add_instance(instance)
 
 
 def _find_existing_function_template_instance(

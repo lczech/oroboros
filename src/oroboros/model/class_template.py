@@ -122,8 +122,13 @@ class CppClassTemplate(CppElement):
         _synchronize_template_name(self, declaration)
         self.declaration = declaration
 
-        self.adopt_children([self.declaration])
-        self.adopt_children(self.instances)
+        self._adopt_children([self.declaration])
+        self._adopt_children(self.instances)
+
+    def add_instance(self, instance: CppClassTemplateInstance) -> CppClassTemplateInstance:
+        """Attach one selected class template instance to this family."""
+
+        return self._append_child(self.instances, instance)
 
 
 # ==================================================================================================
@@ -171,9 +176,7 @@ def add_class_template_instance(
         class_templates=_copy_children(declaration.class_templates),
         function_templates=_copy_children(declaration.function_templates),
     )
-    template.instances.append(instance)
-    template.adopt_children([instance])
-    return instance
+    return template.add_instance(instance)
 
 
 def _find_existing_class_template_instance(

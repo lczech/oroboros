@@ -120,4 +120,9 @@ class CppFunction(CppElement):
     def __post_init__(self) -> None:
         """Adopt the owned parameter nodes."""
 
-        self.adopt_children(self.parameters)
+        self._adopt_children(self.parameters)
+
+    def add_parameter(self, parameter: CppParameter) -> CppParameter:
+        """Attach one parameter to this free function."""
+
+        return self._append_child(self.parameters, parameter)

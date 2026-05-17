@@ -15,7 +15,7 @@ from .class_ import (
     CppFieldPyFacet,
 )
 from .comment import CppDoc, PyDoc, build_py_doc_from_cpp_doc
-from .element import CppElement
+from .element import CppElement, ModelValidationError
 from .enum import (
     CppEnum,
     CppEnumBindFacet,
@@ -174,6 +174,7 @@ __all__ = [
     "LValueReferenceCppType",
     "FunctionCppType",
     "NamedCppType",
+    "ModelValidationError",
     "PointerCppType",
     "PyDoc",
     "RValueReferenceCppType",

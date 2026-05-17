@@ -47,6 +47,7 @@ from oroboros.model import (
     CppTypeTemplateParameter,
     CppFunctionTemplateInstance,
     CppVisibility,
+    ModelValidationError,
     add_template_instance,
     find_aliases,
     NamedCppType,
@@ -134,8 +135,7 @@ class ModelScaffoldTest(unittest.TestCase):
                 target=NamedCppType(name="demo::Widget"),
             )
         )
-        namespace.namespaces.append(nested)
-        namespace.adopt_children(namespace.namespaces)
+        namespace.add_namespace(nested)
 
         aliases = find_aliases(namespace, cls)
 
@@ -254,6 +254,48 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertIsInstance(method.bind, CppFunctionBindFacet)
         self.assertIsInstance(constructor.bind, CppConstructorBindFacet)
         self.assertIsInstance(constructor.bind, CppFunctionBindFacet)
+
+    def test_add_helpers_attach_children_and_return_them(self) -> None:
+        module = CppModule(name="bindings")
+        namespace = module.add_namespace(CppNamespace(name="demo"))
+        cls = namespace.add_class(CppClass(name="Widget"))
+        constructor = cls.add_constructor(CppConstructor(name="Widget"))
+        method = cls.add_method(CppMethod(name="size"))
+        parameter = method.add_parameter(CppParameter(name="value"))
+        enum_ = cls.add_enum(CppEnum(name="Kind"))
+        enumerator = enum_.add_enumerator(CppEnumerator(name="primary"))
+
+        self.assertIs(module.namespaces[0], namespace)
+        self.assertIs(namespace.owner, module)
+        self.assertIs(namespace.classes[0], cls)
+        self.assertIs(cls.owner, namespace)
+        self.assertIs(cls.constructors[0], constructor)
+        self.assertIs(constructor.owner, cls)
+        self.assertIs(cls.methods[0], method)
+        self.assertIs(method.owner, cls)
+        self.assertIs(method.parameters[0], parameter)
+        self.assertIs(parameter.owner, method)
+        self.assertIs(cls.enums[0], enum_)
+        self.assertIs(enum_.owner, cls)
+        self.assertIs(enum_.enumerators[0], enumerator)
+        self.assertIs(enumerator.owner, enum_)
+
+    def test_validate_tree_accepts_consistent_child_owner_links(self) -> None:
+        module = CppModule(name="bindings")
+        namespace = module.add_namespace(CppNamespace(name="demo"))
+        cls = namespace.add_class(CppClass(name="Widget"))
+        method = cls.add_method(CppMethod(name="size"))
+        method.add_parameter(CppParameter(name="value"))
+
+        module.validate_tree()
+
+    def test_validate_tree_rejects_direct_list_mutation_without_owner_update(self) -> None:
+        module = CppModule(name="bindings")
+        namespace = module.add_namespace(CppNamespace(name="demo"))
+        namespace.classes.append(CppClass(name="Widget"))
+
+        with self.assertRaises(ModelValidationError):
+            module.validate_tree()
 
     def test_class_cpp_facet_uses_cpp_class_base_objects(self) -> None:
         base = CppClassBase(type=NamedCppType(name="Base"), visibility=CppVisibility.PUBLIC)

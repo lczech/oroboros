@@ -129,9 +129,39 @@ class CppModule(CppElement):
     def __post_init__(self) -> None:
         """Adopt all typed top-level declaration collections."""
 
-        self.adopt_children(self.namespaces)
-        self.adopt_children(self.classes)
-        self.adopt_children(self.class_templates)
-        self.adopt_children(self.functions)
-        self.adopt_children(self.function_templates)
-        self.adopt_children(self.enums)
+        self._adopt_children(self.namespaces)
+        self._adopt_children(self.classes)
+        self._adopt_children(self.class_templates)
+        self._adopt_children(self.functions)
+        self._adopt_children(self.function_templates)
+        self._adopt_children(self.enums)
+
+    def add_namespace(self, namespace: "CppNamespace") -> "CppNamespace":
+        """Attach one top-level namespace to this semantic module."""
+
+        return self._append_child(self.namespaces, namespace)
+
+    def add_class(self, class_: "CppClass") -> "CppClass":
+        """Attach one top-level class to this semantic module."""
+
+        return self._append_child(self.classes, class_)
+
+    def add_class_template(self, template: "CppClassTemplate") -> "CppClassTemplate":
+        """Attach one top-level class template family to this semantic module."""
+
+        return self._append_child(self.class_templates, template)
+
+    def add_function(self, function: "CppFunction") -> "CppFunction":
+        """Attach one top-level free function to this semantic module."""
+
+        return self._append_child(self.functions, function)
+
+    def add_function_template(self, template: "CppFunctionTemplate") -> "CppFunctionTemplate":
+        """Attach one top-level function template family to this semantic module."""
+
+        return self._append_child(self.function_templates, template)
+
+    def add_enum(self, enum: "CppEnum") -> "CppEnum":
+        """Attach one top-level enum to this semantic module."""
+
+        return self._append_child(self.enums, enum)
