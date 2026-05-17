@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from .comment import CppDoc, PyDoc
 from .element import CppElement
-from .location import SourceLocation
+from .location import CppLocationInfo
 
 if TYPE_CHECKING:
     from .alias import CppAliasInfo
@@ -27,7 +27,7 @@ class CppNamespaceCppFacet:
     """Store parsed C++ details for one namespace."""
 
     original_name: str | None = None
-    location: SourceLocation | None = None
+    location: CppLocationInfo = field(default_factory=CppLocationInfo)
     comment: str | None = None
     doc: CppDoc | None = None
     is_inline: bool = False

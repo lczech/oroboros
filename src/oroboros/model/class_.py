@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Literal
 
 from .comment import CppDoc, PyDoc
 from .element import CppElement
-from .location import SourceLocation
+from .location import CppLocationInfo
 from .type import CppType
 from .visibility import CppVisibility
 
@@ -42,7 +42,7 @@ class CppClassCppFacet:
     """Store parsed C++ details for one class or struct."""
 
     original_name: str | None = None
-    location: SourceLocation | None = None
+    location: CppLocationInfo = dataclass_field(default_factory=CppLocationInfo)
     comment: str | None = None
     doc: CppDoc | None = None
     kind: Literal["class", "struct"] = "class"
@@ -82,7 +82,7 @@ class CppFieldCppFacet:
 
     original_name: str | None = None
     type: CppType | None = None
-    location: SourceLocation | None = None
+    location: CppLocationInfo = dataclass_field(default_factory=CppLocationInfo)
     comment: str | None = None
     doc: CppDoc | None = None
     is_static: bool = False

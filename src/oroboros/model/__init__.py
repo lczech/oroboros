@@ -36,7 +36,7 @@ from .function import (
     CppParameterCppFacet,
     CppParameterPyFacet,
 )
-from .location import SourceLocation
+from .location import CppLocationInfo, SourceLocation
 from .lookup import (
     ModelLookupError,
     find_all_by_name,
@@ -166,6 +166,7 @@ __all__ = [
     "CppParameterBindFacet",
     "CppParameterCppFacet",
     "CppParameterPyFacet",
+    "CppLocationInfo",
     "CppNonTypeTemplateArgument",
     "CppNonTypeTemplateParameter",
     "CppObservedTemplateInstance",

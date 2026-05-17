@@ -63,6 +63,10 @@ As this is a lot of functionality, we will build the Oroboros code incrementally
 - Keep the backend emitter split clean so pybind11 can be added later.
 - Use Python-only configuration APIs.
 - Keep header dependency order and header activation as separate inputs.
+- The parse stage should take one ordered list of active headers to build right now.
+  The broader "all known headers" inventory and activation-header workflow live one layer above parsing.
+- Parsing should build one synthetic translation unit that includes those active headers in the configured order.
+  Clang will still see transitive includes normally, but Oroboros should only materialize declarations whose source file belongs to the active project-header set.
 - Use one semantic tree of C++ declaration objects rather than a flat list or a raw AST.
 - Split each declaration object into facets: `.cpp` for parsed C++ facts, `.bind` for binding-generation settings, `.py` for Python-facing exposure choices, and `.defaults` for inherited descendant defaults.
 - Keep the parsed `.cpp` facet read-mostly, and express user customization mainly through `.bind`, `.py`, and `.defaults`.
@@ -83,6 +87,9 @@ As this is a lot of functionality, we will build the Oroboros code incrementally
 - Mirror C++ namespaces as Python submodules within a single compiled extension module.
 - Make the handling of the top-level namespace configurable.
 - Preserve both raw and normalized documentation in the model.
+- During parsing, keep one semantic node per semantic entity rather than creating duplicate tree nodes for forward declarations and collapsing them later.
+  Repeated declarations, forward declarations, and later definitions should enrich the same semantic node.
+- The parser may use backend-specific identity helpers internally, such as clang USRs stored in a parser-local symbol table, but those identifiers should not be stored in the semantic model unless a later concrete need arises.
 - Organize the semantic model in multiple files under a `model/` package, split by concern and declaration kind, similar in spirit to litgen's split but simpler and more binding-oriented.
 - Defer stub generation and binding-test generation until after the basic parser, model, and emitter pipeline works, but design the system so those later stages fit naturally.
 
@@ -118,6 +125,35 @@ This structure should make it natural to:
 - deactivate a whole class or namespace
 - compute inherited defaults by walking upward
 - emit code in scope-respecting order
+
+### Parsing approach
+
+The parser should stay narrow in responsibility:
+
+- build the semantic declaration tree
+- fill `.cpp`
+- default-construct `.bind`, `.py`, and `.defaults`
+- preserve source facts and provenance
+- avoid binding-policy and backend-emission decisions
+
+The intended parse workflow is:
+
+- accept one ordered list of active project headers
+- build one synthetic header or equivalent translation-unit input that includes those headers in order
+- let clang follow transitive includes normally
+- materialize only declarations whose source file belongs to the active project-header set
+
+This means:
+
+- declarations from external libraries and inactive project headers may still appear indirectly in types
+- those referenced types should remain type information, not automatically become bound declaration nodes
+- if an active declaration references another known project declaration from an inactive header, Oroboros should warn instead of silently auto-activating or auto-binding that header
+
+Namespace reopening should be handled parser-side via get-or-add behavior keyed by owner plus namespace name, so reopened namespaces enrich one semantic namespace node.
+
+Other declarations should not be merged by plain names, because overloads and templates make names insufficiently unique. The parser should instead use a backend-specific internal identity registry, such as a clang-USR-to-node map, to enrich one semantic node as redeclarations and definitions are encountered.
+
+The semantic model itself should remain backend-neutral. Parser identities such as clang USRs are useful internally during parsing, but should not be persisted in the user-facing model unless a concrete later need arises, such as incremental reparsing.
 
 ### Naming
 
@@ -219,6 +255,7 @@ Standard-library and other well-known framework types should not be modeled as s
 - preserve the original spelled type text for later emission
 - preserve a canonical or normalized underlying type for semantic reasoning
 - recognize standard-library families such as `std::vector`, `std::map`, `std::optional`, `std::variant`, and `std::function` from the canonical structural type, not from the raw source spelling
+- allow the parser to refer to those families through `CppType` objects rather than by creating semantic declaration nodes for standard-library declarations
 
 This is important because the source may use:
 
@@ -626,6 +663,16 @@ Source locations should at least contain:
 - file path
 - line
 - column
+
+For declarations that may be seen multiple times across headers, one plain location is not enough. The model should therefore preserve source provenance in a small container, for example `CppLocationInfo`, with explicit fields such as:
+
+- `primary`: the parser-chosen main location for the semantic element
+- `declarations`: all declaration locations seen in active headers
+- `definition`: the definition location, if one was seen in headers
+
+The important rule is that source provenance should be explicit. The parser should not encode semantic meaning by saying "the first location in a list is canonical". Instead, it should record one primary location deliberately by policy, such as definition-first when available, and preserve the other declaration sites separately.
+
+This provenance separation is important because parse facts and emission layout policy are related but not identical. Later emitter configuration may choose to group generated bindings by a resolved header anchor, but that grouping decision should not be hidden inside raw source-location ordering.
 
 This supports:
 

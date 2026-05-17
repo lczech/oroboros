@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 from .comment import CppDoc, PyDoc
 from .element import CppElement
-from .location import SourceLocation
+from .location import CppLocationInfo
 from .operator_ import CppOperator, CppOperatorBind
 from .type import CppType
 
@@ -28,7 +28,7 @@ class CppParameterCppFacet:
     original_name: str | None = None
     type: CppType | None = None
     default_value: str | None = None
-    location: SourceLocation | None = None
+    location: CppLocationInfo = field(default_factory=CppLocationInfo)
     doc: str | None = None
 
 
@@ -61,7 +61,7 @@ class CppFunctionCppFacet:
     original_name: str | None = None
     operator: CppOperator | None = None
     return_type: CppType | None = None
-    location: SourceLocation | None = None
+    location: CppLocationInfo = field(default_factory=CppLocationInfo)
     comment: str | None = None
     doc: CppDoc | None = None
     overload_index: int | None = None

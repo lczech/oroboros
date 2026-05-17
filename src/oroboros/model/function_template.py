@@ -153,7 +153,7 @@ def add_function_template_instance(
             original_name=declaration.cpp.original_name,
             operator=deepcopy(declaration.cpp.operator),
             return_type=deepcopy(declaration.cpp.return_type),
-            location=declaration.cpp.location,
+            location=deepcopy(declaration.cpp.location),
             comment=declaration.cpp.comment,
             doc=declaration.cpp.doc,
             overload_index=declaration.cpp.overload_index,

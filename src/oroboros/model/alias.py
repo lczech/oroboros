@@ -2,11 +2,11 @@ from __future__ import annotations
 
 """Lightweight alias metadata for semantic model scopes."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
 from .comment import CppDoc
-from .location import SourceLocation
+from .location import CppLocationInfo
 from .type import CppType
 from .visibility import CppVisibility
 
@@ -28,7 +28,7 @@ class CppAliasInfo:
     name: str
     qualified_name: str | None = None
     target: CppType | None = None
-    location: SourceLocation | None = None
+    location: CppLocationInfo = field(default_factory=CppLocationInfo)
     comment: str | None = None
     doc: CppDoc | None = None
     visibility: CppVisibility | None = None

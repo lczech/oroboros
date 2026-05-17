@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Source location helpers for semantic model nodes."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -18,3 +18,12 @@ class SourceLocation:
     file: Path
     line: int
     column: int
+
+
+@dataclass(slots=True)
+class CppLocationInfo:
+    """Store primary, declaration, and definition source locations together."""
+
+    primary: SourceLocation | None = None
+    declarations: list[SourceLocation] = field(default_factory=list)
+    definition: SourceLocation | None = None

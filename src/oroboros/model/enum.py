@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 from .comment import CppDoc, PyDoc
 from .element import CppElement
-from .location import SourceLocation
+from .location import CppLocationInfo
 from .type import CppType
 from .visibility import CppVisibility
 
@@ -27,7 +27,7 @@ class CppEnumeratorCppFacet:
 
     original_name: str | None = None
     value_spelling: str | None = None
-    location: SourceLocation | None = None
+    location: CppLocationInfo = field(default_factory=CppLocationInfo)
     comment: str | None = None
     doc: CppDoc | None = None
 
@@ -58,7 +58,7 @@ class CppEnumCppFacet:
 
     original_name: str | None = None
     underlying_type: CppType | None = None
-    location: SourceLocation | None = None
+    location: CppLocationInfo = field(default_factory=CppLocationInfo)
     comment: str | None = None
     doc: CppDoc | None = None
     is_scoped: bool = False

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from .comment import CppDoc, PyDoc
 from .element import CppElement
 from .function import CppFunctionBindFacet, CppFunctionCppFacet, CppFunctionPyFacet, CppParameter
-from .location import SourceLocation
+from .location import CppLocationInfo
 from .visibility import CppVisibility
 
 
@@ -52,7 +52,7 @@ class CppConstructorCppFacet:
     """Store parsed C++ details for one constructor."""
 
     original_name: str | None = None
-    location: SourceLocation | None = None
+    location: CppLocationInfo = field(default_factory=CppLocationInfo)
     comment: str | None = None
     doc: CppDoc | None = None
     overload_index: int | None = None
