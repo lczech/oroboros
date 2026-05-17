@@ -14,8 +14,7 @@ from .visibility import CppVisibility
 if TYPE_CHECKING:
     from .alias import CppAliasInfo
     from .enum import CppEnum, CppEnumBindFacet
-    from .function import CppFunctionBindFacet
-    from .member import CppConstructor, CppMethod
+    from .member import CppConstructor, CppConstructorBindFacet, CppMethod, CppMethodBindFacet
     from .template_ import CppClassTemplate, CppFunctionTemplate
 
 
@@ -119,18 +118,26 @@ class CppClassDefaults:
     """Store descendant defaults for one class scope."""
 
     class_: CppClassBindFacet = dataclass_field(default_factory=CppClassBindFacet)
-    method: "CppFunctionBindFacet" = dataclass_field(default_factory=lambda: _make_function_bind_facet())
-    constructor: "CppFunctionBindFacet" = dataclass_field(default_factory=lambda: _make_function_bind_facet())
+    method: "CppMethodBindFacet" = dataclass_field(default_factory=lambda: _make_method_bind_facet())
+    constructor: "CppConstructorBindFacet" = dataclass_field(default_factory=lambda: _make_constructor_bind_facet())
     field: CppFieldBindFacet = dataclass_field(default_factory=CppFieldBindFacet)
     enum: "CppEnumBindFacet" = dataclass_field(default_factory=lambda: _make_enum_bind_facet())
 
 
-def _make_function_bind_facet() -> "CppFunctionBindFacet":
-    """Create one function-bind facet without import cycles at module import time."""
+def _make_method_bind_facet() -> "CppMethodBindFacet":
+    """Create one method-bind facet without import cycles at module import time."""
 
-    from .function import CppFunctionBindFacet
+    from .member import CppMethodBindFacet
 
-    return CppFunctionBindFacet()
+    return CppMethodBindFacet()
+
+
+def _make_constructor_bind_facet() -> "CppConstructorBindFacet":
+    """Create one constructor-bind facet without import cycles at module import time."""
+
+    from .member import CppConstructorBindFacet
+
+    return CppConstructorBindFacet()
 
 
 def _make_enum_bind_facet() -> "CppEnumBindFacet":

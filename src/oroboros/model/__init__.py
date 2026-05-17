@@ -39,7 +39,9 @@ from .function import (
 from .location import SourceLocation
 from .member import (
     CppConstructor,
+    CppConstructorBindFacet,
     CppMethod,
+    CppMethodBindFacet,
     CppConstructorCppFacet,
     CppConstructorPyFacet,
     CppMethodCppFacet,
@@ -110,6 +112,7 @@ __all__ = [
     "CppClassTemplateInstance",
     "CppClassTemplateInstanceCppFacet",
     "CppConstructor",
+    "CppConstructorBindFacet",
     "CppConstructorCppFacet",
     "CppConstructorPyFacet",
     "CppDoc",
@@ -137,6 +140,7 @@ __all__ = [
     "CppFunctionTemplateInstance",
     "CppFunctionTemplateInstanceCppFacet",
     "CppMethod",
+    "CppMethodBindFacet",
     "CppMethodCppFacet",
     "CppMethodPyFacet",
     "CppModule",

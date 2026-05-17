@@ -15,6 +15,7 @@ from oroboros.model import (
     CppClassTemplateDefaults,
     CppClassTemplateInstance,
     CppConstructor,
+    CppConstructorBindFacet,
     CppDoc,
     CppEnum,
     CppEnumBindFacet,
@@ -26,6 +27,7 @@ from oroboros.model import (
     CppFunctionTemplate,
     FunctionCppType,
     CppMethod,
+    CppMethodBindFacet,
     CppModule,
     CppModuleDefaults,
     CppNamespace,
@@ -173,8 +175,12 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertIsNone(namespace.py.name)
         self.assertIsNone(cls.py.name)
         self.assertIsNone(function.py.name)
+        self.assertIsNone(function.py.sig)
         self.assertIsNone(method.py.name)
+        self.assertIsNone(method.py.sig)
+        self.assertIsNone(constructor.py.sig)
         self.assertIsNone(parameter.py.name)
+        self.assertIsNone(parameter.py.sig)
         self.assertIsNone(enum_.py.name)
         self.assertIsNone(enum_.enumerators[0].py.name)
         self.assertIsNone(field.py.name)
@@ -228,17 +234,26 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertIsInstance(namespace_defaults.function, CppFunctionBindFacet)
         self.assertIsInstance(namespace_defaults.enum, CppEnumBindFacet)
         self.assertIsInstance(class_defaults.class_, CppClassBindFacet)
-        self.assertIsInstance(class_defaults.method, CppFunctionBindFacet)
-        self.assertIsInstance(class_defaults.constructor, CppFunctionBindFacet)
+        self.assertIsInstance(class_defaults.method, CppMethodBindFacet)
+        self.assertIsInstance(class_defaults.constructor, CppConstructorBindFacet)
         self.assertIsInstance(class_defaults.field, CppFieldBindFacet)
         self.assertIsInstance(class_defaults.enum, CppEnumBindFacet)
         self.assertIsInstance(class_template_defaults.instance, CppClassBindFacet)
         self.assertIsInstance(class_template_defaults.class_, CppClassBindFacet)
-        self.assertIsInstance(class_template_defaults.method, CppFunctionBindFacet)
-        self.assertIsInstance(class_template_defaults.constructor, CppFunctionBindFacet)
+        self.assertIsInstance(class_template_defaults.method, CppMethodBindFacet)
+        self.assertIsInstance(class_template_defaults.constructor, CppConstructorBindFacet)
         self.assertIsInstance(class_template_defaults.field, CppFieldBindFacet)
         self.assertIsInstance(class_template_defaults.enum, CppEnumBindFacet)
         self.assertIsInstance(function_template_defaults.instance, CppFunctionBindFacet)
+
+    def test_method_and_constructor_bind_facets_keep_semantic_distinction(self) -> None:
+        method = CppMethod(name="size")
+        constructor = CppConstructor(name="Widget")
+
+        self.assertIsInstance(method.bind, CppMethodBindFacet)
+        self.assertIsInstance(method.bind, CppFunctionBindFacet)
+        self.assertIsInstance(constructor.bind, CppConstructorBindFacet)
+        self.assertIsInstance(constructor.bind, CppFunctionBindFacet)
 
     def test_class_cpp_facet_uses_cpp_class_base_objects(self) -> None:
         base = CppClassBase(type=NamedCppType(name="Base"), visibility=CppVisibility.PUBLIC)

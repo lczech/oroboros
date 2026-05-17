@@ -14,7 +14,7 @@ from .class_ import (
     CppFieldBindFacet,
 )
 from .element import CppElement
-from .function import CppFunctionBindFacet
+from .member import CppConstructorBindFacet, CppMethodBindFacet
 from .template_ import (
     CppObservedTemplateInstance,
     CppTemplateArgument,
@@ -58,9 +58,9 @@ class CppClassTemplateDefaults:
     # Defaults applied to nested classes inside selected instances.
     class_: CppClassBindFacet = dataclass_field(default_factory=CppClassBindFacet)
     # Defaults applied to methods inside selected instances.
-    method: CppFunctionBindFacet = dataclass_field(default_factory=CppFunctionBindFacet)
+    method: CppMethodBindFacet = dataclass_field(default_factory=CppMethodBindFacet)
     # Defaults applied to constructors inside selected instances.
-    constructor: CppFunctionBindFacet = dataclass_field(default_factory=CppFunctionBindFacet)
+    constructor: CppConstructorBindFacet = dataclass_field(default_factory=CppConstructorBindFacet)
     # Defaults applied to fields inside selected instances.
     field: CppFieldBindFacet = dataclass_field(default_factory=CppFieldBindFacet)
     # Defaults applied to enums inside selected instances.

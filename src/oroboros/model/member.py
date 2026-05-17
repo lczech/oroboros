@@ -6,10 +6,8 @@ from dataclasses import dataclass, field
 
 from .comment import CppDoc, PyDoc
 from .element import CppElement
-from .function import CppFunctionBindFacet, CppParameter
+from .function import CppFunctionBindFacet, CppFunctionCppFacet, CppFunctionPyFacet, CppParameter
 from .location import SourceLocation
-from .operator_ import CppOperator
-from .type import CppType
 from .visibility import CppVisibility
 
 
@@ -24,31 +22,24 @@ from .visibility import CppVisibility
 
 
 @dataclass(slots=True)
-class CppMethodCppFacet:
+class CppMethodCppFacet(CppFunctionCppFacet):
     """Store parsed C++ details for one class method."""
 
-    original_name: str | None = None
-    qualified_name: str | None = None
-    operator: CppOperator | None = None
-    return_type: CppType | None = None
-    location: SourceLocation | None = None
-    comment: str | None = None
-    doc: CppDoc | None = None
-    overload_index: int | None = None
     is_const: bool = False
     is_static: bool = False
     is_virtual: bool = False
     is_pure_virtual: bool = False
-    is_noexcept: bool = False
     visibility: CppVisibility | None = None
 
 
 @dataclass(slots=True)
-class CppMethodPyFacet:
-    """Store Python-facing choices for one class method."""
+class CppMethodBindFacet(CppFunctionBindFacet):
+    """Store binding settings for one class method."""
 
-    name: str | None = None
-    doc: PyDoc | None = None
+
+@dataclass(slots=True)
+class CppMethodPyFacet(CppFunctionPyFacet):
+    """Store Python-facing choices for one class method."""
 
 
 # ------------------------------------------------------------------------------
@@ -72,10 +63,16 @@ class CppConstructorCppFacet:
 
 
 @dataclass(slots=True)
+class CppConstructorBindFacet(CppFunctionBindFacet):
+    """Store binding settings for one constructor."""
+
+
+@dataclass(slots=True)
 class CppConstructorPyFacet:
     """Store Python-facing choices for one constructor."""
 
     doc: PyDoc | None = None
+    sig: str | None = None
 
 
 # ==================================================================================================
@@ -88,7 +85,7 @@ class CppMethod(CppElement):
     """Represent one method owned by a class."""
 
     cpp: CppMethodCppFacet = field(default_factory=CppMethodCppFacet)
-    bind: CppFunctionBindFacet = field(default_factory=CppFunctionBindFacet)
+    bind: CppMethodBindFacet = field(default_factory=CppMethodBindFacet)
     py: CppMethodPyFacet = field(default_factory=CppMethodPyFacet)
     parameters: list[CppParameter] = field(default_factory=list)
 
@@ -103,7 +100,7 @@ class CppConstructor(CppElement):
     """Represent one constructor owned by a class."""
 
     cpp: CppConstructorCppFacet = field(default_factory=CppConstructorCppFacet)
-    bind: CppFunctionBindFacet = field(default_factory=CppFunctionBindFacet)
+    bind: CppConstructorBindFacet = field(default_factory=CppConstructorBindFacet)
     py: CppConstructorPyFacet = field(default_factory=CppConstructorPyFacet)
     parameters: list[CppParameter] = field(default_factory=list)
 

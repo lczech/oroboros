@@ -38,7 +38,6 @@ class CppParameterBindFacet:
 
     none_accepted: bool | None = None
     no_convert: bool | None = None
-    rendered_default: str | None = None
 
 
 @dataclass(slots=True)
@@ -47,6 +46,7 @@ class CppParameterPyFacet:
 
     name: str | None = None
     doc: str | None = None
+    sig: str | None = None
 
 
 # ------------------------------------------------------------------------------
@@ -87,6 +87,7 @@ class CppFunctionPyFacet:
 
     name: str | None = None
     doc: PyDoc | None = None
+    sig: str | None = None
 
 
 # ==================================================================================================

@@ -41,8 +41,8 @@ I want to use the final product as follows:
 - It should be configurable whether the top-level C++ namespace becomes the Python module root directly, or whether it is exposed as an explicit first submodule.
 - Documentation of all C++ code (Doxygen-style) shall be preserved and added to the generated files (without the leading `*`, and with some Python-style equivalent of the `@` annotations of Doxygen).
 - The model should preserve both the raw C++ comments and a normalized docstring-oriented representation, so documentation can also be customized before emission.
-- Python stub files shall be generated in `genesis/python/stubs`, either as a single file or set of files.
-- Generate test cases for the bindings, that hit every class and funtion, to show that the binding worked. This should also allow to use existing C++ test (e.g., gtest) as guidance, and replicate them in Python. But mostly, tests on the Python end should focus on the binding interface, to ensure that is working correctly. We can mostly assume that that internal functionality of the C++ side is already tested there.
+- Python stub files shall be generated in `genesis/python/stubs`, either as a single file or set of files. These should be usable for IDEs etc for code completion and documentation, i.e., contain the doc strings as well as the (nanobind-generated?) signatures.
+- Generate test cases for the bindings, that hit every class and funtion, to show that the binding worked. This should also allow to use existing C++ test (e.g., gtest) as guidance, and replicate them in Python. But mostly, tests on the Python end should focus on the binding interface, to ensure that is working correctly. We can mostly assume that that internal functionality of the C++ side is already tested there. In other words, oroboros should create test stubs for every class and function with bindings, simply default constructing them and their arguments (or, if no default constuctor is available, recursively create the needed objects, until everything is constructed). Ideally, this will already serve as a testing framework - but likely will breat, as default constructed arguments will not always work. In these cases, the auto-generated tests will serve as a scaffold for the user of oroboros to more easily develop actual tests of the bindings.
 
 The goal of Oroboros is to allow creating bindings this way. It thus needs to provide all the mentioned functionality, which will then be called and used from genesis. Note that genesis is only inteded to be used as the exemplary library that motivates the development of Oroboros. Its name or paths or anything should never be mentioned in Orobors itself, and everything should be configurable instead. Genesis itself will then use Oroboros functionality to make its bindings. Ideally, genesis will only need to set up the configuration, call the function to parse the headers, then add its customization as needed on top, using the model, and then call the function to write out the generated code. All the rest shall be handled by Oroboros here. If any of the concepts or configurations are too specific for genesis alone, where it makes sense, it should be implemented in a more generic way as well, so that other libraries will be able to use this project as well.
 
@@ -275,7 +275,7 @@ Typical parameter-side Python or binding details include:
 - `None` acceptance
 - `noconvert` behavior
 - keyword-only or positional-only behavior if needed later
-- rendered default or signature override when needed for cleaner docstrings
+- Python-facing default-signature override via `param.py.sig` when needed for nanobind-style signature customization
 
 This keeps parameters first-class and customizable without over-promoting them into full declaration containers.
 
@@ -286,12 +286,19 @@ This facet stores Python-facing exposure choices. It answers: “how should this
 This facet should be default-constructed during the initial parse phase, but translation should later fill it from `.cpp` and `.bind`.
 By default, translation should only fill fields that are still unset, so users may customize `.py` early without losing those edits.
 
+Rule of thumb:
+
+- if a setting changes binding mechanics, lifetime rules, backend calls, or whether something is bound at all, it belongs in `.bind`
+- if a setting changes what Python users see, call, import, or read, it belongs in `.py`
+- for gray areas, keep the policy or decision in `.bind`, and keep the final exposed Python name, docstring, or rendered signature in `.py`
+
 Typical contents:
 
 - Python name override
 - docstring override
 - Python submodule override
-- later: property-vs-method decisions, dunder name mapping, naming policy exceptions
+- `sig` override for callable, constructor, or parameter nanobind-style signature customization
+- later: rendered Python signatures, naming policy exceptions, and other Python-surface presentation details
 
 Examples:
 
@@ -303,6 +310,11 @@ Users may customize `.bind` and `.py` incrementally from the start, but the usua
 #### `.bind`
 
 This facet stores binding-generation settings for the element itself. It answers: “how should this element be bound?”
+
+Rule of thumb:
+
+- `.bind` is primarily the input policy for translation and emission
+- `.py` is primarily the translated Python-facing surface that later stages such as stub generation and documentation emission should consume
 
 Typical contents differ by element kind.
 
@@ -416,8 +428,11 @@ These buckets should contain the same typed binding objects that direct elements
 Examples:
 
 - a function node has `.bind: FunctionBind`
+- a method node has `.bind: MethodBind`
+- a constructor node has `.bind: ConstructorBind`
 - a class node has `.bind: ClassBind`
-- a class node also has `.defaults.method: FunctionBind`
+- a class node also has `.defaults.method: MethodBind`
+- a class node also has `.defaults.constructor: ConstructorBind`
 - a namespace node may have `.defaults.function: FunctionBind`
 
 This keeps inheritance expressive without giving namespaces a giant flat set of function-only fields.
