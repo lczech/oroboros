@@ -27,7 +27,6 @@ class CppNamespaceCppFacet:
     """Store parsed C++ details for one namespace."""
 
     original_name: str | None = None
-    qualified_name: str | None = None
     location: SourceLocation | None = None
     comment: str | None = None
     doc: CppDoc | None = None

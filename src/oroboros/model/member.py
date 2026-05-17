@@ -52,7 +52,6 @@ class CppConstructorCppFacet:
     """Store parsed C++ details for one constructor."""
 
     original_name: str | None = None
-    qualified_name: str | None = None
     location: SourceLocation | None = None
     comment: str | None = None
     doc: CppDoc | None = None

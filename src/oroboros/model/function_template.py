@@ -151,7 +151,6 @@ def add_function_template_instance(
         name=template.name,
         cpp=CppFunctionTemplateInstanceCppFacet(
             original_name=declaration.cpp.original_name,
-            qualified_name=declaration.cpp.qualified_name,
             operator=deepcopy(declaration.cpp.operator),
             return_type=deepcopy(declaration.cpp.return_type),
             location=declaration.cpp.location,

@@ -69,8 +69,6 @@ def _target_names(target: CppType | CppClass) -> set[str]:
         return {target.render()}
 
     names: set[str] = {target.qualified_name, target.name}
-    if target.cpp.qualified_name is not None:
-        names.add(target.cpp.qualified_name)
     if target.cpp.original_name is not None:
         names.add(target.cpp.original_name)
     return names

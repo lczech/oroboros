@@ -168,7 +168,7 @@ This facet stores parsed C++ facts and should be treated as read-mostly by conve
 Typical contents:
 
 - original C++ name
-- fully qualified C++ name
+- semantic qualified name exposed on the element itself via the ownership chain, rather than duplicated redundantly inside `.cpp`
 - scope path
 - kind information such as class/struct/enum/function/method
 - source location

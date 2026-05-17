@@ -37,6 +37,13 @@ from .function import (
     CppParameterPyFacet,
 )
 from .location import SourceLocation
+from .lookup import (
+    ModelLookupError,
+    find_all_by_name,
+    find_all_by_qualified_name,
+    find_one_by_name,
+    find_one_by_qualified_name,
+)
 from .member import (
     CppConstructor,
     CppConstructorBindFacet,
@@ -173,7 +180,12 @@ __all__ = [
     "BuiltinCppType",
     "LValueReferenceCppType",
     "FunctionCppType",
+    "find_all_by_name",
+    "find_all_by_qualified_name",
+    "find_one_by_name",
+    "find_one_by_qualified_name",
     "NamedCppType",
+    "ModelLookupError",
     "ModelValidationError",
     "PointerCppType",
     "PyDoc",

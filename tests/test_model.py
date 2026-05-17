@@ -46,6 +46,7 @@ from oroboros.model import (
     CppTypeTemplateArgument,
     CppTypeTemplateParameter,
     CppFunctionTemplateInstance,
+    ModelLookupError,
     CppVisibility,
     ModelValidationError,
     add_template_instance,
@@ -111,7 +112,6 @@ class ModelScaffoldTest(unittest.TestCase):
 
     def test_find_aliases_discovers_class_aliases_across_subtrees(self) -> None:
         cls = CppClass(name="Widget")
-        cls.cpp.qualified_name = "demo::Widget"
         namespace = CppNamespace(name="demo", classes=[cls])
         namespace.cpp.aliases.extend(
             [
@@ -143,6 +143,47 @@ class ModelScaffoldTest(unittest.TestCase):
             [alias.name for alias in aliases],
             ["WidgetAlias", "WidgetHandle"],
         )
+
+    def test_lookup_helpers_find_elements_by_name_and_qualified_name(self) -> None:
+        method = CppMethod(name="foo")
+        cls = CppClass(name="Widget", methods=[method])
+        namespace = CppNamespace(name="demo", classes=[cls])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        self.assertIs(
+            module.find_one_by_qualified_name("::demo::Widget", types=CppClass),
+            cls,
+        )
+        self.assertEqual(
+            module.find_all_by_name("foo", types=(CppMethod,)),
+            [method],
+        )
+        self.assertIs(
+            namespace.find_one_by_name("Widget", types=CppClass),
+            cls,
+        )
+
+    def test_lookup_helpers_raise_on_missing_or_ambiguous_matches(self) -> None:
+        cls = CppClass(
+            name="Widget",
+            methods=[CppMethod(name="foo"), CppMethod(name="foo")],
+        )
+        namespace = CppNamespace(name="demo", classes=[cls])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        self.assertEqual(
+            len(module.find_all_by_qualified_name("demo::Widget::foo", types=CppMethod)),
+            2,
+        )
+
+        with self.assertRaises(ModelLookupError):
+            module.find_one_by_qualified_name("demo::Widget::foo", types=CppMethod)
+
+        with self.assertRaises(ModelLookupError):
+            module.find_one_by_name("foo", types=CppMethod)
+
+        with self.assertRaises(ModelLookupError):
+            module.find_one_by_qualified_name("demo::MissingNamespace")
 
     def test_parse_stage_starts_with_default_bind_and_default_py_facets(self) -> None:
         parameter = CppParameter(name="value")

@@ -160,7 +160,6 @@ def add_class_template_instance(
         name=template.name,
         cpp=CppClassTemplateInstanceCppFacet(
             original_name=declaration.cpp.original_name,
-            qualified_name=declaration.cpp.qualified_name,
             location=declaration.cpp.location,
             comment=declaration.cpp.comment,
             doc=declaration.cpp.doc,

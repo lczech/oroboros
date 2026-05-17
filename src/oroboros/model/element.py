@@ -83,6 +83,54 @@ class CppElement:
         children.append(child)
         return child
 
+    def find_all_by_qualified_name(
+        self,
+        qualified_name: str,
+        *,
+        types: type["CppElement"] | tuple[type["CppElement"], ...] | None = None,
+    ) -> list["CppElement"]:
+        """Find all elements in this subtree with one semantic qualified name."""
+
+        from .lookup import find_all_by_qualified_name
+
+        return find_all_by_qualified_name(self, qualified_name, types=types)
+
+    def find_one_by_qualified_name(
+        self,
+        qualified_name: str,
+        *,
+        types: type["CppElement"] | tuple[type["CppElement"], ...] | None = None,
+    ) -> "CppElement":
+        """Find exactly one element in this subtree with one semantic qualified name."""
+
+        from .lookup import find_one_by_qualified_name
+
+        return find_one_by_qualified_name(self, qualified_name, types=types)
+
+    def find_all_by_name(
+        self,
+        name: str,
+        *,
+        types: type["CppElement"] | tuple[type["CppElement"], ...] | None = None,
+    ) -> list["CppElement"]:
+        """Find all elements in this subtree with one unqualified semantic name."""
+
+        from .lookup import find_all_by_name
+
+        return find_all_by_name(self, name, types=types)
+
+    def find_one_by_name(
+        self,
+        name: str,
+        *,
+        types: type["CppElement"] | tuple[type["CppElement"], ...] | None = None,
+    ) -> "CppElement":
+        """Find exactly one element in this subtree with one unqualified semantic name."""
+
+        from .lookup import find_one_by_name
+
+        return find_one_by_name(self, name, types=types)
+
     def validate_tree(self) -> None:
         """Validate owner links and direct-child containment across this subtree."""
 

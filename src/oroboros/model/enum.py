@@ -57,7 +57,6 @@ class CppEnumCppFacet:
     """Store parsed C++ details for one enum."""
 
     original_name: str | None = None
-    qualified_name: str | None = None
     underlying_type: CppType | None = None
     location: SourceLocation | None = None
     comment: str | None = None

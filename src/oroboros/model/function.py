@@ -59,7 +59,6 @@ class CppFunctionCppFacet:
     """Store parsed C++ details for one free function."""
 
     original_name: str | None = None
-    qualified_name: str | None = None
     operator: CppOperator | None = None
     return_type: CppType | None = None
     location: SourceLocation | None = None
