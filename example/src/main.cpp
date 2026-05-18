@@ -39,7 +39,7 @@ int main()
     std::cout << "  Domain: " << domain_name(deity.domain()) << '\n';
     std::cout << "  Blessing: " << deity.bless("the voyage") << '\n';
 
-    Demigod demigod("Heracles", "Zeus", -1250);
+    Demigod demigod("Heracles", "Son of Zeus", -1250);
     demigod.complete_quest();
     demigod.complete_quest();
     std::cout << "A demigod steps forward.\n";

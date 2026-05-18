@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Low-level clang translation-unit construction for the parse stage."""
+"""Low-level clang invocation and translation-unit construction for parsing."""
 
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,8 +15,13 @@ from .toolchain import _resolve_parser_config_toolchain
 _SYNTHETIC_FILENAME = "oroboros_synthetic_translation_unit.hpp"
 
 
+# ==================================================================================================
+#     Driver Result
+# ==================================================================================================
+
+
 @dataclass(slots=True)
-class TranslationUnitDriverResult:
+class ClangDriverResult:
     """Store one parsed clang translation unit plus collected diagnostics."""
 
     translation_unit: Any
@@ -25,14 +30,19 @@ class TranslationUnitDriverResult:
     synthetic_filename: str = _SYNTHETIC_FILENAME
 
 
-def parse_translation_unit(
+# ==================================================================================================
+#     Public Driver
+# ==================================================================================================
+
+
+def parse_with_clang(
     headers: Sequence[Path],
     config: ParserConfig,
-) -> TranslationUnitDriverResult:
+) -> ClangDriverResult:
     """Build one synthetic translation unit that includes the given headers."""
 
     normalized_headers = [header.resolve() for header in headers]
-    synthetic_source = build_synthetic_translation_unit_source(normalized_headers)
+    synthetic_source = build_synthetic_include_source(normalized_headers)
     resolved_config = _resolve_parser_config_toolchain(config)
     clang_arguments = build_clang_arguments(resolved_config)
 
@@ -44,7 +54,7 @@ def parse_translation_unit(
         unsaved_files=[(_SYNTHETIC_FILENAME, synthetic_source)],
     )
 
-    return TranslationUnitDriverResult(
+    return ClangDriverResult(
         translation_unit=translation_unit,
         diagnostics=_collect_diagnostics(translation_unit.diagnostics),
         synthetic_source=synthetic_source,
@@ -52,13 +62,23 @@ def parse_translation_unit(
     )
 
 
-def build_synthetic_translation_unit_source(headers: Sequence[Path]) -> str:
-    """Build the unsaved synthetic source that includes all active headers in order."""
+# ------------------------------------------------------------------------------
+#     Synthetic Input
+# ------------------------------------------------------------------------------
+
+
+def build_synthetic_include_source(headers: Sequence[Path]) -> str:
+    """Build one synthetic include source that includes all active headers in order."""
 
     lines = [f'#include "{_normalize_include_path(header)}"' for header in headers]
     if not lines:
         return "\n"
     return "\n".join(lines) + "\n"
+
+
+# ------------------------------------------------------------------------------
+#     Clang Invocation
+# ------------------------------------------------------------------------------
 
 
 def build_clang_arguments(config: ParserConfig) -> list[str]:
@@ -86,6 +106,11 @@ def build_clang_arguments(config: ParserConfig) -> list[str]:
     return arguments
 
 
+# ==================================================================================================
+#     Clang Integration
+# ==================================================================================================
+
+
 def _load_clang_cindex(config: ParserConfig) -> Any:
     """Import clang.cindex and optionally point it at one explicit libclang file."""
 
@@ -101,6 +126,11 @@ def _load_clang_cindex(config: ParserConfig) -> Any:
         cindex.Config.set_library_file(str(config.clang_library_file))
 
     return cindex
+
+
+# ==================================================================================================
+#     Diagnostics
+# ==================================================================================================
 
 
 def _collect_diagnostics(diagnostics: Sequence[Any]) -> list[ParserDiagnostic]:
@@ -151,6 +181,11 @@ def _normalize_diagnostic_severity(severity: Any) -> str:
         4: "fatal",
     }
     return severity_map.get(severity, "warning")
+
+
+# ------------------------------------------------------------------------------
+#     Path Rendering
+# ------------------------------------------------------------------------------
 
 
 def _normalize_include_path(path: Path) -> str:

@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Sequence
 
 from .config import ParserConfig
-from .decls import build_module_from_translation_unit
-from .driver import parse_translation_unit
+from .build_model import build_module_from_clang
+from .clang_driver import parse_with_clang
 from .result import ParseResult
 
 
@@ -22,8 +22,8 @@ def parse_headers(
     if not normalized_headers:
         return ParseResult()
 
-    driver_result = parse_translation_unit(normalized_headers, config)
-    build_result = build_module_from_translation_unit(
+    driver_result = parse_with_clang(normalized_headers, config)
+    build_result = build_module_from_clang(
         driver_result.translation_unit,
         normalized_headers,
     )

@@ -143,6 +143,12 @@ The intended parse workflow is:
 - let clang follow transitive includes normally
 - materialize only declarations whose source file belongs to the active project-header set
 
+The `parse` package itself may depend directly on `clang.cindex`. If clang is
+not available, parsing should fail clearly when the parse layer is imported or
+used. It is still acceptable for the top-level package to expose parse-related
+APIs lazily so that model-only utilities remain importable in environments that
+do not have libclang installed.
+
 This means:
 
 - declarations from external libraries and inactive project headers may still appear indirectly in types
@@ -153,7 +159,56 @@ Namespace reopening should be handled parser-side via get-or-add behavior keyed 
 
 Other declarations should not be merged by plain names, because overloads and templates make names insufficiently unique. The parser should instead use a backend-specific internal identity registry, such as a clang-USR-to-node map, to enrich one semantic node as redeclarations and definitions are encountered.
 
+That parser-local identity registry should live in the model-building stage, not
+in clang driver setup. Its intended jobs are:
+
+- merge repeated declarations and forward declarations into one semantic node
+- support later linking of `NamedCppType.declaration` back to parsed
+  declarations by semantic identity rather than guessed name matching
+- support alias parsing and similar declaration-to-declaration relationships
+- provide a stable backbone for provenance and redeclaration diagnostics
+
 The semantic model itself should remain backend-neutral. Parser identities such as clang USRs are useful internally during parsing, but should not be persisted in the user-facing model unless a concrete later need arises, such as incremental reparsing.
+
+The current implemented parser slice already materializes:
+
+- namespaces
+- classes and structs
+- enums and enumerators
+- free functions
+- methods
+- constructors
+- fields
+- parameters
+- class base relationships
+- source locations and provenance containers
+- visibility where libclang exposes it
+- basic callable flags such as `const`, `virtual`, and `noexcept`
+- structured recursive types for builtins, named types, pointers, references,
+  arrays, function types, and simple template-instantiation spellings
+
+The current parser internals are also intentionally split into:
+
+- `clang_driver.py` for libclang invocation and translation-unit creation
+- `build_model.py` for the public semantic-model build entrypoint and shared
+  parser-local build state such as the active-header set and USR map
+- `clang_walk.py` for cursor traversal, dispatch, namespace reopening, skipped
+  kind tracking, and USR-based node reuse
+- `build_facets.py` for cursor-to-`.cpp` facet extraction and lower-level
+  cursor data helpers
+
+Comments/docs, aliases, templates, operators, destructor/conversion functions,
+and fuller parser-side redeclaration enrichment are still follow-up work.
+
+The next parser work should focus first on:
+
+- redeclaration enrichment beyond simple node reuse, so later declarations can
+  add missing facts such as definitions, declaration locations, and richer
+  metadata to already-created nodes
+- linking `NamedCppType.declaration` back to parsed declaration nodes via the
+  parser-local USR registry where libclang provides enough identity
+- parsing `using` and `typedef` aliases, using the same identity and linking
+  infrastructure rather than string-based matching
 
 ### Naming
 

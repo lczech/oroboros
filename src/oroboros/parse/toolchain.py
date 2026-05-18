@@ -9,12 +9,22 @@ import subprocess
 from .config import ParserConfig
 
 
+# ==================================================================================================
+#     Toolchain Data
+# ==================================================================================================
+
+
 @dataclass(slots=True)
 class CompilerToolchain:
     """Store compiler-derived include and resource settings for the parser."""
 
     resource_dir: Path | None = None
     system_include_dirs: list[Path] = field(default_factory=list)
+
+
+# ==================================================================================================
+#     Public Toolchain Detection
+# ==================================================================================================
 
 
 def detect_compiler_toolchain(
@@ -50,6 +60,11 @@ def detect_compiler_toolchain(
     )
 
 
+# ==================================================================================================
+#     Parser Config Resolution
+# ==================================================================================================
+
+
 def _resolve_parser_config_toolchain(
     config: ParserConfig,
 ) -> ParserConfig:
@@ -79,6 +94,11 @@ def _resolve_parser_config_toolchain(
     return updated_config
 
 
+# ==================================================================================================
+#     Compiler Probes
+# ==================================================================================================
+
+
 def _detect_resource_dir(compiler: str) -> Path | None:
     """Ask one compiler for its clang builtin header resource directory."""
 
@@ -105,6 +125,11 @@ def _run_compiler_include_probe(compiler: str, *, language: str) -> str:
         text=True,
     )
     return completed_process.stderr
+
+
+# ==================================================================================================
+#     Probe Output Parsing
+# ==================================================================================================
 
 
 def _parse_system_include_dirs(verbose_output: str) -> list[Path]:
@@ -140,6 +165,11 @@ def _parse_system_include_dirs(verbose_output: str) -> list[Path]:
         include_dirs.append(include_dir)
 
     return include_dirs
+
+
+# ==================================================================================================
+#     Error Reporting
+# ==================================================================================================
 
 
 def _format_subprocess_error(error: OSError | subprocess.CalledProcessError) -> str:

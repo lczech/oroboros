@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from clang.cindex import TypeKind
+
 from ..model import (
     ArrayCppType,
     BuiltinCppType,
@@ -18,29 +20,9 @@ from ..model import (
 from ..model.type import cpp_builtin_kind_from_spelling
 
 
-_CLANG_BUILTIN_KIND_MAP: dict[str, str] = {
-    "VOID": "void",
-    "NULLPTR": "nullptr_t",
-    "BOOL": "bool",
-    "CHAR_U": "char",
-    "UCHAR": "unsigned_char",
-    "CHAR16": "char16_t",
-    "CHAR32": "char32_t",
-    "USHORT": "unsigned_short",
-    "UINT": "unsigned_int",
-    "ULONG": "unsigned_long",
-    "ULONGLONG": "unsigned_long_long",
-    "CHAR_S": "char",
-    "SCHAR": "signed_char",
-    "WCHAR": "wchar_t",
-    "SHORT": "short",
-    "INT": "int",
-    "LONG": "long",
-    "LONGLONG": "long_long",
-    "FLOAT": "float",
-    "DOUBLE": "double",
-    "LONGDOUBLE": "long_double",
-}
+# ==================================================================================================
+#     Public Type Builder
+# ==================================================================================================
 
 
 def build_cpp_type(clang_type: Any) -> CppType | None:
@@ -59,46 +41,60 @@ def _build_cpp_type(
 ) -> CppType | None:
     """Recursively convert one clang type while avoiding canonical recursion loops."""
 
-    clang_kind_name = _type_kind_name(clang_type)
-    is_const = _is_const_qualified(clang_type)
+    is_const = _call_optional_bool_method(clang_type, "is_const_qualified")
 
-    builtin_kind = _CLANG_BUILTIN_KIND_MAP.get(clang_kind_name)
+    builtin_kind = _clang_builtin_kind(clang_type)
     if builtin_kind is not None:
         return BuiltinCppType(kind=builtin_kind, is_const=is_const)
 
-    if clang_kind_name == "POINTER":
+    if _type_kind_matches(clang_type, TypeKind.POINTER):
         return PointerCppType(
-            pointee=_build_cpp_type(_get_pointee_type(clang_type), allow_canonical=allow_canonical),
+            pointee=_build_cpp_type(
+                _call_optional_method(clang_type, "get_pointee"),
+                allow_canonical=allow_canonical,
+            ),
             is_const=is_const,
         )
 
-    if clang_kind_name == "LVALUEREFERENCE":
+    if _type_kind_matches(clang_type, TypeKind.LVALUEREFERENCE):
         return LValueReferenceCppType(
-            referred=_build_cpp_type(_get_pointee_type(clang_type), allow_canonical=allow_canonical),
+            referred=_build_cpp_type(
+                _call_optional_method(clang_type, "get_pointee"),
+                allow_canonical=allow_canonical,
+            ),
             is_const=is_const,
         )
 
-    if clang_kind_name == "RVALUEREFERENCE":
+    if _type_kind_matches(clang_type, TypeKind.RVALUEREFERENCE):
         return RValueReferenceCppType(
-            referred=_build_cpp_type(_get_pointee_type(clang_type), allow_canonical=allow_canonical),
+            referred=_build_cpp_type(
+                _call_optional_method(clang_type, "get_pointee"),
+                allow_canonical=allow_canonical,
+            ),
             is_const=is_const,
         )
 
-    if clang_kind_name in {"CONSTANTARRAY", "INCOMPLETEARRAY"}:
+    if _type_kind_matches(clang_type, *_ARRAY_KINDS):
         return ArrayCppType(
-            element_type=_build_cpp_type(_get_array_element_type(clang_type), allow_canonical=allow_canonical),
+            element_type=_build_cpp_type(
+                _call_optional_method(clang_type, "get_array_element_type"),
+                allow_canonical=allow_canonical,
+            ),
             extent=_get_array_extent(clang_type),
             is_const=is_const,
         )
 
-    if clang_kind_name in {"FUNCTIONPROTO", "FUNCTIONNOPROTO"}:
+    if _type_kind_matches(clang_type, *_FUNCTION_KINDS):
         return FunctionCppType(
-            return_type=_build_cpp_type(_get_result_type(clang_type), allow_canonical=allow_canonical),
+            return_type=_build_cpp_type(
+                _call_optional_method(clang_type, "get_result"),
+                allow_canonical=allow_canonical,
+            ),
             parameters=[
                 _build_cpp_type(parameter_type, allow_canonical=allow_canonical)
-                for parameter_type in _get_argument_types(clang_type)
+                for parameter_type in _call_optional_method(clang_type, "argument_types", [])
             ],
-            is_variadic=_is_function_variadic(clang_type),
+            is_variadic=_call_optional_bool_method(clang_type, "is_function_variadic"),
             is_const=is_const,
         )
 
@@ -109,7 +105,7 @@ def _build_cpp_type(
 
     canonical = None
     if allow_canonical:
-        canonical_type = _get_canonical_type(clang_type)
+        canonical_type = _call_optional_method(clang_type, "get_canonical")
         if canonical_type is not None and not _same_type_identity(clang_type, canonical_type):
             canonical = _build_cpp_type(canonical_type, allow_canonical=False)
 
@@ -118,6 +114,16 @@ def _build_cpp_type(
         canonical=canonical,
         is_const=is_const,
     )
+
+
+# ==================================================================================================
+#     Spelling-Based Fallback Parsing
+# ==================================================================================================
+
+
+# ------------------------------------------------------------------------------
+#     Template Instance Spellings
+# ------------------------------------------------------------------------------
 
 
 def _parse_template_instance_spelling(
@@ -188,6 +194,11 @@ def _build_type_from_spelling(spelling: str) -> CppType:
     return NamedCppType(name=normalized, is_const=is_const)
 
 
+# ------------------------------------------------------------------------------
+#     Template Spelling Splitting
+# ------------------------------------------------------------------------------
+
+
 def _split_template_spelling(spelling: str) -> tuple[str | None, str | None]:
     """Split one `Name<Args...>` spelling into base name and inner argument text."""
 
@@ -238,12 +249,71 @@ def _split_template_arguments(argument_text: str) -> list[str]:
     return arguments
 
 
+# ==================================================================================================
+#     Clang Type Introspection
+# ==================================================================================================
+
+
+def _clang_builtin_kind(clang_type: Any) -> str | None:
+    """Return one semantic builtin kind for one clang builtin type."""
+
+    actual_kind = getattr(clang_type, "kind", None)
+    if actual_kind is not None:
+        builtin_kind = _CLANG_BUILTIN_KIND_MAP.get(actual_kind)
+        if builtin_kind is not None:
+            return builtin_kind
+    return _CLANG_BUILTIN_KIND_MAP.get(_type_kind_name(clang_type))
+
+
+def _type_kind_matches(clang_type: Any, *expected_kinds: Any) -> bool:
+    """Return whether one clang type matches any expected libclang type kinds."""
+
+    actual_kind = getattr(clang_type, "kind", None)
+    if actual_kind is None:
+        return False
+    return actual_kind in expected_kinds
+
+
+# ==================================================================================================
+#     Builtin Type Mapping
+# ==================================================================================================
+
+
+_CLANG_BUILTIN_KIND_MAP: dict[Any, str] = {
+    TypeKind.VOID: "void",
+    TypeKind.NULLPTR: "nullptr_t",
+    TypeKind.BOOL: "bool",
+    TypeKind.CHAR_U: "char",
+    TypeKind.UCHAR: "unsigned_char",
+    TypeKind.CHAR16: "char16_t",
+    TypeKind.CHAR32: "char32_t",
+    TypeKind.USHORT: "unsigned_short",
+    TypeKind.UINT: "unsigned_int",
+    TypeKind.ULONG: "unsigned_long",
+    TypeKind.ULONGLONG: "unsigned_long_long",
+    TypeKind.CHAR_S: "char",
+    TypeKind.SCHAR: "signed_char",
+    TypeKind.WCHAR: "wchar_t",
+    TypeKind.SHORT: "short",
+    TypeKind.INT: "int",
+    TypeKind.LONG: "long",
+    TypeKind.LONGLONG: "long_long",
+    TypeKind.FLOAT: "float",
+    TypeKind.DOUBLE: "double",
+    TypeKind.LONGDOUBLE: "long_double",
+}
+
+_ARRAY_KINDS = frozenset({TypeKind.CONSTANTARRAY, TypeKind.INCOMPLETEARRAY})
+_FUNCTION_KINDS = frozenset({TypeKind.FUNCTIONPROTO, TypeKind.FUNCTIONNOPROTO})
+
+
 def _type_kind_name(clang_type: Any) -> str:
     """Return one normalized libclang type-kind name.
 
     Libclang exposes these enum names in uppercase forms such as `POINTER`,
-    `FUNCTIONPROTO`, and `LVALUEREFERENCE`, so the parser comparisons use those
-    values directly.
+    `FUNCTIONPROTO`, and `LVALUEREFERENCE`. The parser mainly matches against
+    the enum members themselves, while this helper keeps reporting and test
+    fallbacks readable.
     """
 
     kind = getattr(clang_type, "kind", None)
@@ -259,31 +329,19 @@ def _type_spelling(clang_type: Any) -> str:
     return str(getattr(clang_type, "spelling", "")).strip()
 
 
-def _is_const_qualified(clang_type: Any) -> bool:
-    """Return whether one clang type is top-level const-qualified."""
+def _call_optional_method(clang_type: Any, method_name: str, default: Any = None) -> Any:
+    """Call one optional libclang type method, returning a default when absent."""
 
-    is_const_qualified = getattr(clang_type, "is_const_qualified", None)
-    if callable(is_const_qualified):
-        return bool(is_const_qualified())
-    return False
-
-
-def _get_pointee_type(clang_type: Any) -> Any:
-    """Return the pointee or referred type of one pointer/reference clang type."""
-
-    get_pointee = getattr(clang_type, "get_pointee", None)
-    if callable(get_pointee):
-        return get_pointee()
-    return None
+    method = getattr(clang_type, method_name, None)
+    if callable(method):
+        return method()
+    return default
 
 
-def _get_array_element_type(clang_type: Any) -> Any:
-    """Return the element type of one clang array type."""
+def _call_optional_bool_method(clang_type: Any, method_name: str) -> bool:
+    """Call one optional libclang type predicate and normalize it to `bool`."""
 
-    get_array_element_type = getattr(clang_type, "get_array_element_type", None)
-    if callable(get_array_element_type):
-        return get_array_element_type()
-    return None
+    return bool(_call_optional_method(clang_type, method_name, False))
 
 
 def _get_array_extent(clang_type: Any) -> str | None:
@@ -297,40 +355,9 @@ def _get_array_extent(clang_type: Any) -> str | None:
     return None
 
 
-def _get_result_type(clang_type: Any) -> Any:
-    """Return the result type of one clang function type."""
-
-    get_result = getattr(clang_type, "get_result", None)
-    if callable(get_result):
-        return get_result()
-    return None
-
-
-def _get_argument_types(clang_type: Any) -> list[Any]:
-    """Return the argument types of one clang function type."""
-
-    argument_types = getattr(clang_type, "argument_types", None)
-    if callable(argument_types):
-        return list(argument_types())
-    return []
-
-
-def _is_function_variadic(clang_type: Any) -> bool:
-    """Return whether one clang function type is variadic."""
-
-    is_function_variadic = getattr(clang_type, "is_function_variadic", None)
-    if callable(is_function_variadic):
-        return bool(is_function_variadic())
-    return False
-
-
-def _get_canonical_type(clang_type: Any) -> Any:
-    """Return the canonical form of one clang type, if available."""
-
-    get_canonical = getattr(clang_type, "get_canonical", None)
-    if callable(get_canonical):
-        return get_canonical()
-    return None
+# ==================================================================================================
+#     Type Identity Helpers
+# ==================================================================================================
 
 
 def _same_type_identity(left: Any, right: Any) -> bool:

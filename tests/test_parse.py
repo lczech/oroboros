@@ -6,6 +6,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 import unittest
 
+from clang.cindex import CursorKind, TypeKind
+
 from oroboros.model import (
     BuiltinCppType,
     CppClass,
@@ -19,8 +21,8 @@ from oroboros.model import (
     TemplateInstanceCppType,
 )
 from oroboros.parse import ParserConfig, parse_headers
-from oroboros.parse.decls import ModuleBuildResult, build_module_from_translation_unit
-from oroboros.parse.driver import build_clang_arguments, build_synthetic_translation_unit_source
+from oroboros.parse.build_model import ModuleBuildResult, build_module_from_clang
+from oroboros.parse.clang_driver import build_clang_arguments, build_synthetic_include_source
 from oroboros.parse.types import build_cpp_type
 from oroboros.parse.toolchain import (
     _parse_system_include_dirs,
@@ -30,13 +32,13 @@ from oroboros.parse.toolchain import (
 
 
 class ParseDriverTest(unittest.TestCase):
-    def test_build_synthetic_translation_unit_source_includes_headers_in_order(self) -> None:
+    def test_build_synthetic_include_source_includes_headers_in_order(self) -> None:
         headers = [
             Path("/tmp/project/a.hpp"),
             Path("/tmp/project/b.hpp"),
         ]
 
-        source = build_synthetic_translation_unit_source(headers)
+        source = build_synthetic_include_source(headers)
 
         self.assertEqual(
             source,
@@ -162,7 +164,7 @@ some trailer
 
 
 class ParseDeclsTest(unittest.TestCase):
-    def test_build_module_from_translation_unit_materializes_basic_declarations(self) -> None:
+    def test_build_module_from_clang_materializes_basic_declarations(self) -> None:
         active_header = Path("/tmp/project/demo.hpp")
         translation_unit = SimpleNamespace(
             cursor=_fake_cursor(
@@ -205,7 +207,7 @@ class ParseDeclsTest(unittest.TestCase):
             )
         )
 
-        build_result = build_module_from_translation_unit(translation_unit, [active_header])
+        build_result = build_module_from_clang(translation_unit, [active_header])
         module = build_result.module
 
         self.assertEqual(module.cpp.header_files, [active_header.resolve()])
@@ -216,10 +218,56 @@ class ParseDeclsTest(unittest.TestCase):
         self.assertIsInstance(module.namespaces[0].classes[0].methods[0], CppMethod)
         self.assertEqual(module.namespaces[0].classes[0].methods[0].name, "size")
         self.assertEqual(module.namespaces[0].classes[0].methods[0].parameters[0].name, "value")
-        self.assertIsInstance(module.namespaces[0].functions[0], CppFunction)
-        self.assertEqual(module.namespaces[0].functions[0].name, "make_widget")
 
-    def test_build_module_from_translation_unit_populates_types_bases_and_flags(self) -> None:
+    def test_build_module_from_clang_reuses_existing_nodes_by_usr(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        translation_unit = SimpleNamespace(
+            cursor=_fake_cursor(
+                "TRANSLATION_UNIT",
+                "",
+                file=active_header,
+                children=[
+                    _fake_cursor(
+                        "FUNCTION_DECL",
+                        "make_widget",
+                        file=active_header,
+                        usr="c:@F@make_widget#",
+                        children=[
+                            _fake_cursor(
+                                "PARM_DECL",
+                                "value",
+                                file=active_header,
+                                usr="c:@F@make_widget#@value",
+                            )
+                        ],
+                    ),
+                    _fake_cursor(
+                        "FUNCTION_DECL",
+                        "make_widget",
+                        file=active_header,
+                        usr="c:@F@make_widget#",
+                        children=[
+                            _fake_cursor(
+                                "PARM_DECL",
+                                "value",
+                                file=active_header,
+                                usr="c:@F@make_widget#@value",
+                            )
+                        ],
+                    ),
+                ],
+            )
+        )
+
+        build_result = build_module_from_clang(translation_unit, [active_header])
+        module = build_result.module
+
+        self.assertEqual(len(module.functions), 1)
+        self.assertEqual(module.functions[0].name, "make_widget")
+        self.assertEqual(len(module.functions[0].parameters), 1)
+        self.assertEqual(module.functions[0].parameters[0].name, "value")
+
+    def test_build_module_from_clang_populates_types_bases_and_flags(self) -> None:
         active_header = Path("/tmp/project/demo.hpp")
         base_specifier = _fake_cursor(
             "CXX_BASE_SPECIFIER",
@@ -318,7 +366,7 @@ class ParseDeclsTest(unittest.TestCase):
             )
         )
 
-        build_result = build_module_from_translation_unit(translation_unit, [active_header])
+        build_result = build_module_from_clang(translation_unit, [active_header])
         module = build_result.module
 
         cls = module.namespaces[0].classes[0]
@@ -356,7 +404,7 @@ class ParseDeclsTest(unittest.TestCase):
         self.assertIsInstance(function.cpp.return_type, BuiltinCppType)
         self.assertEqual(function.cpp.return_type.kind, "bool")
 
-    def test_build_module_from_translation_unit_tracks_unsupported_cursor_kinds(self) -> None:
+    def test_build_module_from_clang_tracks_unsupported_cursor_kinds(self) -> None:
         active_header = Path("/tmp/project/demo.hpp")
         translation_unit = SimpleNamespace(
             cursor=_fake_cursor(
@@ -379,7 +427,7 @@ class ParseDeclsTest(unittest.TestCase):
             )
         )
 
-        build_result = build_module_from_translation_unit(translation_unit, [active_header])
+        build_result = build_module_from_clang(translation_unit, [active_header])
 
         self.assertEqual(
             build_result.skipped_kind_counts,
@@ -410,8 +458,8 @@ class ParseDeclsTest(unittest.TestCase):
         )
 
         with (
-            patch("oroboros.parse.api.parse_translation_unit", return_value=driver_result) as parse_tu,
-            patch("oroboros.parse.api.build_module_from_translation_unit", return_value=build_result) as build_module,
+            patch("oroboros.parse.api.parse_with_clang", return_value=driver_result) as parse_tu,
+            patch("oroboros.parse.api.build_module_from_clang", return_value=build_result) as build_module,
         ):
             result = parse_headers([Path("/tmp/project/demo.hpp")], ParserConfig())
 
@@ -454,6 +502,7 @@ def _fake_cursor(
     spelling: str,
     *,
     file: Path,
+    usr: str | None = None,
     line: int = 1,
     column: int = 1,
     children: list[SimpleNamespace] | None = None,
@@ -466,7 +515,7 @@ def _fake_cursor(
     methods: dict[str, object] | None = None,
 ) -> SimpleNamespace:
     cursor = SimpleNamespace(
-        kind=SimpleNamespace(name=kind_name),
+        kind=getattr(CursorKind, kind_name),
         spelling=spelling,
         type=type,
         result_type=result_type,
@@ -483,6 +532,7 @@ def _fake_cursor(
             column=column,
         ),
         get_children=lambda: list(children or []),
+        get_usr=lambda: usr,
     )
     for method_name, method_result in (methods or {}).items():
         setattr(cursor, method_name, lambda result=method_result: result)
@@ -503,7 +553,7 @@ def _fake_type(
     canonical: SimpleNamespace | None = None,
 ) -> SimpleNamespace:
     fake_type = SimpleNamespace(
-        kind=SimpleNamespace(name=kind_name),
+        kind=getattr(TypeKind, kind_name),
         spelling=spelling,
         is_const_qualified=lambda: is_const,
         get_pointee=lambda: pointee,
