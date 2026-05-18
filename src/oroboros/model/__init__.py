@@ -36,6 +36,7 @@ from .function import (
     CppParameterCppFacet,
     CppParameterPyFacet,
 )
+from .inspect import format_element, format_tree, iter_child_elements, iter_subtree_elements, summarize_tree
 from .location import CppLocationInfo, SourceLocation
 from .lookup import (
     ModelLookupError,
@@ -186,6 +187,10 @@ __all__ = [
     "find_all_by_qualified_name",
     "find_one_by_name",
     "find_one_by_qualified_name",
+    "format_element",
+    "format_tree",
+    "iter_child_elements",
+    "iter_subtree_elements",
     "NamedCppType",
     "ModelLookupError",
     "ModelSemanticValidationError",
@@ -202,5 +207,6 @@ __all__ = [
     "add_observed_template_instances",
     "build_py_doc_from_cpp_doc",
     "find_aliases",
+    "summarize_tree",
     "validate_semantics",
 ]
