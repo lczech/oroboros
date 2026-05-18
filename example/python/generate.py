@@ -70,7 +70,6 @@ def main() -> int:
         parser_config = ParserConfig(
             include_dirs=[header_dir],
             cxx_standard="c++20",
-            auto_detect_toolchain=True,
         )
         parse_result = parse_headers(
             active_headers,

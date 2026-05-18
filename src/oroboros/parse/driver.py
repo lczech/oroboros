@@ -9,6 +9,7 @@ from typing import Any, Sequence
 from ..model import SourceLocation
 from .config import ParserConfig
 from .result import ParserDiagnostic
+from .toolchain import _resolve_parser_config_toolchain
 
 
 _SYNTHETIC_FILENAME = "oroboros_synthetic_translation_unit.hpp"
@@ -32,9 +33,10 @@ def parse_translation_unit(
 
     normalized_headers = [header.resolve() for header in headers]
     synthetic_source = build_synthetic_translation_unit_source(normalized_headers)
-    clang_arguments = build_clang_arguments(config)
+    resolved_config = _resolve_parser_config_toolchain(config)
+    clang_arguments = build_clang_arguments(resolved_config)
 
-    cindex = _load_clang_cindex(config)
+    cindex = _load_clang_cindex(resolved_config)
     index = cindex.Index.create()
     translation_unit = index.parse(
         path=_SYNTHETIC_FILENAME,
@@ -64,13 +66,20 @@ def build_clang_arguments(config: ParserConfig) -> list[str]:
 
     arguments: list[str] = []
 
+    arguments.append(f"-x{config.language}")
+
     if config.parse_all_comments:
         arguments.append("-fparse-all-comments")
 
     if config.cxx_standard is not None:
         arguments.append(f"-std={config.cxx_standard}")
 
+    if config.resource_dir is not None:
+        arguments.append(f"-resource-dir={config.resource_dir}")
+
     arguments.extend(f"-I{include_dir}" for include_dir in config.include_dirs)
+    for include_dir in config.system_include_dirs:
+        arguments.extend(["-isystem", str(include_dir)])
     arguments.extend(f"-D{define}" for define in config.defines)
     arguments.extend(f"-U{undefine}" for undefine in config.undefines)
     arguments.extend(config.extra_args)
