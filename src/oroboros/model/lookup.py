@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """Lookup helpers for finding semantic model elements inside one subtree."""
 
+from dataclasses import fields as dataclass_fields
 from typing import Iterator
 
 from .element import CppElement
@@ -97,9 +98,41 @@ def _iter_subtree(scope: CppElement) -> Iterator[CppElement]:
 
     yield scope
 
-    # Reuse the internal child-reflection helper owned by CppElement.
-    for _, child in scope._iter_direct_children(scope._describe_node(), []):
+    for _, child in _iter_direct_child_nodes(scope, scope._describe_node()):
         yield from _iter_subtree(child)
+
+
+def _iter_direct_child_nodes(
+    node: CppElement,
+    path: str,
+    errors: list[str] | None = None,
+) -> list[tuple[str, CppElement]]:
+    """Collect direct child element references declared on one node."""
+
+    children: list[tuple[str, CppElement]] = []
+
+    for dataclass_field in dataclass_fields(node):
+        field_name = dataclass_field.name
+        if field_name == "owner":
+            continue
+
+        value = getattr(node, field_name)
+        if isinstance(value, CppElement):
+            children.append((f"{path}.{field_name}", value))
+            continue
+
+        if isinstance(value, list):
+            for index, item in enumerate(value):
+                item_path = f"{path}.{field_name}[{index}]"
+                if isinstance(item, CppElement):
+                    children.append((item_path, item))
+                    continue
+                if errors is not None:
+                    errors.append(
+                        f"{item_path} contains {type(item).__name__}, expected a CppElement."
+                    )
+
+    return children
 
 
 def _normalize_qualified_name(qualified_name: str) -> str:

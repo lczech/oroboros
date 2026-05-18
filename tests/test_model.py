@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 import unittest
 
 from oroboros.model import (
@@ -40,6 +41,8 @@ from oroboros.model import (
     CppParameter,
     CppFunctionTemplateDecl,
     CppFunctionTemplateDefaults,
+    CppLocationInfo,
+    CppParameterCppFacet,
     CppNonTypeTemplateParameter,
     CppTemplateTemplateArgument,
     CppTemplateTemplateParameter,
@@ -47,12 +50,14 @@ from oroboros.model import (
     CppTypeTemplateParameter,
     CppFunctionTemplateInstance,
     ModelLookupError,
+    ModelSemanticValidationError,
     CppVisibility,
     ModelValidationError,
     add_template_instance,
     find_aliases,
     NamedCppType,
     PointerCppType,
+    SourceLocation,
     add_class_template_instance,
     add_function_template_instance,
     add_observed_template_instances,
@@ -369,6 +374,273 @@ class ModelScaffoldTest(unittest.TestCase):
 
         with self.assertRaises(ModelValidationError):
             module.validate_tree()
+
+    def test_validate_semantics_accepts_consistent_declaration_linked_named_types(self) -> None:
+        cls = CppClass(name="Widget")
+        method = CppMethod(
+            name="set_widget",
+            parameters=[
+                CppParameter(
+                    name="value",
+                    cpp=CppParameterCppFacet(
+                        type=NamedCppType(name="Widget", declaration=cls),
+                    ),
+                )
+            ],
+        )
+        cls.add_method(method)
+        namespace = CppNamespace(name="demo", classes=[cls])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        module.validate_semantics()
+
+    def test_validate_semantics_rejects_named_type_name_mismatch(self) -> None:
+        cls = CppClass(name="Widget")
+        function = CppFunction(
+            name="take_widget",
+            parameters=[
+                CppParameter(
+                    name="value",
+                    cpp=CppParameterCppFacet(
+                        type=NamedCppType(name="OtherWidget", declaration=cls),
+                    ),
+                )
+            ],
+        )
+        namespace = CppNamespace(name="demo", classes=[cls], functions=[function])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_non_class_base_declarations(self) -> None:
+        enum_ = CppEnum(name="Kind")
+        cls = CppClass(name="Widget")
+        cls.cpp.bases.append(
+            CppClassBase(
+                type=NamedCppType(name="Kind", declaration=enum_),
+            )
+        )
+        namespace = CppNamespace(name="demo", classes=[cls], enums=[enum_])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_parameters_owned_by_non_function_like_scopes(self) -> None:
+        namespace = CppNamespace(name="demo")
+        parameter = CppParameter(name="value")
+        namespace.functions.append(parameter)
+        parameter.owner = namespace
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_constructor_name_mismatches(self) -> None:
+        cls = CppClass(
+            name="Widget",
+            constructors=[CppConstructor(name="OtherWidget")],
+        )
+        namespace = CppNamespace(name="demo", classes=[cls])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_invalid_method_flag_combinations(self) -> None:
+        pure_virtual_only = CppMethod(name="foo")
+        pure_virtual_only.cpp.is_pure_virtual = True
+
+        static_virtual = CppMethod(name="bar")
+        static_virtual.cpp.is_static = True
+        static_virtual.cpp.is_virtual = True
+
+        cls = CppClass(
+            name="Widget",
+            methods=[pure_virtual_only, static_virtual],
+        )
+        namespace = CppNamespace(name="demo", classes=[cls])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_cpp_original_name_mismatches(self) -> None:
+        cls = CppClass(name="Widget")
+        cls.cpp.original_name = "OriginalWidget"
+        namespace = CppNamespace(name="demo", classes=[cls])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_duplicate_non_overload_child_names(self) -> None:
+        namespace = CppNamespace(
+            name="demo",
+            classes=[CppClass(name="Widget"), CppClass(name="Widget")],
+        )
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_alias_qualified_name_mismatches(self) -> None:
+        namespace = CppNamespace(name="demo")
+        namespace.cpp.aliases.append(
+            CppAliasInfo(
+                name="Index",
+                qualified_name="demo::WrongIndex",
+                target=NamedCppType(name="std::size_t"),
+            )
+        )
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_template_family_name_mismatches(self) -> None:
+        function_template = CppFunctionTemplate(name="make_value")
+        function_template.declaration.name = "other_value"
+        namespace = CppNamespace(name="demo", function_templates=[function_template])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_invalid_template_instance_arguments(self) -> None:
+        function_template = CppFunctionTemplate(name="make_value")
+        function_template.declaration.cpp.template_parameters.append(
+            CppTypeTemplateParameter(name="T")
+        )
+        instance = add_function_template_instance(
+            function_template,
+            [CppTypeTemplateArgument(type=NamedCppType(name="int"))],
+        )
+        instance.cpp.template_arguments = [CppNonTypeTemplateArgument(value="4")]
+        namespace = CppNamespace(name="demo", function_templates=[function_template])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_invalid_named_type_declaration_targets(self) -> None:
+        target_function = CppFunction(name="make_widget")
+        using_function = CppFunction(
+            name="take_widget",
+            parameters=[
+                CppParameter(
+                    name="value",
+                    cpp=CppParameterCppFacet(
+                        type=NamedCppType(name="make_widget", declaration=target_function),
+                    ),
+                )
+            ],
+        )
+        namespace = CppNamespace(
+            name="demo",
+            functions=[target_function, using_function],
+        )
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_inconsistent_location_provenance(self) -> None:
+        function = CppFunction(name="make_widget")
+        function.cpp.location = CppLocationInfo(
+            primary=SourceLocation(file=Path("api/widget.hpp"), line=10, column=5),
+            declarations=[
+                SourceLocation(file=Path("api/widget_fwd.hpp"), line=3, column=1),
+                SourceLocation(file=Path("api/widget_fwd.hpp"), line=3, column=1),
+            ],
+            definition=SourceLocation(file=Path("api/widget.hpp"), line=20, column=1),
+        )
+        namespace = CppNamespace(name="demo", functions=[function])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_invalid_overload_index_groups(self) -> None:
+        first = CppMethod(name="foo")
+        first.cpp.overload_index = 0
+        second = CppMethod(name="foo")
+        second.cpp.overload_index = 2
+        cls = CppClass(name="Widget", methods=[first, second])
+        namespace = CppNamespace(name="demo", classes=[cls])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_invalid_observed_template_instances(self) -> None:
+        function_template = CppFunctionTemplate(name="make_value")
+        function_template.declaration.cpp.template_parameters.append(
+            CppTypeTemplateParameter(name="T")
+        )
+        function_template.declaration.cpp.observed_instances.append(
+            CppObservedTemplateInstance(
+                arguments=[CppNonTypeTemplateArgument(value="4")],
+            )
+        )
+        namespace = CppNamespace(name="demo", function_templates=[function_template])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_free_functions_owned_by_class_like_scopes(self) -> None:
+        cls = CppClass(name="Widget")
+        stray_function = CppFunction(name="helper")
+        cls.classes.append(stray_function)
+        stray_function.owner = cls
+        namespace = CppNamespace(name="demo", classes=[cls])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_implausible_cpp_identifier_names(self) -> None:
+        function = CppFunction(name="bad-name")
+        namespace = CppNamespace(name="demo", functions=[function])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_accepts_operator_names(self) -> None:
+        method = CppMethod(name="operator+")
+        method.cpp.operator = CppOperator(kind="punctuation", symbol="+")
+        cls = CppClass(name="Widget", methods=[method])
+        namespace = CppNamespace(name="demo", classes=[cls])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        module.validate_semantics()
+
+    def test_validate_semantics_rejects_alias_names_with_invalid_characters(self) -> None:
+        namespace = CppNamespace(name="demo")
+        namespace.cpp.aliases.append(
+            CppAliasInfo(
+                name="Index-Alias",
+                qualified_name="demo::Index-Alias",
+                target=NamedCppType(name="std::size_t"),
+            )
+        )
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_whitespace_only_enumerator_values(self) -> None:
+        enumerator = CppEnumerator(name="primary")
+        enumerator.cpp.value_spelling = "   "
+        enum_ = CppEnum(name="Kind", enumerators=[enumerator])
+        namespace = CppNamespace(name="demo", enums=[enum_])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
 
     def test_class_cpp_facet_uses_cpp_class_base_objects(self) -> None:
         base = CppClassBase(type=NamedCppType(name="Base"), visibility=CppVisibility.PUBLIC)

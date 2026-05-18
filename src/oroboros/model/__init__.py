@@ -101,6 +101,7 @@ from .type import (
     RValueReferenceCppType,
     TemplateInstanceCppType,
 )
+from .validation import ModelSemanticValidationError, validate_semantics
 from .visibility import CppVisibility
 
 __all__ = [
@@ -187,6 +188,7 @@ __all__ = [
     "find_one_by_qualified_name",
     "NamedCppType",
     "ModelLookupError",
+    "ModelSemanticValidationError",
     "ModelValidationError",
     "PointerCppType",
     "PyDoc",
@@ -200,4 +202,5 @@ __all__ = [
     "add_observed_template_instances",
     "build_py_doc_from_cpp_doc",
     "find_aliases",
+    "validate_semantics",
 ]
