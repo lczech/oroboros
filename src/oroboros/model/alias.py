@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Literal
 
 from .comment import CppDoc
 from .location import CppLocationInfo
-from .type import CppType
+from .type import CppType, NamedCppType, cpp_types_equivalent
 from .visibility import CppVisibility
 
 if TYPE_CHECKING:
@@ -56,22 +56,53 @@ def find_aliases(
         for alias in getattr(cpp_facet, "aliases", []):
             if alias.target is None:
                 continue
-            if alias.target.render() in target_names:
+            if _alias_target_matches(alias.target, target, target_names):
                 aliases.append(alias)
 
     return aliases
 
 
 def _target_names(target: CppType | CppClass) -> set[str]:
-    """Collect the rendered names that may identify one aliased target."""
+    """Collect the declaration names that may identify one aliased class target."""
 
     if isinstance(target, CppType):
-        return {target.render()}
+        return set()
 
     names: set[str] = {target.qualified_name, target.name}
     if target.cpp.original_name is not None:
         names.add(target.cpp.original_name)
     return names
+
+
+def _alias_target_matches(
+    alias_target: CppType,
+    target: CppType | CppClass,
+    target_names: set[str],
+) -> bool:
+    """Check whether one alias target refers to the requested class or type."""
+
+    if isinstance(target, CppType):
+        return cpp_types_equivalent(alias_target, target)
+
+    return _type_refers_to_class(alias_target, target, target_names)
+
+
+def _type_refers_to_class(
+    cpp_type: CppType,
+    target: CppClass,
+    target_names: set[str],
+) -> bool:
+    """Check whether one type value names one concrete class declaration."""
+
+    if isinstance(cpp_type, NamedCppType):
+        declaration = cpp_type.declaration
+        if declaration is not None:
+            return declaration.qualified_name == target.qualified_name
+        if cpp_type.name in target_names:
+            return True
+        if cpp_type.canonical is not None:
+            return _type_refers_to_class(cpp_type.canonical, target, target_names)
+    return False
 
 
 def _iter_alias_scopes(scope: CppElement) -> list[CppElement]:

@@ -144,6 +144,38 @@ class ModelScaffoldTest(unittest.TestCase):
             ["WidgetAlias", "WidgetHandle"],
         )
 
+    def test_find_aliases_matches_class_targets_via_declaration_links_with_qualifiers(self) -> None:
+        cls = CppClass(name="Widget")
+        namespace = CppNamespace(name="demo", classes=[cls])
+        namespace.cpp.aliases.append(
+            CppAliasInfo(
+                name="WidgetAlias",
+                qualified_name="demo::WidgetAlias",
+                target=NamedCppType(name="Widget", declaration=cls, is_const=True),
+            )
+        )
+
+        aliases = find_aliases(namespace, cls)
+
+        self.assertEqual([alias.name for alias in aliases], ["WidgetAlias"])
+
+    def test_find_aliases_matches_type_targets_via_canonical_structure(self) -> None:
+        namespace = CppNamespace(name="demo")
+        namespace.cpp.aliases.append(
+            CppAliasInfo(
+                name="Index",
+                qualified_name="demo::Index",
+                target=NamedCppType(
+                    name="uint64_t",
+                    canonical=BuiltinCppType(kind="unsigned_long"),
+                ),
+            )
+        )
+
+        aliases = find_aliases(namespace, BuiltinCppType(kind="unsigned_long"))
+
+        self.assertEqual([alias.name for alias in aliases], ["Index"])
+
     def test_lookup_helpers_find_elements_by_name_and_qualified_name(self) -> None:
         method = CppMethod(name="foo")
         cls = CppClass(name="Widget", methods=[method])
@@ -452,12 +484,20 @@ class ModelScaffoldTest(unittest.TestCase):
             inner_function_template.instances[0],
             CppFunctionTemplateInstance,
         )
-        self.assertEqual(
-            class_template.instances[0].cpp.template_arguments[0].render(),
-            "int",
+        self.assertIsInstance(
+            class_template.instances[0].cpp.template_arguments[0],
+            CppTypeTemplateArgument,
         )
         self.assertEqual(
-            inner_function_template.instances[0].cpp.template_arguments[0].render(),
+            class_template.instances[0].cpp.template_arguments[0].type.name,
+            "int",
+        )
+        self.assertIsInstance(
+            inner_function_template.instances[0].cpp.template_arguments[0],
+            CppTypeTemplateArgument,
+        )
+        self.assertEqual(
+            inner_function_template.instances[0].cpp.template_arguments[0].type.name,
             "double",
         )
 
@@ -514,7 +554,33 @@ class ModelScaffoldTest(unittest.TestCase):
         )
 
         self.assertEqual(len(instance.cpp.template_arguments), 1)
-        self.assertEqual(instance.cpp.template_arguments[0].render(), "int")
+        self.assertIsInstance(instance.cpp.template_arguments[0], CppTypeTemplateArgument)
+        self.assertEqual(instance.cpp.template_arguments[0].type.name, "int")
+
+    def test_template_instance_deduplication_uses_structural_argument_identity(self) -> None:
+        function_template = CppFunctionTemplate(name="make_value")
+        function_template.declaration.cpp.template_parameters.append(
+            CppTypeTemplateParameter(name="T")
+        )
+
+        first_instance = add_function_template_instance(
+            function_template,
+            [
+                CppTypeTemplateArgument(
+                    type=NamedCppType(
+                        name="uint64_t",
+                        canonical=BuiltinCppType(kind="unsigned_long"),
+                    )
+                )
+            ],
+        )
+        second_instance = add_function_template_instance(
+            function_template,
+            [CppTypeTemplateArgument(type=BuiltinCppType(kind="unsigned_long"))],
+        )
+
+        self.assertIs(first_instance, second_instance)
+        self.assertEqual(len(function_template.instances), 1)
 
     def test_template_instance_validation_rejects_missing_required_arguments(self) -> None:
         function_template = CppFunctionTemplate(name="make_value")
@@ -561,10 +627,20 @@ class ModelScaffoldTest(unittest.TestCase):
             parameters=[middle_parameter],
         )
 
-        self.assertEqual(
-            outer_parameter.render(),
-            "template <template <typename T> class Alloc> class Container",
+        self.assertEqual(outer_parameter.name, "Container")
+        self.assertEqual(len(outer_parameter.parameters), 1)
+        self.assertIsInstance(outer_parameter.parameters[0], CppTemplateTemplateParameter)
+        self.assertEqual(outer_parameter.parameters[0].name, "Alloc")
+        self.assertEqual(len(outer_parameter.parameters[0].parameters), 1)
+        self.assertIsInstance(
+            outer_parameter.parameters[0].parameters[0],
+            CppTypeTemplateParameter,
         )
+        self.assertEqual(
+            outer_parameter.parameters[0].parameters[0].keyword,
+            "typename",
+        )
+        self.assertEqual(outer_parameter.parameters[0].parameters[0].name, "T")
 
     def test_build_py_doc_from_cpp_doc_copies_nested_data(self) -> None:
         cpp_doc = CppDoc(

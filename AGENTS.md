@@ -248,6 +248,19 @@ The recursive wrapper pattern should be preserved in the type model:
 
 More specialized type forms such as member pointers, optional-like types, and variant-like types can be added later as needed.
 
+`CppType` objects should be treated as embedded value data, not as semantic tree nodes. This means:
+
+- `CppType` objects do not participate in the owner/child declaration hierarchy
+- they live inside `.cpp` facets where declarations need to describe a type, such as parameter types, return types, field types, base-class types, alias targets, and template argument or parameter types
+- the same semantic type may appear multiple times as separate `CppType` values at different use sites, which is acceptable and expected
+- where a named type refers to a declaration that is present in the semantic tree, the `NamedCppType` should link back to that declaration node via its optional declaration reference
+
+For example:
+
+- one `CppClass` node represents the declaration of `Widget`
+- multiple functions may each contain their own `NamedCppType(name="Widget")` or `NamedCppType(name="Widget", declaration=that_class)` in parameter or return types
+- those per-use type objects describe how the declaration is referenced at each use site, while the declaration node itself remains the canonical place to customize binding behavior for the class
+
 Users should generally not mutate `.cpp` except for advanced internal transforms.
 
 Standard-library and other well-known framework types should not be modeled as special declaration nodes in the semantic tree. Instead:

@@ -210,3 +210,82 @@ _BUILTIN_CPP_TYPE_SPELLINGS: dict[str, str] = {
     "double": "double",
     "long_double": "long double",
 }
+
+
+# ==================================================================================================
+#     Type Comparison
+# ==================================================================================================
+
+
+def cpp_type_key(cpp_type: CppType | None) -> tuple[object, ...]:
+    """Build one semantic structural key for a C++ type value."""
+
+    if cpp_type is None:
+        return ("none",)
+
+    if isinstance(cpp_type, NamedCppType):
+        declaration = cpp_type.declaration
+        if declaration is not None:
+            return ("named_decl", cpp_type.is_const, declaration.qualified_name)
+        if cpp_type.canonical is not None:
+            return _with_top_level_const(
+                cpp_type_key(cpp_type.canonical),
+                cpp_type.is_const,
+            )
+        return ("named_spelling", cpp_type.is_const, cpp_type.name)
+
+    if isinstance(cpp_type, PointerCppType):
+        return ("pointer", cpp_type.is_const, cpp_type_key(cpp_type.pointee))
+
+    if isinstance(cpp_type, LValueReferenceCppType):
+        return ("lvalue_reference", cpp_type.is_const, cpp_type_key(cpp_type.referred))
+
+    if isinstance(cpp_type, RValueReferenceCppType):
+        return ("rvalue_reference", cpp_type.is_const, cpp_type_key(cpp_type.referred))
+
+    if isinstance(cpp_type, ArrayCppType):
+        return (
+            "array",
+            cpp_type.is_const,
+            cpp_type.extent,
+            cpp_type_key(cpp_type.element_type),
+        )
+
+    if isinstance(cpp_type, FunctionCppType):
+        return (
+            "function",
+            cpp_type.is_const,
+            cpp_type_key(cpp_type.return_type),
+            tuple(cpp_type_key(parameter) for parameter in cpp_type.parameters),
+            cpp_type.is_variadic,
+        )
+
+    if isinstance(cpp_type, TemplateInstanceCppType):
+        return (
+            "template_instance",
+            cpp_type.is_const,
+            cpp_type.template_name,
+            tuple(cpp_type_key(argument) for argument in cpp_type.arguments),
+        )
+
+    if isinstance(cpp_type, BuiltinCppType):
+        return ("builtin", cpp_type.is_const, cpp_type.kind)
+
+    raise TypeError(f"Unsupported C++ type for structural key: {type(cpp_type)!r}")
+
+
+def cpp_types_equivalent(left: CppType | None, right: CppType | None) -> bool:
+    """Check whether two C++ type values are semantically equivalent."""
+
+    return cpp_type_key(left) == cpp_type_key(right)
+
+
+def _with_top_level_const(
+    type_key: tuple[object, ...],
+    is_const: bool,
+) -> tuple[object, ...]:
+    """Overlay one top-level const qualifier onto a structural type key."""
+
+    if not is_const or type_key == ("none",):
+        return type_key
+    return (type_key[0], True, *type_key[2:])

@@ -7,7 +7,7 @@ from typing import Literal
 
 from .element import CppElement
 from .location import SourceLocation
-from .type import CppType
+from .type import CppType, cpp_type_key
 
 
 # ==================================================================================================
@@ -28,25 +28,12 @@ class CppTemplateParameter:
     default: CppTemplateArgument | None = None
     is_parameter_pack: bool = False
 
-    def render(self) -> str:
-        """Render the parameter into a C++-like string form."""
-
-        raise NotImplementedError
-
 
 @dataclass(slots=True)
 class CppTypeTemplateParameter(CppTemplateParameter):
     """Represent one type template parameter."""
 
     keyword: Literal["typename", "class"] = "typename"
-
-    def render(self) -> str:
-        rendered = f"{self.keyword} {self.name}"
-        if self.is_parameter_pack:
-            rendered = f"{self.keyword}... {self.name}"
-        if self.default is not None:
-            return f"{rendered} = {self.default.render()}"
-        return rendered
 
 
 @dataclass(slots=True)
@@ -55,30 +42,12 @@ class CppNonTypeTemplateParameter(CppTemplateParameter):
 
     type: CppType | None = None
 
-    def render(self) -> str:
-        rendered_type = self.type.render() if self.type is not None else ""
-        rendered = f"{rendered_type} {self.name}".strip()
-        if self.is_parameter_pack:
-            rendered = f"{rendered_type}... {self.name}".strip()
-        if self.default is not None:
-            return f"{rendered} = {self.default.render()}"
-        return rendered
-
 
 @dataclass(slots=True)
 class CppTemplateTemplateParameter(CppTemplateParameter):
     """Represent one template-template parameter with recursive inner slots."""
 
     parameters: list[CppTemplateParameter] = dataclass_field(default_factory=list)
-
-    def render(self) -> str:
-        inner = ", ".join(parameter.render() for parameter in self.parameters)
-        rendered = f"template <{inner}> class {self.name}"
-        if self.is_parameter_pack:
-            rendered = f"template <{inner}> class... {self.name}"
-        if self.default is not None:
-            return f"{rendered} = {self.default.render()}"
-        return rendered
 
 
 # ------------------------------------------------------------------------------
@@ -90,20 +59,12 @@ class CppTemplateTemplateParameter(CppTemplateParameter):
 class CppTemplateArgument:
     """Represent one concrete argument supplied to a C++ template."""
 
-    def render(self) -> str:
-        """Render the argument into a C++-like string form."""
-
-        raise NotImplementedError
-
 
 @dataclass(slots=True)
 class CppTypeTemplateArgument(CppTemplateArgument):
     """Represent one type template argument."""
 
     type: CppType | None = None
-
-    def render(self) -> str:
-        return self.type.render() if self.type is not None else ""
 
 
 @dataclass(slots=True)
@@ -113,9 +74,6 @@ class CppNonTypeTemplateArgument(CppTemplateArgument):
     value: str = ""
     type: CppType | None = None
 
-    def render(self) -> str:
-        return self.value
-
 
 @dataclass(slots=True)
 class CppTemplateTemplateArgument(CppTemplateArgument):
@@ -123,9 +81,6 @@ class CppTemplateTemplateArgument(CppTemplateArgument):
 
     name: str = ""
     parameters: list["CppTemplateParameter"] = dataclass_field(default_factory=list)
-
-    def render(self) -> str:
-        return self.name
 
 
 # ------------------------------------------------------------------------------
@@ -328,10 +283,48 @@ def _synchronize_template_name(
         declaration.name = template.name
 
 
-def _template_argument_key(arguments: list[CppTemplateArgument]) -> tuple[tuple[str, str], ...]:
+def _template_argument_key(arguments: list[CppTemplateArgument]) -> tuple[tuple[object, ...], ...]:
     """Build a stable equality key for one template argument sequence."""
 
-    return tuple((type(argument).__name__, argument.render()) for argument in arguments)
+    return tuple(_single_template_argument_key(argument) for argument in arguments)
+
+
+def _single_template_argument_key(argument: CppTemplateArgument) -> tuple[object, ...]:
+    """Build one structural identity key for a concrete template argument."""
+
+    if isinstance(argument, CppTypeTemplateArgument):
+        return ("type", cpp_type_key(argument.type))
+
+    if isinstance(argument, CppNonTypeTemplateArgument):
+        return ("non_type", cpp_type_key(argument.type), argument.value)
+
+    if isinstance(argument, CppTemplateTemplateArgument):
+        return (
+            "template_template",
+            argument.name,
+            tuple(_template_parameter_shape_key(parameter) for parameter in argument.parameters),
+        )
+
+    raise TypeError(f"Unsupported template argument type: {type(argument)!r}")
+
+
+def _template_parameter_shape_key(parameter: CppTemplateParameter) -> tuple[object, ...]:
+    """Build one structural shape key for a template parameter slot."""
+
+    if isinstance(parameter, CppTypeTemplateParameter):
+        return ("type_parameter", parameter.is_parameter_pack)
+
+    if isinstance(parameter, CppNonTypeTemplateParameter):
+        return ("non_type_parameter", parameter.is_parameter_pack, cpp_type_key(parameter.type))
+
+    if isinstance(parameter, CppTemplateTemplateParameter):
+        return (
+            "template_template_parameter",
+            parameter.is_parameter_pack,
+            tuple(_template_parameter_shape_key(inner) for inner in parameter.parameters),
+        )
+
+    raise TypeError(f"Unsupported template parameter type: {type(parameter)!r}")
 
 
 # ==================================================================================================
