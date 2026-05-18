@@ -98,6 +98,7 @@ class ParseInspectTest(unittest.TestCase):
                 ParserDiagnostic(severity="error", message="error"),
             ],
             warnings=["inactive dependency"],
+            skipped_kind_counts={"TYPEDEF_DECL": 2, "UNION_DECL": 1},
         )
 
         summary = summarize_parse_result(result)
@@ -106,6 +107,8 @@ class ParseInspectTest(unittest.TestCase):
         self.assertIn("input headers: 1", summary)
         self.assertIn("clang diagnostics: 2", summary)
         self.assertIn("parser warnings: 1", summary)
+        self.assertIn("skipped unsupported entities: 3", summary)
+        self.assertIn("skipped cursor kinds: 2", summary)
         self.assertIn("errors: 1", summary)
         self.assertIn("warnings: 1", summary)
         self.assertIn("functions: 1", summary)
@@ -123,6 +126,8 @@ class ParseInspectTest(unittest.TestCase):
                     message="stddef.h not found",
                 )
             ],
+            warnings=["Skipped unsupported libclang cursor kinds: TYPEDEF_DECL (2), UNION_DECL (1)"],
+            skipped_kind_counts={"TYPEDEF_DECL": 2, "UNION_DECL": 1},
         )
 
         rendered = format_parse_result(result)
@@ -134,7 +139,11 @@ class ParseInspectTest(unittest.TestCase):
         self.assertIn("- namespace demo", rendered)
         self.assertIn("- function make_widget", rendered)
         self.assertIn("[fatal] <unknown location>: stddef.h not found", rendered)
-        self.assertIn("Parser warnings:\n  none", rendered)
+        self.assertIn("Skipped unsupported cursor kinds:\n  TYPEDEF_DECL: 2\n  UNION_DECL: 1", rendered)
+        self.assertIn(
+            "Parser warnings:\n  Skipped unsupported libclang cursor kinds: TYPEDEF_DECL (2), UNION_DECL (1)",
+            rendered,
+        )
 
 
 if __name__ == "__main__":

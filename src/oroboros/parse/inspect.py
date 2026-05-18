@@ -27,12 +27,15 @@ def summarize_parse_result(parse_result: ParseResult) -> str:
     """Return a compact summary of one parse result."""
 
     severity_counts = Counter(diagnostic.severity for diagnostic in parse_result.diagnostics)
+    skipped_total = sum(parse_result.skipped_kind_counts.values())
 
     lines = [
         "Parse summary:",
         f"  input headers: {len(parse_result.headers)}",
         f"  clang diagnostics: {len(parse_result.diagnostics)}",
         f"  parser warnings: {len(parse_result.warnings)}",
+        f"  skipped unsupported entities: {skipped_total}",
+        f"  skipped cursor kinds: {len(parse_result.skipped_kind_counts)}",
     ]
 
     for severity in ("fatal", "error", "warning", "note"):
@@ -68,11 +71,21 @@ def format_parse_result(parse_result: ParseResult) -> str:
     else:
         warning_lines.append("  none")
 
+    skipped_lines = ["Skipped unsupported cursor kinds:"]
+    if parse_result.skipped_kind_counts:
+        skipped_lines.extend(
+            f"  {kind_name}: {count}"
+            for kind_name, count in parse_result.skipped_kind_counts.items()
+        )
+    else:
+        skipped_lines.append("  none")
+
     return "\n\n".join([
         summarize_parse_result(parse_result),
         "\n".join(header_lines),
         "\n".join(tree_lines),
         diagnostic_text,
+        "\n".join(skipped_lines),
         "\n".join(warning_lines),
     ])
 

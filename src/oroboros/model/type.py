@@ -184,7 +184,7 @@ class BuiltinCppType(CppType):
 
     def render(self) -> str:
         qualifier = "const " if self.is_const else ""
-        return f"{qualifier}{_BUILTIN_CPP_TYPE_SPELLINGS[self.kind]}"
+        return f"{qualifier}{cpp_builtin_type_spelling(self.kind)}"
 
 
 _BUILTIN_CPP_TYPE_SPELLINGS: dict[str, str] = {
@@ -210,6 +210,23 @@ _BUILTIN_CPP_TYPE_SPELLINGS: dict[str, str] = {
     "double": "double",
     "long_double": "long double",
 }
+
+_BUILTIN_CPP_KIND_BY_SPELLING: dict[str, str] = {
+    spelling: kind
+    for kind, spelling in _BUILTIN_CPP_TYPE_SPELLINGS.items()
+}
+
+
+def cpp_builtin_type_spelling(kind: str) -> str:
+    """Return the canonical C++ spelling of one semantic builtin kind."""
+
+    return _BUILTIN_CPP_TYPE_SPELLINGS[kind]
+
+
+def cpp_builtin_kind_from_spelling(spelling: str) -> str | None:
+    """Return the semantic builtin kind for one canonical C++ spelling."""
+
+    return _BUILTIN_CPP_KIND_BY_SPELLING.get(spelling)
 
 
 # ==================================================================================================

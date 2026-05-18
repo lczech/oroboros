@@ -28,5 +28,7 @@ class ParseResult:
     diagnostics: list[ParserDiagnostic] = field(default_factory=list)
     # Oroboros-level parser warnings that are not raw clang diagnostics.
     warnings: list[str] = field(default_factory=list)
+    # Counts of unsupported libclang cursor kinds skipped during tree building.
+    skipped_kind_counts: dict[str, int] = field(default_factory=dict)
     # Ordered active headers that were used as parser input.
     headers: list[Path] = field(default_factory=list)

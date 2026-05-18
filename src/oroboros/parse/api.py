@@ -23,17 +23,19 @@ def parse_headers(
         return ParseResult()
 
     driver_result = parse_translation_unit(normalized_headers, config)
-    module = build_module_from_translation_unit(
+    build_result = build_module_from_translation_unit(
         driver_result.translation_unit,
         normalized_headers,
     )
 
     if config.validate_model:
-        module.validate_tree()
-        module.validate_semantics()
+        build_result.module.validate_tree()
+        build_result.module.validate_semantics()
 
     return ParseResult(
-        module=module,
+        module=build_result.module,
         diagnostics=driver_result.diagnostics,
+        warnings=build_result.warnings,
+        skipped_kind_counts=build_result.skipped_kind_counts,
         headers=normalized_headers,
     )
