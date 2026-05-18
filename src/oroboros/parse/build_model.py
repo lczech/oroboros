@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from ..model import CppElement, CppModule
+from .config import ParserConfig
 from .clang_walk import visit_cursor
 
 
@@ -21,20 +22,23 @@ class ModuleBuildResult:
     """Store one built semantic module plus skipped parser cursor-kind counts."""
 
     module: CppModule
+    semantic_warnings: list[str] = field(default_factory=list)
     skipped_kind_counts: dict[str, int] = field(default_factory=dict)
 
     @property
     def warnings(self) -> list[str]:
         """Return user-facing parser warnings derived from skipped cursor kinds."""
 
+        warnings = list(self.semantic_warnings)
         if not self.skipped_kind_counts:
-            return []
+            return warnings
 
         rendered_counts = ", ".join(
             f"{kind_name} ({count})"
             for kind_name, count in self.skipped_kind_counts.items()
         )
-        return [f"Skipped unsupported libclang cursor kinds: {rendered_counts}"]
+        warnings.append(f"Skipped unsupported libclang cursor kinds: {rendered_counts}")
+        return warnings
 
 
 @dataclass(slots=True)
@@ -42,7 +46,9 @@ class ModuleBuildContext:
     """Store shared mutable state while walking one translation unit."""
 
     active_headers: set[Path]
+    config: ParserConfig
     usr_to_element: dict[str, CppElement] = field(default_factory=dict)
+    semantic_warnings: list[str] = field(default_factory=list)
     skipped_kind_counts: Counter[str] = field(default_factory=Counter)
 
 
@@ -54,6 +60,7 @@ class ModuleBuildContext:
 def build_module_from_clang(
     translation_unit: Any,
     headers: Sequence[Path],
+    config: ParserConfig,
 ) -> ModuleBuildResult:
     """Build one semantic module from a parsed clang translation unit."""
 
@@ -63,6 +70,7 @@ def build_module_from_clang(
 
     context = ModuleBuildContext(
         active_headers={header.resolve() for header in normalized_headers},
+        config=config,
     )
     root_cursor = translation_unit.cursor
     for child_cursor in root_cursor.get_children():
@@ -70,5 +78,6 @@ def build_module_from_clang(
 
     return ModuleBuildResult(
         module=module,
+        semantic_warnings=list(context.semantic_warnings),
         skipped_kind_counts=dict(sorted(context.skipped_kind_counts.items())),
     )

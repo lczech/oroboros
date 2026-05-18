@@ -26,6 +26,7 @@ def parse_headers(
     build_result = build_module_from_clang(
         driver_result.translation_unit,
         normalized_headers,
+        config,
     )
 
     if config.validate_model:

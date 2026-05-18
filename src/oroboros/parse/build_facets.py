@@ -27,6 +27,7 @@ def build_namespace_cpp_facet(cursor: Any) -> Any:
     return CppNamespaceCppFacet(
         original_name=cursor.spelling or None,
         location=build_location_info(cursor),
+        comment=cursor_raw_comment(cursor),
     )
 
 
@@ -36,6 +37,7 @@ def build_class_cpp_facet(cursor: Any) -> Any:
     return CppClassCppFacet(
         original_name=cursor.spelling or None,
         location=build_location_info(cursor),
+        comment=cursor_raw_comment(cursor),
         kind="struct" if is_struct_cursor(cursor) else "class",
         visibility=cursor_visibility(cursor),
         bases=build_class_bases(cursor),
@@ -49,6 +51,7 @@ def build_enum_cpp_facet(cursor: Any) -> Any:
         original_name=cursor.spelling or None,
         underlying_type=build_cpp_type(cursor_enum_underlying_type(cursor)),
         location=build_location_info(cursor),
+        comment=cursor_raw_comment(cursor),
         is_scoped=cursor_is_scoped_enum(cursor),
         visibility=cursor_visibility(cursor),
     )
@@ -61,6 +64,7 @@ def build_enumerator_cpp_facet(cursor: Any) -> Any:
         original_name=cursor.spelling or None,
         value_spelling=cursor_enum_value_spelling(cursor),
         location=build_location_info(cursor),
+        comment=cursor_raw_comment(cursor),
     )
 
 
@@ -71,6 +75,7 @@ def build_function_cpp_facet(cursor: Any) -> Any:
         original_name=cursor.spelling or None,
         return_type=build_cpp_type(getattr(cursor, "result_type", None)),
         location=build_location_info(cursor),
+        comment=cursor_raw_comment(cursor),
         is_noexcept=cursor_is_noexcept(cursor),
     )
 
@@ -82,6 +87,7 @@ def build_method_cpp_facet(cursor: Any) -> Any:
         original_name=cursor.spelling or None,
         return_type=build_cpp_type(getattr(cursor, "result_type", None)),
         location=build_location_info(cursor),
+        comment=cursor_raw_comment(cursor),
         is_noexcept=cursor_is_noexcept(cursor),
         is_const=cursor_bool_method(cursor, "is_const_method"),
         is_static=cursor_bool_method(cursor, "is_static_method"),
@@ -97,6 +103,7 @@ def build_constructor_cpp_facet(cursor: Any) -> Any:
     return CppConstructorCppFacet(
         original_name=cursor.spelling or None,
         location=build_location_info(cursor),
+        comment=cursor_raw_comment(cursor),
         is_noexcept=cursor_is_noexcept(cursor),
         visibility=cursor_visibility(cursor),
     )
@@ -109,6 +116,7 @@ def build_field_cpp_facet(cursor: Any) -> Any:
         original_name=cursor.spelling or None,
         type=build_cpp_type(getattr(cursor, "type", None)),
         location=build_location_info(cursor),
+        comment=cursor_raw_comment(cursor),
         is_static=cursor_bool_method(cursor, "is_static_field"),
         visibility=cursor_visibility(cursor),
     )
@@ -135,9 +143,11 @@ def build_location_info(cursor: Any) -> CppLocationInfo:
     location = cursor_source_location(cursor)
     if location is None:
         return CppLocationInfo()
+    is_definition = cursor_is_definition(cursor)
     return CppLocationInfo(
         primary=location,
         declarations=[location],
+        definition=location if is_definition else None,
     )
 
 
@@ -187,6 +197,19 @@ def cursor_kind_name(cursor: Any) -> str:
     return str(kind)
 
 
+def cursor_raw_comment(cursor: Any) -> str | None:
+    """Return one raw clang comment block when libclang exposes it."""
+
+    raw_comment = getattr(cursor, "raw_comment", None)
+    if raw_comment is None:
+        return None
+
+    normalized = str(raw_comment).strip()
+    if not normalized:
+        return None
+    return normalized
+
+
 def cursor_usr(cursor: Any) -> str | None:
     """Return one cursor USR when libclang exposes one for the entity."""
 
@@ -221,6 +244,12 @@ def cursor_bool_method(cursor: Any, method_name: str) -> bool:
     if callable(method):
         return bool(method())
     return False
+
+
+def cursor_is_definition(cursor: Any) -> bool:
+    """Return whether one clang cursor is a full definition."""
+
+    return cursor_bool_method(cursor, "is_definition")
 
 
 def cursor_is_noexcept(cursor: Any) -> bool:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 
 @dataclass(slots=True)
@@ -56,5 +57,7 @@ class ParserConfig:
 
     # Whether to ask clang to parse comments beyond documentation commands.
     parse_all_comments: bool = True
+    # How to resolve conflicting comment text across repeated declarations.
+    comment_conflict_policy: Literal["longer", "first", "last", "append"] = "longer"
     # Whether to validate the resulting semantic model before returning it.
     validate_model: bool = True

@@ -207,7 +207,7 @@ class ParseDeclsTest(unittest.TestCase):
             )
         )
 
-        build_result = build_module_from_clang(translation_unit, [active_header])
+        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
         module = build_result.module
 
         self.assertEqual(module.cpp.header_files, [active_header.resolve()])
@@ -259,7 +259,7 @@ class ParseDeclsTest(unittest.TestCase):
             )
         )
 
-        build_result = build_module_from_clang(translation_unit, [active_header])
+        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
         module = build_result.module
 
         self.assertEqual(len(module.functions), 1)
@@ -366,7 +366,7 @@ class ParseDeclsTest(unittest.TestCase):
             )
         )
 
-        build_result = build_module_from_clang(translation_unit, [active_header])
+        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
         module = build_result.module
 
         cls = module.namespaces[0].classes[0]
@@ -427,7 +427,7 @@ class ParseDeclsTest(unittest.TestCase):
             )
         )
 
-        build_result = build_module_from_clang(translation_unit, [active_header])
+        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
 
         self.assertEqual(
             build_result.skipped_kind_counts,
@@ -435,6 +435,43 @@ class ParseDeclsTest(unittest.TestCase):
                 "TYPEDEF_DECL": 2,
                 "UNION_DECL": 1,
             },
+        )
+
+    def test_build_module_from_clang_prefers_longer_conflicting_comment_by_default(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        translation_unit = SimpleNamespace(
+            cursor=_fake_cursor(
+                "TRANSLATION_UNIT",
+                "",
+                file=active_header,
+                children=[
+                    _fake_cursor(
+                        "FUNCTION_DECL",
+                        "make_widget",
+                        file=active_header,
+                        usr="c:@F@make_widget#",
+                        raw_comment="/// Forward declaration note.",
+                    ),
+                    _fake_cursor(
+                        "FUNCTION_DECL",
+                        "make_widget",
+                        file=active_header,
+                        usr="c:@F@make_widget#",
+                        raw_comment="/// Create one widget from the current demo factory state.",
+                    ),
+                ],
+            )
+        )
+
+        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
+
+        self.assertEqual(len(build_result.module.functions), 1)
+        self.assertEqual(
+            build_result.module.functions[0].cpp.comment,
+            "/// Create one widget from the current demo factory state.",
+        )
+        self.assertTrue(
+            any("Conflicting parsed comments" in warning for warning in build_result.warnings)
         )
 
     def test_parse_headers_returns_empty_validated_module_for_empty_header_list(self) -> None:
@@ -454,6 +491,7 @@ class ParseDeclsTest(unittest.TestCase):
         )
         build_result = ModuleBuildResult(
             module=built_module,
+            semantic_warnings=[],
             skipped_kind_counts={"TYPEDEF_DECL": 2},
         )
 
@@ -467,6 +505,7 @@ class ParseDeclsTest(unittest.TestCase):
         build_module.assert_called_once_with(
             translation_unit,
             [Path("/tmp/project/demo.hpp").resolve()],
+            unittest.mock.ANY,
         )
         self.assertIs(result.module, built_module)
         self.assertEqual(result.diagnostics, diagnostics)
@@ -503,6 +542,7 @@ def _fake_cursor(
     *,
     file: Path,
     usr: str | None = None,
+    raw_comment: str | None = None,
     line: int = 1,
     column: int = 1,
     children: list[SimpleNamespace] | None = None,
@@ -526,6 +566,7 @@ def _fake_cursor(
         ),
         enum_type=enum_type,
         enum_value=enum_value,
+        raw_comment=raw_comment,
         location=SimpleNamespace(
             file=SimpleNamespace(name=str(file)),
             line=line,
