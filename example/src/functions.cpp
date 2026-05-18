@@ -1,85 +1,68 @@
 #include "cosmos/functions.hpp"
 
-#include <cmath>
-#include <iostream>
-
-// ================================================================================================
-//   cosmos::functions
-// ================================================================================================
+#include <utility>
 
 namespace cosmos::functions {
 
-std::string greet(std::string_view name)
+std::string greet_pilgrim(std::string_view name)
 {
-    std::cout << "greet()" << "\n";
-    return std::string("Hello, ") + std::string(name) + "!";
+    return "Welcome to the temples, " + std::string(name) + ".";
 }
 
-int add(int lhs, int rhs)
+int combine_offerings(int grain, int nectar)
 {
-    std::cout << "add(int, int)" << "\n";
-    return lhs + rhs;
+    return grain + nectar;
 }
 
-double add(double lhs, double rhs)
+types::RelicInfo describe_relic(std::string_view name, types::Realm realm, int power)
 {
-    std::cout << "add(double, double)" << "\n";
-    return lhs + rhs;
-}
-
-types::Status make_status(std::string_view message, types::StatusCode code, types::LogLevel level)
-{
-    std::cout << "make_status()" << "\n";
-    return types::Status {
-        .code = code,
-        .message = std::string(message),
-        .level = level,
+    return types::RelicInfo {
+        .name = std::string(name),
+        .realm = realm,
+        .power = power,
+        .consecrated = power > 50,
     };
 }
 
-types::NameList make_name_list(std::string_view prefix, int count)
-{
-    std::cout << "make_name_list()" << "\n";
+namespace omens {
 
-    types::NameList names;
-    for (int index = 0; index < count; ++index) {
-        names.push_back(std::string(prefix) + "_" + std::to_string(index));
+types::OmenKind classify_comet(int brightness)
+{
+    if (brightness < 10) {
+        return types::omen_blessing;
     }
-    return names;
-}
-
-std::optional<std::string> maybe_pick_name(const types::NameList& names, std::size_t index)
-{
-    std::cout << "maybe_pick_name()" << "\n";
-    if (index >= names.size()) {
-        return std::nullopt;
+    if (brightness < 25) {
+        return types::omen_warning;
     }
-    return names[index];
+    return types::omen_catastrophe;
 }
 
-// ================================================================================================
-//   cosmos::functions::math
-// ================================================================================================
-
-namespace math {
-
-double magnitude(double x, double y)
+std::string_view omen_name(types::OmenKind omen)
 {
-    std::cout << "math::magnitude()" << "\n";
-    return std::sqrt((x * x) + (y * y));
-}
-
-std::vector<double> normalize_pair(double x, double y)
-{
-    std::cout << "math::normalize_pair()" << "\n";
-
-    const double size = magnitude(x, y);
-    if (size == 0.0) {
-        return {0.0, 0.0};
+    switch (omen) {
+        case types::omen_blessing:
+            return "blessing";
+        case types::omen_warning:
+            return "warning";
+        case types::omen_catastrophe:
+            return "catastrophe";
     }
-    return {x / size, y / size};
+    return "unknown";
 }
 
-}  // namespace math
+std::string realm_name(types::Realm realm)
+{
+    switch (realm) {
+        case types::Realm::olympus:
+            return "Olympus";
+        case types::Realm::earth:
+            return "Earth";
+        case types::Realm::underworld:
+            return "Underworld";
+    }
+    return "Unknown";
+}
+
+}  // namespace omens
 
 }  // namespace cosmos::functions

@@ -2,11 +2,8 @@
 
 #include "cosmos/types.hpp"
 
-#include <cstddef>
-#include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
 
 // ================================================================================================
 //   cosmos::functions
@@ -14,48 +11,34 @@
 
 namespace cosmos::functions {
 
-/** Return a greeting string. */
-std::string greet(std::string_view name);
+/** Return a greeting for a mortal visitor. */
+std::string greet_pilgrim(std::string_view name);
 
-/** Add two integers. */
-int add(int lhs, int rhs);
+/** Combine two ritual offering counts. */
+int combine_offerings(int grain, int nectar);
 
-/** Add two doubles. */
-double add(double lhs, double rhs);
-
-/** Build a small status object. */
-types::Status make_status(
-    std::string_view message,
-    types::StatusCode code = types::status_ok,
-    types::LogLevel level = types::LogLevel::info
+/** Build one small relic description from plain inputs. */
+types::RelicInfo describe_relic(
+    std::string_view name,
+    types::Realm realm,
+    int power
 );
 
-/** Create a list of names with a numbered suffix. */
-types::NameList make_name_list(std::string_view prefix, int count);
-
-/** Return one name when the requested index exists. */
-std::optional<std::string> maybe_pick_name(const types::NameList& names, std::size_t index);
-
 // ================================================================================================
-//   cosmos::functions::math
+//   cosmos::functions::omens
 // ================================================================================================
 
-namespace math {
+namespace omens {
 
-/** Compute a vector magnitude. */
-double magnitude(double x, double y);
+/** Classify the severity of one celestial event. */
+types::OmenKind classify_comet(int brightness);
 
-/** Normalize a pair of values into a unit vector when possible. */
-std::vector<double> normalize_pair(double x, double y);
+/** Return a display name for one omen enum value. */
+std::string_view omen_name(types::OmenKind omen);
 
-/** Header-only template algorithm for explicit template binding tests. */
-template <typename T>
-T square(T value)
-{
-    std::cout << "math::square(T)" << '\n';
-    return value * value;
-}
+/** Return a display name for one realm enum value. */
+std::string realm_name(types::Realm realm);
 
-}  // namespace math
+}  // namespace omens
 
 }  // namespace cosmos::functions

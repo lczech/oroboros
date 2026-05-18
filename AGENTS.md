@@ -856,7 +856,28 @@ The desired middle ground is:
 
 ## Exemplary C++ code
 
-The C++20 code to be created in `example` should be a small self contained dummy library, showing all relevant functionality that can potentially receive bindings via pybind/nanobind: Namespaces, enums, functions, classes, inheritance, etc.
+The C++20 code in `example` should be a small self-contained dummy library named `cosmos`. The name is intentional: it should gradually grow into the "universe" of declarations and binding situations that Oroboros can handle.
+
+The framing may stay playful and mythology-themed, as long as the technical purpose of each declaration remains clear. This means:
+
+- file and type names may use a Greek-mythology-inspired theme such as deities, mortals, oracles, relics, pantheons, omens, and constellations
+- the example should still remain technically readable and obviously organized by binding feature
+- comments should continue to explain which C++ or binding capability a given header is meant to exercise
+
+In practice, this can look like:
+
+- `Mortal`, `Deity`, `Oracle`, and `Demigod` as class examples
+- `Realm` and `OmenKind` as enum examples
+- `Demigod : Mortal, Deity` as a multiple-inheritance example
+- themed headers such as `deities.hpp`, `omens.hpp`, `artifacts.hpp`, or later `callbacks.hpp` and `operators.hpp`
+
+The example library should grow in layers rather than trying to cover everything at once:
+
+- `basics`: declarations that match the current parser and core model, such as namespaces, enums, free functions, classes, constructors, methods, fields, and parameters
+- `advanced`: richer C++ shapes such as aliases, comments, templates, and more subtle declaration relationships
+- `nanobind` or backend-focused fixtures: later examples adapted from relevant backend features, such as operators, callbacks, ownership/lifetime, STL handling, and other binding-specific patterns
+
+The current parser-first example should therefore stay intentionally modest and align with what Oroboros can already materialize into the semantic model. As parser and emitter support expands, `cosmos` can be extended with more themed declarations in parallel.
 
 ## Reference sources
 

@@ -22,7 +22,7 @@ target_compile_features(cosmos PUBLIC cxx_std_20)
 
 add_executable(
     cosmos_app
-    src/cosmos_app.cpp
+    src/main.cpp
 )
 
 target_link_libraries(

@@ -1,6 +1,6 @@
 #pragma once
 
-// An all-include umbrella header for cosmos.
+// Umbrella header for the mythology-themed cosmos example library.
 
 #include "cosmos/types.hpp"
 #include "cosmos/functions.hpp"

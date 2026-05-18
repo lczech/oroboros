@@ -2,116 +2,97 @@
 
 #include "cosmos/types.hpp"
 
-#include <cstddef>
-#include <memory>
 #include <string>
-#include <vector>
+#include <string_view>
 
 // ================================================================================================
-//   cosmos::objects
+//   cosmos::beings
 // ================================================================================================
 
-namespace cosmos::objects {
+namespace cosmos::beings {
 
-// -----------------------------------------------------------------------------
-//   classe inheritance
-// -----------------------------------------------------------------------------
-
-/** Abstract base class used for polymorphic binding tests. */
-class NamedEntity {
+/** A mortal with a vocation and a year of birth. */
+class Mortal {
 public:
-    NamedEntity();
-    explicit NamedEntity(std::string name);
-    virtual ~NamedEntity();
-
-    virtual std::string kind() const = 0;
-
-    const std::string& name() const;
-    void rename(std::string name);
-
-protected:
-    std::string name_;
-};
-
-/** Concrete class with a nested enum and a virtual method. */
-class Device : public NamedEntity {
-public:
-    enum class State {
-        idle,
-        running,
-        stopped,
+    enum class Vocation {
+        farmer,
+        philosopher,
+        poet,
+        hero,
     };
 
-    Device();
-    explicit Device(std::string name);
-    ~Device() override;
+    Mortal();
+    Mortal(std::string name, int year_of_birth);
 
-    std::string kind() const override;
-    virtual void reset();
-
-    State state() const;
-    void set_state(State state);
-
-    static Device make_default();
+    const std::string& name() const;
+    int year_of_birth() const;
+    Vocation vocation() const;
+    void set_vocation(Vocation vocation);
 
 private:
-    State state_ {State::idle};
+    std::string name_ {"unknown mortal"};
+    int year_of_birth_ {0};
+    Vocation vocation_ {Vocation::farmer};
 };
 
-/** Derived class with extra state and overridden behavior. */
-class Sensor : public Device {
+/** Return a display name for one mortal vocation value. */
+std::string_view vocation_name(Mortal::Vocation vocation);
+
+/** A deity tied to one realm and one sphere of influence. */
+class Deity {
 public:
-    Sensor();
-    Sensor(std::string name, double reading);
-    ~Sensor() override;
+    enum class Domain {
+        sky,
+        earth,
+        sea,
+        underworld,
+    };
 
-    std::string kind() const override;
-    void reset() override;
+    Deity();
+    Deity(std::string title, types::Realm realm);
 
-    double reading() const;
-    void set_reading(double reading);
+    const std::string& title() const;
+    types::Realm realm() const;
+    Domain domain() const;
+    void set_domain(Domain domain);
+    std::string bless(std::string request) const;
 
-private:
-    double reading_ {0.0};
+protected:
+    std::string title_ {"nameless deity"};
+    types::Realm realm_ {types::Realm::olympus};
+    Domain domain_ {Domain::sky};
 };
 
-/** Container that stores polymorphic instances through shared pointers. */
-class Registry {
+/** Return a display name for one deity domain value. */
+std::string_view domain_name(Deity::Domain domain);
+
+/** A half-god exercises multiple inheritance between mortals and deities. */
+class Demigod : public Mortal, public Deity {
 public:
-    void add(std::shared_ptr<NamedEntity> entity);
-    std::size_t size() const;
-    std::shared_ptr<NamedEntity> at(std::size_t index) const;
-    types::NameList names() const;
+    Demigod();
+    Demigod(std::string mortal_name, std::string divine_title, int year_of_birth);
+
+    int quest_count() const;
+    void complete_quest();
 
 private:
-    std::vector<std::shared_ptr<NamedEntity>> entities_;
+    int quest_count_ {0};
 };
 
-/** Factory returning a polymorphic shared pointer. */
-std::shared_ptr<NamedEntity> make_sensor(std::string name, double reading);
-
-// -----------------------------------------------------------------------------
-//   operators
-// -----------------------------------------------------------------------------
-
-/** Lightweight value type with a few operators. */
-class Vector2 {
+/** An oracle with a sanctuary and one remembered omen. */
+class Oracle {
 public:
-    Vector2();
-    Vector2(double x, double y);
+    Oracle();
+    explicit Oracle(std::string sanctuary);
 
-    double x() const;
-    double y() const;
-
-    void translate(double dx, double dy);
-    double length() const;
-
-    Vector2 operator+(const Vector2& other) const;
-    bool operator==(const Vector2& other) const;
+    const std::string& sanctuary() const;
+    void set_sanctuary(std::string sanctuary);
+    types::OmenKind last_omen() const;
+    void set_last_omen(types::OmenKind omen);
 
 private:
-    double x_ {0.0};
-    double y_ {0.0};
+    std::string sanctuary_ {"Delphi"};
+    types::OmenKind last_omen_ {types::omen_blessing};
 };
 
-}  // namespace cosmos::objects
+}  // namespace cosmos::beings

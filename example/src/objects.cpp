@@ -1,230 +1,147 @@
 #include "cosmos/objects.hpp"
 
-#include <cmath>
-#include <iostream>
-#include <stdexcept>
-#include <string_view>
 #include <utility>
 
-// ================================================================================================
-//   cosmos::objects
-// ================================================================================================
+namespace cosmos::beings {
 
-namespace cosmos::objects {
+Mortal::Mortal() = default;
 
-// -----------------------------------------------------------------------------
-//   classe inheritance
-// -----------------------------------------------------------------------------
-
-NamedEntity::NamedEntity()
-    : name_("unnamed")
-{
-    std::cout << "NamedEntity::NamedEntity()" << "\n";
-}
-
-NamedEntity::NamedEntity(std::string name)
+Mortal::Mortal(std::string name, int year_of_birth)
     : name_(std::move(name))
+    , year_of_birth_(year_of_birth)
 {
-    std::cout << "NamedEntity::NamedEntity(std::string)" << "\n";
 }
 
-NamedEntity::~NamedEntity()
+const std::string& Mortal::name() const
 {
-    std::cout << "NamedEntity::~NamedEntity()" << "\n";
-}
-
-const std::string& NamedEntity::name() const
-{
-    std::cout << "NamedEntity::name()" << "\n";
     return name_;
 }
 
-void NamedEntity::rename(std::string name)
+int Mortal::year_of_birth() const
 {
-    std::cout << "NamedEntity::rename(std::string)" << "\n";
-    name_ = std::move(name);
+    return year_of_birth_;
 }
 
-Device::Device()
-    : NamedEntity("device")
+Mortal::Vocation Mortal::vocation() const
 {
-    std::cout << "Device::Device()" << "\n";
+    return vocation_;
 }
 
-Device::Device(std::string name)
-    : NamedEntity(std::move(name))
+void Mortal::set_vocation(Vocation vocation)
 {
-    std::cout << "Device::Device(std::string)" << "\n";
+    vocation_ = vocation;
 }
 
-Device::~Device()
+std::string_view vocation_name(Mortal::Vocation vocation)
 {
-    std::cout << "Device::~Device()" << "\n";
-}
-
-std::string Device::kind() const
-{
-    std::cout << "Device::kind()" << "\n";
-    return "Device";
-}
-
-void Device::reset()
-{
-    std::cout << "Device::reset()" << "\n";
-    state_ = State::idle;
-}
-
-Device::State Device::state() const
-{
-    std::cout << "Device::state()" << "\n";
-    return state_;
-}
-
-void Device::set_state(State state)
-{
-    std::cout << "Device::set_state(State)" << "\n";
-    state_ = state;
-}
-
-Device Device::make_default()
-{
-    std::cout << "Device::make_default()" << "\n";
-    return Device("default-device");
-}
-
-Sensor::Sensor()
-    : Device("sensor")
-{
-    std::cout << "Sensor::Sensor()" << "\n";
-}
-
-Sensor::Sensor(std::string name, double reading)
-    : Device(std::move(name))
-    , reading_(reading)
-{
-    std::cout << "Sensor::Sensor(std::string, double)" << "\n";
-}
-
-Sensor::~Sensor()
-{
-    std::cout << "Sensor::~Sensor()" << "\n";
-}
-
-std::string Sensor::kind() const
-{
-    std::cout << "Sensor::kind()" << "\n";
-    return "Sensor";
-}
-
-void Sensor::reset()
-{
-    std::cout << "Sensor::reset()" << "\n";
-    set_state(State::idle);
-    reading_ = 0.0;
-}
-
-double Sensor::reading() const
-{
-    std::cout << "Sensor::reading()" << "\n";
-    return reading_;
-}
-
-void Sensor::set_reading(double reading)
-{
-    std::cout << "Sensor::set_reading(double)" << "\n";
-    reading_ = reading;
-}
-
-void Registry::add(std::shared_ptr<NamedEntity> entity)
-{
-    std::cout << "Registry::add(std::shared_ptr<NamedEntity>)" << "\n";
-    entities_.push_back(std::move(entity));
-}
-
-std::size_t Registry::size() const
-{
-    std::cout << "Registry::size()" << "\n";
-    return entities_.size();
-}
-
-std::shared_ptr<NamedEntity> Registry::at(std::size_t index) const
-{
-    std::cout << "Registry::at(std::size_t)" << "\n";
-    if (index >= entities_.size()) {
-        throw std::out_of_range("Registry index out of range");
+    switch (vocation) {
+        case Mortal::Vocation::farmer:
+            return "farmer";
+        case Mortal::Vocation::philosopher:
+            return "philosopher";
+        case Mortal::Vocation::poet:
+            return "poet";
+        case Mortal::Vocation::hero:
+            return "hero";
     }
-    return entities_[index];
+    return "unknown";
 }
 
-types::NameList Registry::names() const
-{
-    std::cout << "Registry::names()" << "\n";
+Deity::Deity() = default;
 
-    types::NameList names;
-    names.reserve(entities_.size());
-    for (const auto& entity : entities_) {
-        names.push_back(entity->name());
+Deity::Deity(std::string title, types::Realm realm)
+    : title_(std::move(title))
+    , realm_(realm)
+{
+}
+
+const std::string& Deity::title() const
+{
+    return title_;
+}
+
+types::Realm Deity::realm() const
+{
+    return realm_;
+}
+
+Deity::Domain Deity::domain() const
+{
+    return domain_;
+}
+
+void Deity::set_domain(Domain domain)
+{
+    domain_ = domain;
+}
+
+std::string_view domain_name(Deity::Domain domain)
+{
+    switch (domain) {
+        case Deity::Domain::sky:
+            return "sky";
+        case Deity::Domain::earth:
+            return "earth";
+        case Deity::Domain::sea:
+            return "sea";
+        case Deity::Domain::underworld:
+            return "underworld";
     }
-    return names;
+    return "unknown";
 }
 
-std::shared_ptr<NamedEntity> make_sensor(std::string name, double reading)
+std::string Deity::bless(std::string request) const
 {
-    std::cout << "make_sensor(std::string, double)" << "\n";
-    return std::make_shared<Sensor>(std::move(name), reading);
+    return title_ + " blesses " + request;
 }
 
-// -----------------------------------------------------------------------------
-//   operators
-// -----------------------------------------------------------------------------
-
-Vector2::Vector2()
+Demigod::Demigod()
+    : Mortal("young hero", 0)
+    , Deity("minor patron", types::Realm::earth)
 {
-    std::cout << "Vector2::Vector2()" << "\n";
 }
 
-Vector2::Vector2(double x, double y)
-    : x_(x)
-    , y_(y)
+Demigod::Demigod(std::string mortal_name, std::string divine_title, int year_of_birth)
+    : Mortal(std::move(mortal_name), year_of_birth)
+    , Deity(std::move(divine_title), types::Realm::earth)
 {
-    std::cout << "Vector2::Vector2(double, double)" << "\n";
 }
 
-double Vector2::x() const
+int Demigod::quest_count() const
 {
-    std::cout << "Vector2::x()" << "\n";
-    return x_;
+    return quest_count_;
 }
 
-double Vector2::y() const
+void Demigod::complete_quest()
 {
-    std::cout << "Vector2::y()" << "\n";
-    return y_;
+    ++quest_count_;
 }
 
-void Vector2::translate(double dx, double dy)
+Oracle::Oracle() = default;
+
+Oracle::Oracle(std::string sanctuary)
+    : sanctuary_(std::move(sanctuary))
 {
-    std::cout << "Vector2::translate(double, double)" << "\n";
-    x_ += dx;
-    y_ += dy;
 }
 
-double Vector2::length() const
+const std::string& Oracle::sanctuary() const
 {
-    std::cout << "Vector2::length()" << "\n";
-    return std::sqrt((x_ * x_) + (y_ * y_));
+    return sanctuary_;
 }
 
-Vector2 Vector2::operator+(const Vector2& other) const
+void Oracle::set_sanctuary(std::string sanctuary)
 {
-    std::cout << "Vector2::operator+(const Vector2&)" << "\n";
-    return Vector2(x_ + other.x_, y_ + other.y_);
+    sanctuary_ = std::move(sanctuary);
 }
 
-bool Vector2::operator==(const Vector2& other) const
+types::OmenKind Oracle::last_omen() const
 {
-    std::cout << "Vector2::operator==(const Vector2&)" << "\n";
-    return x_ == other.x_ && y_ == other.y_;
+    return last_omen_;
 }
 
-}  // namespace cosmos::objects
+void Oracle::set_last_omen(types::OmenKind omen)
+{
+    last_omen_ = omen;
+}
+
+}  // namespace cosmos::beings
