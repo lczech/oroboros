@@ -36,7 +36,7 @@ from .build_facets import (
     is_base_specifier_cursor,
 )
 if TYPE_CHECKING:
-    from .build_model import ModuleBuildContext
+    from .build_model import BuildContext
 
 _NodeT = TypeVar("_NodeT")
 
@@ -54,7 +54,7 @@ _NodeT = TypeVar("_NodeT")
 def visit_cursor(
     cursor: Any,
     owner: CppElement,
-    context: ModuleBuildContext,
+    context: BuildContext,
 ) -> None:
     """Classify one clang cursor and route it to the right parser helper."""
 
@@ -78,7 +78,7 @@ def visit_cursor(
 def visit_children(
     children: Iterable[Any],
     owner: CppElement,
-    context: ModuleBuildContext,
+    context: BuildContext,
 ) -> None:
     """Visit the children of one materialized semantic declaration node."""
 
@@ -94,7 +94,7 @@ def visit_children(
 def _visit_namespace_cursor(
     cursor: Any,
     owner: CppElement,
-    context: ModuleBuildContext,
+    context: BuildContext,
 ) -> None:
     """Materialize one namespace cursor and continue walking inside it."""
 
@@ -106,7 +106,7 @@ def _visit_namespace_cursor(
 def _visit_declaration_cursor(
     cursor: Any,
     owner: CppElement,
-    context: ModuleBuildContext,
+    context: BuildContext,
 ) -> None:
     """Materialize one supported declaration cursor by concrete cursor kind."""
 
@@ -148,7 +148,7 @@ def _visit_declaration_cursor(
     _record_skipped_cursor_kind(cursor, context)
 
 
-def _record_skipped_cursor_kind(cursor: Any, context: ModuleBuildContext) -> None:
+def _record_skipped_cursor_kind(cursor: Any, context: BuildContext) -> None:
     """Record one unsupported cursor kind in the parser summary."""
 
     context.skipped_kind_counts[cursor_kind_name(cursor)] += 1
@@ -162,11 +162,11 @@ def _record_skipped_cursor_kind(cursor: Any, context: ModuleBuildContext) -> Non
 def _process_class_cursor(
     cursor: Any,
     owner: CppElement,
-    context: ModuleBuildContext,
+    context: BuildContext,
 ) -> None:
     """Create or enrich one class declaration and recurse into its children."""
 
-    candidate_cpp = build_class_cpp_facet(cursor)
+    candidate_cpp = build_class_cpp_facet(cursor, context=context)
     existing = _lookup_registered_element(cursor, context, CppClass)
     if existing is not None:
         _merge_common_cpp_fields(existing, candidate_cpp, context, cursor)
@@ -186,11 +186,11 @@ def _process_class_cursor(
 def _process_enum_cursor(
     cursor: Any,
     owner: CppElement,
-    context: ModuleBuildContext,
+    context: BuildContext,
 ) -> None:
     """Create or enrich one enum declaration and recurse into its children."""
 
-    candidate_cpp = build_enum_cpp_facet(cursor)
+    candidate_cpp = build_enum_cpp_facet(cursor, context=context)
     existing = _lookup_registered_element(cursor, context, CppEnum)
     if existing is not None:
         _merge_common_cpp_fields(existing, candidate_cpp, context, cursor)
@@ -210,7 +210,7 @@ def _process_enum_cursor(
 def _process_enumerator_cursor(
     cursor: Any,
     owner: CppElement,
-    context: ModuleBuildContext,
+    context: BuildContext,
 ) -> None:
     """Create or enrich one enumerator declaration."""
 
@@ -230,11 +230,11 @@ def _process_enumerator_cursor(
 def _process_function_cursor(
     cursor: Any,
     owner: CppElement,
-    context: ModuleBuildContext,
+    context: BuildContext,
 ) -> None:
     """Create or enrich one free function declaration and recurse into its children."""
 
-    candidate_cpp = build_function_cpp_facet(cursor)
+    candidate_cpp = build_function_cpp_facet(cursor, context=context)
     existing = _lookup_registered_element(cursor, context, CppFunction)
     if existing is not None:
         _merge_common_cpp_fields(existing, candidate_cpp, context, cursor)
@@ -253,11 +253,11 @@ def _process_function_cursor(
 def _process_method_cursor(
     cursor: Any,
     owner: CppElement,
-    context: ModuleBuildContext,
+    context: BuildContext,
 ) -> None:
     """Create or enrich one method declaration and recurse into its children."""
 
-    candidate_cpp = build_method_cpp_facet(cursor)
+    candidate_cpp = build_method_cpp_facet(cursor, context=context)
     existing = _lookup_registered_element(cursor, context, CppMethod)
     if existing is not None:
         _merge_common_cpp_fields(existing, candidate_cpp, context, cursor)
@@ -281,7 +281,7 @@ def _process_method_cursor(
 def _process_constructor_cursor(
     cursor: Any,
     owner: CppElement,
-    context: ModuleBuildContext,
+    context: BuildContext,
 ) -> None:
     """Create or enrich one constructor declaration and recurse into its children."""
 
@@ -304,11 +304,11 @@ def _process_constructor_cursor(
 def _process_field_cursor(
     cursor: Any,
     owner: CppElement,
-    context: ModuleBuildContext,
+    context: BuildContext,
 ) -> None:
     """Create or enrich one field declaration."""
 
-    candidate_cpp = build_field_cpp_facet(cursor)
+    candidate_cpp = build_field_cpp_facet(cursor, context=context)
     existing = _lookup_registered_element(cursor, context, CppField)
     if existing is not None:
         _merge_common_cpp_fields(existing, candidate_cpp, context, cursor)
@@ -326,11 +326,11 @@ def _process_field_cursor(
 def _process_parameter_cursor(
     cursor: Any,
     owner: CppElement,
-    context: ModuleBuildContext,
+    context: BuildContext,
 ) -> None:
     """Create or enrich one parameter declaration."""
 
-    candidate_cpp = build_parameter_cpp_facet(cursor)
+    candidate_cpp = build_parameter_cpp_facet(cursor, context=context)
     existing = _lookup_registered_element(cursor, context, CppParameter)
     if existing is not None:
         _merge_common_cpp_fields(existing, candidate_cpp, context, cursor, comment_field_name=None)
@@ -409,7 +409,7 @@ _CLASS_CURSOR_KINDS = frozenset({CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL})
 def _ensure_namespace(
     owner: CppElement,
     cursor: Any,
-    context: ModuleBuildContext,
+    context: BuildContext,
 ) -> CppNamespace | None:
     """Return one existing or newly created namespace for one parser cursor."""
 
@@ -450,7 +450,7 @@ def _attach_node(
 
 def _lookup_registered_element(
     cursor: Any,
-    context: ModuleBuildContext,
+    context: BuildContext,
     expected_type: type[_NodeT],
 ) -> _NodeT | None:
     """Return the previously materialized element for one cursor USR, if any."""
@@ -468,7 +468,7 @@ def _lookup_registered_element(
 def _register_element_for_cursor(
     cursor: Any,
     element: CppElement,
-    context: ModuleBuildContext,
+    context: BuildContext,
 ) -> None:
     """Record one cursor USR to semantic element mapping for later reuse."""
 
@@ -480,7 +480,7 @@ def _register_element_for_cursor(
 
 
 # ==================================================================================================
-#     Enrichment Center
+#     Property Merging And Conflict Resolution
 # ==================================================================================================
 
 
@@ -492,7 +492,7 @@ def _register_element_for_cursor(
 def _merge_common_cpp_fields(
     element: CppElement,
     candidate_cpp: Any,
-    context: ModuleBuildContext,
+    context: BuildContext,
     cursor: Any,
     *,
     comment_field_name: str | None = "comment",
@@ -515,7 +515,7 @@ def _merge_cpp_scalar(
     element: CppElement,
     field_name: str,
     new_value: Any,
-    context: ModuleBuildContext,
+    context: BuildContext,
     cursor: Any,
 ) -> None:
     """Merge one scalar parsed field conservatively and warn on disagreement."""
@@ -541,7 +541,7 @@ def _merge_cpp_scalar(
 def _merge_class_bases(
     element: CppClass,
     new_bases: list[Any],
-    context: ModuleBuildContext,
+    context: BuildContext,
     cursor: Any,
 ) -> None:
     """Merge class base relationships conservatively across repeated declarations."""
@@ -587,7 +587,7 @@ def _resolve_comment_conflict(
     *,
     existing_comment: str | None,
     new_comment: str | None,
-    context: ModuleBuildContext,
+    context: BuildContext,
     cursor: Any,
 ) -> str | None:
     """Resolve one repeated-declaration comment conflict using parser policy."""
@@ -632,7 +632,7 @@ def _append_distinct_comments(existing_comment: str, new_comment: str) -> str:
 # ==================================================================================================
 
 
-def _record_semantic_warning(context: ModuleBuildContext, warning: str) -> None:
+def _record_semantic_warning(context: BuildContext, warning: str) -> None:
     """Append one parser-level semantic warning if it is not already present."""
 
     if warning not in context.semantic_warnings:

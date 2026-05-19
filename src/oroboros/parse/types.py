@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Translate clang type objects into the semantic C++ type model."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from clang.cindex import TypeKind
 
@@ -19,25 +19,37 @@ from ..model import (
 )
 from ..model.type import cpp_builtin_kind_from_spelling
 
+if TYPE_CHECKING:
+    from .build_model import BuildContext
+
 
 # ==================================================================================================
 #     Public Type Builder
 # ==================================================================================================
 
 
-def build_cpp_type(clang_type: Any) -> CppType | None:
+def build_cpp_type(
+    clang_type: Any,
+    *,
+    context: BuildContext | None = None,
+) -> CppType | None:
     """Convert one clang type object into the structured semantic type model."""
 
     if clang_type is None:
         return None
 
-    return _build_cpp_type(clang_type, allow_canonical=True)
+    return _build_cpp_type(
+        clang_type,
+        allow_canonical=True,
+        context=context,
+    )
 
 
 def _build_cpp_type(
     clang_type: Any,
     *,
     allow_canonical: bool,
+    context: BuildContext | None,
 ) -> CppType | None:
     """Recursively convert one clang type while avoiding canonical recursion loops."""
 
@@ -52,6 +64,7 @@ def _build_cpp_type(
             pointee=_build_cpp_type(
                 _call_optional_method(clang_type, "get_pointee"),
                 allow_canonical=allow_canonical,
+                context=context,
             ),
             is_const=is_const,
         )
@@ -61,6 +74,7 @@ def _build_cpp_type(
             referred=_build_cpp_type(
                 _call_optional_method(clang_type, "get_pointee"),
                 allow_canonical=allow_canonical,
+                context=context,
             ),
             is_const=is_const,
         )
@@ -70,6 +84,7 @@ def _build_cpp_type(
             referred=_build_cpp_type(
                 _call_optional_method(clang_type, "get_pointee"),
                 allow_canonical=allow_canonical,
+                context=context,
             ),
             is_const=is_const,
         )
@@ -79,6 +94,7 @@ def _build_cpp_type(
             element_type=_build_cpp_type(
                 _call_optional_method(clang_type, "get_array_element_type"),
                 allow_canonical=allow_canonical,
+                context=context,
             ),
             extent=_get_array_extent(clang_type),
             is_const=is_const,
@@ -89,9 +105,14 @@ def _build_cpp_type(
             return_type=_build_cpp_type(
                 _call_optional_method(clang_type, "get_result"),
                 allow_canonical=allow_canonical,
+                context=context,
             ),
             parameters=[
-                _build_cpp_type(parameter_type, allow_canonical=allow_canonical)
+                _build_cpp_type(
+                    parameter_type,
+                    allow_canonical=allow_canonical,
+                    context=context,
+                )
                 for parameter_type in _call_optional_method(clang_type, "argument_types", [])
             ],
             is_variadic=_call_optional_bool_method(clang_type, "is_function_variadic"),
@@ -107,13 +128,19 @@ def _build_cpp_type(
     if allow_canonical:
         canonical_type = _call_optional_method(clang_type, "get_canonical")
         if canonical_type is not None and not _same_type_identity(clang_type, canonical_type):
-            canonical = _build_cpp_type(canonical_type, allow_canonical=False)
+            canonical = _build_cpp_type(
+                canonical_type,
+                allow_canonical=False,
+                context=context,
+            )
 
-    return NamedCppType(
+    named_type = NamedCppType(
         name=spelling,
         canonical=canonical,
         is_const=is_const,
     )
+    _record_named_type_declaration_link(named_type, clang_type, context)
+    return named_type
 
 
 # ==================================================================================================
@@ -342,6 +369,47 @@ def _call_optional_bool_method(clang_type: Any, method_name: str) -> bool:
     """Call one optional libclang type predicate and normalize it to `bool`."""
 
     return bool(_call_optional_method(clang_type, method_name, False))
+
+
+def _record_named_type_declaration_link(
+    cpp_type: NamedCppType,
+    clang_type: Any,
+    context: BuildContext | None,
+) -> None:
+    """Capture one referenced declaration USR for a named type when available."""
+
+    if context is None:
+        return
+
+    declaration_cursor = _call_optional_method(clang_type, "get_declaration")
+    if declaration_cursor is None:
+        return
+
+    declaration_usr = _cursor_usr(declaration_cursor)
+    if declaration_usr is None:
+        return
+
+    from .build_model import PendingTypeDeclarationLink
+
+    context.pending_type_declaration_links.append(
+        PendingTypeDeclarationLink(
+            cpp_type=cpp_type,
+            declaration_usr=declaration_usr,
+        )
+    )
+
+
+def _cursor_usr(cursor: Any) -> str | None:
+    """Return one cursor USR when libclang exposes one for the entity."""
+
+    get_usr = getattr(cursor, "get_usr", None)
+    if not callable(get_usr):
+        return None
+
+    usr = get_usr()
+    if not usr:
+        return None
+    return str(usr)
 
 
 def _get_array_extent(clang_type: Any) -> str | None:

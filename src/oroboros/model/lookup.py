@@ -122,17 +122,50 @@ def _iter_direct_child_nodes(
             continue
 
         if isinstance(value, list):
+            element_items = [
+                item
+                for item in value
+                if isinstance(item, CppElement)
+            ]
             for index, item in enumerate(value):
-                item_path = f"{path}.{field_name}[{index}]"
                 if isinstance(item, CppElement):
+                    item_path = _child_element_path(
+                        parent_path=path,
+                        field_name=field_name,
+                        siblings=element_items,
+                        index=index,
+                        item=item,
+                    )
                     children.append((item_path, item))
                     continue
+                item_path = f"{path}.{field_name}[{index}]"
                 if errors is not None:
                     errors.append(
                         f"{item_path} contains {type(item).__name__}, expected a CppElement."
                     )
 
     return children
+
+
+def _child_element_path(
+    *,
+    parent_path: str,
+    field_name: str,
+    siblings: list[CppElement],
+    index: int,
+    item: CppElement,
+) -> str:
+    """Render one stable user-facing path for a child element inside one list field."""
+
+    name = getattr(item, "name", None)
+    if not name:
+        return f"{parent_path}.{field_name}[{index}]"
+
+    duplicate_count = sum(1 for sibling in siblings if sibling.name == name)
+    if duplicate_count <= 1:
+        return f'{parent_path}.{field_name}["{name}"]'
+
+    return f'{parent_path}.{field_name}["{name}"][{index}]'
 
 
 def _normalize_qualified_name(qualified_name: str) -> str:

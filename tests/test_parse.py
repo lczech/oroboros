@@ -21,7 +21,7 @@ from oroboros.model import (
     TemplateInstanceCppType,
 )
 from oroboros.parse import ParserConfig, parse_headers
-from oroboros.parse.build_model import ModuleBuildResult, build_module_from_clang
+from oroboros.parse.build_model import BuildResult, build_module_from_clang
 from oroboros.parse.clang_driver import build_clang_arguments, build_synthetic_include_source
 from oroboros.parse.types import build_cpp_type
 from oroboros.parse.toolchain import (
@@ -404,6 +404,236 @@ class ParseDeclsTest(unittest.TestCase):
         self.assertIsInstance(function.cpp.return_type, BuiltinCppType)
         self.assertEqual(function.cpp.return_type.kind, "bool")
 
+    def test_build_module_from_clang_links_named_types_to_declarations_by_usr(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        widget_cursor = _fake_cursor(
+            "CLASS_DECL",
+            "Widget",
+            file=active_header,
+            usr="c:@N@demo@S@Widget",
+        )
+        method_parameter_type = _fake_type(
+            "LVALUEREFERENCE",
+            "const Widget&",
+            pointee=_fake_type(
+                "ELABORATED",
+                "Widget",
+                is_const=True,
+                declaration_cursor=widget_cursor,
+            ),
+        )
+        translation_unit = SimpleNamespace(
+            cursor=_fake_cursor(
+                "TRANSLATION_UNIT",
+                "",
+                file=active_header,
+                children=[
+                    _fake_cursor(
+                        "NAMESPACE",
+                        "demo",
+                        file=active_header,
+                        children=[
+                            widget_cursor,
+                            _fake_cursor(
+                                "FUNCTION_DECL",
+                                "make_widget",
+                                file=active_header,
+                                result_type=_fake_type(
+                                    "ELABORATED",
+                                    "Widget",
+                                    declaration_cursor=widget_cursor,
+                                ),
+                            ),
+                            _fake_cursor(
+                                "CLASS_DECL",
+                                "Holder",
+                                file=active_header,
+                                children=[
+                                    _fake_cursor(
+                                        "CXX_BASE_SPECIFIER",
+                                        "",
+                                        file=active_header,
+                                        type=_fake_type(
+                                            "RECORD",
+                                            "Widget",
+                                            declaration_cursor=widget_cursor,
+                                        ),
+                                        access_specifier="PUBLIC",
+                                    ),
+                                    _fake_cursor(
+                                        "CXX_METHOD",
+                                        "take_widget",
+                                        file=active_header,
+                                        result_type=_fake_type("VOID", "void"),
+                                        children=[
+                                            _fake_cursor(
+                                                "PARM_DECL",
+                                                "widget",
+                                                file=active_header,
+                                                type=method_parameter_type,
+                                            )
+                                        ],
+                                    ),
+                                ],
+                            ),
+                        ],
+                    )
+                ],
+            )
+        )
+
+        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
+        namespace = build_result.module.namespaces[0]
+        widget = namespace.classes[0]
+        function = namespace.functions[0]
+        holder = namespace.classes[1]
+        method = holder.methods[0]
+
+        self.assertIsInstance(function.cpp.return_type, NamedCppType)
+        self.assertIs(function.cpp.return_type.declaration, widget)
+        self.assertIsInstance(holder.cpp.bases[0].type, NamedCppType)
+        self.assertIs(holder.cpp.bases[0].type.declaration, widget)
+        self.assertIsInstance(method.parameters[0].cpp.type, LValueReferenceCppType)
+        self.assertIsInstance(method.parameters[0].cpp.type.referred, NamedCppType)
+        self.assertIs(method.parameters[0].cpp.type.referred.declaration, widget)
+
+    def test_build_module_from_clang_leaves_external_named_types_unlinked(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        translation_unit = SimpleNamespace(
+            cursor=_fake_cursor(
+                "TRANSLATION_UNIT",
+                "",
+                file=active_header,
+                children=[
+                    _fake_cursor(
+                        "FUNCTION_DECL",
+                        "take_external",
+                        file=active_header,
+                        result_type=_fake_type("VOID", "void"),
+                        children=[
+                            _fake_cursor(
+                                "PARM_DECL",
+                                "value",
+                                file=active_header,
+                                type=_fake_type(
+                                    "ELABORATED",
+                                    "External",
+                                    declaration_cursor=_fake_cursor(
+                                        "CLASS_DECL",
+                                        "External",
+                                        file=Path("/tmp/external/external.hpp"),
+                                        usr="c:@N@ext@S@External",
+                                    ),
+                                ),
+                            )
+                        ],
+                    )
+                ],
+            )
+        )
+
+        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
+        parameter_type = build_result.module.functions[0].parameters[0].cpp.type
+
+        self.assertIsInstance(parameter_type, NamedCppType)
+        self.assertIsNone(parameter_type.declaration)
+
+    def test_build_module_from_clang_allows_scope_relative_qualified_type_spellings(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        omen_kind_cursor = _fake_cursor(
+            "ENUM_DECL",
+            "OmenKind",
+            file=active_header,
+            usr="c:@N@cosmos@N@types@E@OmenKind",
+        )
+        vocation_cursor = _fake_cursor(
+            "ENUM_DECL",
+            "Vocation",
+            file=active_header,
+            usr="c:@N@cosmos@N@beings@S@Mortal@E@Vocation",
+        )
+        translation_unit = SimpleNamespace(
+            cursor=_fake_cursor(
+                "TRANSLATION_UNIT",
+                "",
+                file=active_header,
+                children=[
+                    _fake_cursor(
+                        "NAMESPACE",
+                        "cosmos",
+                        file=active_header,
+                        children=[
+                            _fake_cursor(
+                                "NAMESPACE",
+                                "types",
+                                file=active_header,
+                                children=[omen_kind_cursor],
+                            ),
+                            _fake_cursor(
+                                "NAMESPACE",
+                                "functions",
+                                file=active_header,
+                                children=[
+                                    _fake_cursor(
+                                        "NAMESPACE",
+                                        "omens",
+                                        file=active_header,
+                                        children=[
+                                            _fake_cursor(
+                                                "FUNCTION_DECL",
+                                                "classify",
+                                                file=active_header,
+                                                result_type=_fake_type(
+                                                    "ELABORATED",
+                                                    "types::OmenKind",
+                                                    declaration_cursor=omen_kind_cursor,
+                                                ),
+                                            )
+                                        ],
+                                    )
+                                ],
+                            ),
+                            _fake_cursor(
+                                "NAMESPACE",
+                                "beings",
+                                file=active_header,
+                                children=[
+                                    _fake_cursor(
+                                        "CLASS_DECL",
+                                        "Mortal",
+                                        file=active_header,
+                                        children=[vocation_cursor],
+                                    ),
+                                    _fake_cursor(
+                                        "FUNCTION_DECL",
+                                        "vocation_name",
+                                        file=active_header,
+                                        result_type=_fake_type("VOID", "void"),
+                                        children=[
+                                            _fake_cursor(
+                                                "PARM_DECL",
+                                                "vocation",
+                                                file=active_header,
+                                                type=_fake_type(
+                                                    "ELABORATED",
+                                                    "Mortal::Vocation",
+                                                    declaration_cursor=vocation_cursor,
+                                                ),
+                                            )
+                                        ],
+                                    ),
+                                ],
+                            ),
+                        ],
+                    )
+                ],
+            )
+        )
+
+        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
+
+        build_result.module.validate_semantics()
+
     def test_build_module_from_clang_tracks_unsupported_cursor_kinds(self) -> None:
         active_header = Path("/tmp/project/demo.hpp")
         translation_unit = SimpleNamespace(
@@ -489,7 +719,7 @@ class ParseDeclsTest(unittest.TestCase):
             validate_tree=lambda: None,
             validate_semantics=lambda: None,
         )
-        build_result = ModuleBuildResult(
+        build_result = BuildResult(
             module=built_module,
             semantic_warnings=[],
             skipped_kind_counts={"TYPEDEF_DECL": 2},
@@ -592,6 +822,7 @@ def _fake_type(
     argument_types: list[SimpleNamespace] | None = None,
     is_variadic: bool = False,
     canonical: SimpleNamespace | None = None,
+    declaration_cursor: SimpleNamespace | None = None,
 ) -> SimpleNamespace:
     fake_type = SimpleNamespace(
         kind=getattr(TypeKind, kind_name),
@@ -603,6 +834,7 @@ def _fake_type(
         get_result=lambda: result_type,
         argument_types=lambda: list(argument_types or []),
         is_function_variadic=lambda: is_variadic,
+        get_declaration=lambda: declaration_cursor,
     )
     fake_type.get_canonical = lambda: canonical if canonical is not None else fake_type
     return fake_type

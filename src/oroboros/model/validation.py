@@ -6,6 +6,7 @@ from dataclasses import fields as dataclass_fields, is_dataclass
 from typing import Any
 
 from .class_ import CppClass
+from .function import CppParameter
 from .element import CppElement, ModelValidationError
 from .enum import CppEnum
 from .lookup import _iter_direct_child_nodes
@@ -121,7 +122,12 @@ def _validate_semantic_subtree(
         if field_name == "owner":
             continue
         value = getattr(node, field_name)
-        _validate_embedded_value(value, f"{path}.{field_name}", errors)
+        _validate_embedded_value(
+            value,
+            f"{path}.{field_name}",
+            errors,
+            reference_scope=_reference_lookup_scope(node),
+        )
 
     for child_path, child in _iter_direct_child_nodes(node, path):
         _validate_semantic_subtree(child, child_path, errors)
@@ -158,6 +164,8 @@ def _validate_embedded_value(
     value: Any,
     path: str,
     errors: list[str],
+    *,
+    reference_scope: CppElement | None,
 ) -> None:
     """Walk one embedded non-element value and validate nested semantics."""
 
@@ -165,19 +173,29 @@ def _validate_embedded_value(
         return
 
     if isinstance(value, NamedCppType):
-        _validate_named_cpp_type(value, path, errors)
+        _validate_named_cpp_type(value, path, errors, reference_scope=reference_scope)
 
     if isinstance(value, CppLocationInfo):
         _validate_location_info(value, path, errors)
 
     if isinstance(value, list):
         for index, item in enumerate(value):
-            _validate_embedded_value(item, f"{path}[{index}]", errors)
+            _validate_embedded_value(
+                item,
+                f"{path}[{index}]",
+                errors,
+                reference_scope=reference_scope,
+            )
         return
 
     if isinstance(value, tuple):
         for index, item in enumerate(value):
-            _validate_embedded_value(item, f"{path}[{index}]", errors)
+            _validate_embedded_value(
+                item,
+                f"{path}[{index}]",
+                errors,
+                reference_scope=reference_scope,
+            )
         return
 
     if is_dataclass(value):
@@ -187,6 +205,7 @@ def _validate_embedded_value(
                 nested_value,
                 f"{path}.{dataclass_field.name}",
                 errors,
+                reference_scope=reference_scope,
             )
 
 
@@ -194,6 +213,8 @@ def _validate_named_cpp_type(
     cpp_type: NamedCppType,
     path: str,
     errors: list[str],
+    *,
+    reference_scope: CppElement | None,
 ) -> None:
     """Validate one declaration-linked named C++ type."""
 
@@ -207,7 +228,11 @@ def _validate_named_cpp_type(
         )
         return
 
-    if cpp_type.name and not _named_type_matches_declaration(cpp_type, declaration):
+    if cpp_type.name and not _named_type_matches_declaration(
+        cpp_type,
+        declaration,
+        reference_scope=reference_scope,
+    ):
         errors.append(
             f"{path} spells the type as {cpp_type.name!r} but links to "
             f"{declaration.qualified_name!r}."
@@ -822,6 +847,8 @@ def _is_valid_named_type_declaration(declaration: CppElement) -> bool:
 def _named_type_matches_declaration(
     cpp_type: NamedCppType,
     declaration: CppElement,
+    *,
+    reference_scope: CppElement | None,
 ) -> bool:
     """Check whether one named-type spelling is compatible with its declaration."""
 
@@ -829,9 +856,48 @@ def _named_type_matches_declaration(
     original_name = getattr(getattr(declaration, "cpp", None), "original_name", None)
 
     if "::" in normalized_name:
-        return normalized_name == declaration.qualified_name
+        return normalized_name in _compatible_qualified_type_spellings(
+            declaration,
+            reference_scope=reference_scope,
+        )
 
     valid_names = {declaration.name}
     if original_name is not None:
         valid_names.add(original_name)
     return normalized_name in valid_names
+
+
+def _reference_lookup_scope(node: CppElement) -> CppElement | None:
+    """Return the semantic scope used for validating embedded type-name spellings."""
+
+    if isinstance(node, CppParameter):
+        owner = node.owner
+        if owner is None:
+            return None
+        return owner.scope_parent
+
+    return node.scope_parent
+
+
+def _compatible_qualified_type_spellings(
+    declaration: CppElement,
+    *,
+    reference_scope: CppElement | None,
+) -> set[str]:
+    """Return all qualified spellings that are valid from one reference scope."""
+
+    declaration_name = declaration.qualified_name
+    declaration_parts = declaration_name.split("::")
+    compatible_spellings = {declaration_name}
+
+    current_scope = reference_scope
+    while current_scope is not None:
+        scope_name = current_scope.qualified_name
+        scope_parts = scope_name.split("::") if scope_name else []
+        if declaration_parts[:len(scope_parts)] == scope_parts:
+            remainder_parts = declaration_parts[len(scope_parts):]
+            if remainder_parts:
+                compatible_spellings.add("::".join(remainder_parts))
+        current_scope = current_scope.scope_parent
+
+    return compatible_spellings

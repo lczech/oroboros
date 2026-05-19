@@ -3,12 +3,15 @@ from __future__ import annotations
 """Build parsed `.cpp` facet data from libclang cursors."""
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from clang.cindex import CursorKind
 
 from ..model import CppClassBase, CppLocationInfo, CppVisibility, SourceLocation
 from .types import build_cpp_type
+
+if TYPE_CHECKING:
+    from .build_model import BuildContext
 
 
 # ==================================================================================================
@@ -21,7 +24,9 @@ from .types import build_cpp_type
 # ------------------------------------------------------------------------------
 
 
-def build_namespace_cpp_facet(cursor: Any) -> Any:
+def build_namespace_cpp_facet(
+    cursor: Any,
+) -> Any:
     from ..model import CppNamespaceCppFacet
 
     return CppNamespaceCppFacet(
@@ -31,7 +36,11 @@ def build_namespace_cpp_facet(cursor: Any) -> Any:
     )
 
 
-def build_class_cpp_facet(cursor: Any) -> Any:
+def build_class_cpp_facet(
+    cursor: Any,
+    *,
+    context: BuildContext | None = None,
+) -> Any:
     from ..model import CppClassCppFacet
 
     return CppClassCppFacet(
@@ -40,16 +49,23 @@ def build_class_cpp_facet(cursor: Any) -> Any:
         comment=cursor_raw_comment(cursor),
         kind="struct" if is_struct_cursor(cursor) else "class",
         visibility=cursor_visibility(cursor),
-        bases=build_class_bases(cursor),
+        bases=build_class_bases(cursor, context=context),
     )
 
 
-def build_enum_cpp_facet(cursor: Any) -> Any:
+def build_enum_cpp_facet(
+    cursor: Any,
+    *,
+    context: BuildContext | None = None,
+) -> Any:
     from ..model import CppEnumCppFacet
 
     return CppEnumCppFacet(
         original_name=cursor.spelling or None,
-        underlying_type=build_cpp_type(cursor_enum_underlying_type(cursor)),
+        underlying_type=build_cpp_type(
+            cursor_enum_underlying_type(cursor),
+            context=context,
+        ),
         location=build_location_info(cursor),
         comment=cursor_raw_comment(cursor),
         is_scoped=cursor_is_scoped_enum(cursor),
@@ -57,7 +73,9 @@ def build_enum_cpp_facet(cursor: Any) -> Any:
     )
 
 
-def build_enumerator_cpp_facet(cursor: Any) -> Any:
+def build_enumerator_cpp_facet(
+    cursor: Any,
+) -> Any:
     from ..model import CppEnumeratorCppFacet
 
     return CppEnumeratorCppFacet(
@@ -68,24 +86,38 @@ def build_enumerator_cpp_facet(cursor: Any) -> Any:
     )
 
 
-def build_function_cpp_facet(cursor: Any) -> Any:
+def build_function_cpp_facet(
+    cursor: Any,
+    *,
+    context: BuildContext | None = None,
+) -> Any:
     from ..model import CppFunctionCppFacet
 
     return CppFunctionCppFacet(
         original_name=cursor.spelling or None,
-        return_type=build_cpp_type(getattr(cursor, "result_type", None)),
+        return_type=build_cpp_type(
+            getattr(cursor, "result_type", None),
+            context=context,
+        ),
         location=build_location_info(cursor),
         comment=cursor_raw_comment(cursor),
         is_noexcept=cursor_is_noexcept(cursor),
     )
 
 
-def build_method_cpp_facet(cursor: Any) -> Any:
+def build_method_cpp_facet(
+    cursor: Any,
+    *,
+    context: BuildContext | None = None,
+) -> Any:
     from ..model import CppMethodCppFacet
 
     return CppMethodCppFacet(
         original_name=cursor.spelling or None,
-        return_type=build_cpp_type(getattr(cursor, "result_type", None)),
+        return_type=build_cpp_type(
+            getattr(cursor, "result_type", None),
+            context=context,
+        ),
         location=build_location_info(cursor),
         comment=cursor_raw_comment(cursor),
         is_noexcept=cursor_is_noexcept(cursor),
@@ -97,7 +129,9 @@ def build_method_cpp_facet(cursor: Any) -> Any:
     )
 
 
-def build_constructor_cpp_facet(cursor: Any) -> Any:
+def build_constructor_cpp_facet(
+    cursor: Any,
+) -> Any:
     from ..model import CppConstructorCppFacet
 
     return CppConstructorCppFacet(
@@ -109,12 +143,19 @@ def build_constructor_cpp_facet(cursor: Any) -> Any:
     )
 
 
-def build_field_cpp_facet(cursor: Any) -> Any:
+def build_field_cpp_facet(
+    cursor: Any,
+    *,
+    context: BuildContext | None = None,
+) -> Any:
     from ..model import CppFieldCppFacet
 
     return CppFieldCppFacet(
         original_name=cursor.spelling or None,
-        type=build_cpp_type(getattr(cursor, "type", None)),
+        type=build_cpp_type(
+            getattr(cursor, "type", None),
+            context=context,
+        ),
         location=build_location_info(cursor),
         comment=cursor_raw_comment(cursor),
         is_static=cursor_bool_method(cursor, "is_static_field"),
@@ -122,12 +163,19 @@ def build_field_cpp_facet(cursor: Any) -> Any:
     )
 
 
-def build_parameter_cpp_facet(cursor: Any) -> Any:
+def build_parameter_cpp_facet(
+    cursor: Any,
+    *,
+    context: BuildContext | None = None,
+) -> Any:
     from ..model import CppParameterCppFacet
 
     return CppParameterCppFacet(
         original_name=cursor.spelling or None,
-        type=build_cpp_type(getattr(cursor, "type", None)),
+        type=build_cpp_type(
+            getattr(cursor, "type", None),
+            context=context,
+        ),
         location=build_location_info(cursor),
     )
 
@@ -304,7 +352,11 @@ def is_base_specifier_cursor(cursor: Any) -> bool:
     return getattr(cursor, "kind", None) == CursorKind.CXX_BASE_SPECIFIER
 
 
-def build_class_bases(cursor: Any) -> list[CppClassBase]:
+def build_class_bases(
+    cursor: Any,
+    *,
+    context: BuildContext | None = None,
+) -> list[CppClassBase]:
     """Collect direct base-class relationships declared on one class cursor."""
 
     bases: list[CppClassBase] = []
@@ -312,7 +364,10 @@ def build_class_bases(cursor: Any) -> list[CppClassBase]:
         if not is_base_specifier_cursor(child_cursor):
             continue
 
-        base_type = build_cpp_type(getattr(child_cursor, "type", None))
+        base_type = build_cpp_type(
+            getattr(child_cursor, "type", None),
+            context=context,
+        )
         if base_type is None:
             continue
 
