@@ -47,6 +47,16 @@ prioritized engineering work here.
 - Normalized comment and documentation parsing.
   Raw comment blocks are already preserved, but they still need to be parsed
   into the richer documentation model and parameter-doc fields.
+- Unsupported libclang declaration kinds that should be tracked explicitly.
+  The current walker materializes namespaces, classes/structs, enums,
+  free functions, methods, constructors, fields, and parameters. Still
+  missing at the cursor-dispatch level are:
+  - `VAR_DECL` for free variables and static data members
+  - `TYPE_ALIAS_DECL` and `TYPEDEF_DECL` for `using` / `typedef`
+  - `CLASS_TEMPLATE` and `FUNCTION_TEMPLATE` for template declarations
+  - `DESTRUCTOR`
+  - `CONVERSION_FUNCTION`
+  - `UNION_DECL`
 - Alias templates.
 - Destructors.
 - Static or free variables and constants.
@@ -61,8 +71,9 @@ prioritized engineering work here.
 
 - Redeclaration enrichment.
   The parser now reuses semantic nodes by clang USR, merges provenance, and
-  links named types back to declarations, but conflict handling and
-  kind-specific enrichment are still conservative first-pass behavior.
+  links named types back to declarations. Parameter-slot enrichment for
+  repeated callables is now handled positionally, but fuller kind-specific
+  redeclaration enrichment is still conservative first-pass behavior.
 - Raw comment handling.
   Repeated-declaration comment conflicts are now resolved by parser policy, but
   the overall documentation flow is still incomplete until normalized docs and
@@ -157,6 +168,19 @@ prioritized engineering work here.
   translation policy.
 - Emitter/backend configuration for output layout, optional signature emission,
   and backend selection.
+
+## Clang Integration Coverage
+
+- Add one real libclang integration test for scope-relative named type
+  spellings such as `types::OmenKind` and `Mortal::Vocation`.
+- Add one real libclang integration test for raw comment extraction from
+  Doxygen-style comment blocks.
+- Add one real libclang integration test for alias-preserving type spellings,
+  so declarations like `using Alias = Widget;` keep the written alias spelling
+  while still linking to the resolved declaration where appropriate.
+- Add one real libclang integration test for typedef-preserving type spellings,
+  parallel to the alias case, to pin the intended separation between written
+  spelling, declaration link, and canonical underlying type.
 
 ## Outputs Beyond Bindings
 

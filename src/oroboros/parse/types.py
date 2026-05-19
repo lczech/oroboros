@@ -119,7 +119,10 @@ def _build_cpp_type(
             is_const=is_const,
         )
 
-    spelling = _type_spelling(clang_type)
+    spelling = _normalize_name_type_spelling(
+        _type_spelling(clang_type),
+        is_const=is_const,
+    )
     template_instance = _parse_template_instance_spelling(spelling, is_const=is_const)
     if template_instance is not None:
         return template_instance
@@ -186,11 +189,8 @@ def _build_type_from_spelling(spelling: str) -> CppType:
     """Build one fallback semantic type from a plain C++ spelling fragment."""
 
     normalized = spelling.strip()
-    is_const = False
-
-    if normalized.startswith("const "):
-        is_const = True
-        normalized = normalized[len("const "):].strip()
+    is_const = normalized.startswith("const ") or normalized.endswith(" const")
+    normalized = _normalize_name_type_spelling(normalized, is_const=is_const)
 
     if normalized.endswith("&&"):
         return RValueReferenceCppType(
@@ -219,6 +219,26 @@ def _build_type_from_spelling(spelling: str) -> CppType:
         return BuiltinCppType(kind=builtin_kind, is_const=is_const)
 
     return NamedCppType(name=normalized, is_const=is_const)
+
+
+def _normalize_name_type_spelling(
+    spelling: str,
+    *,
+    is_const: bool,
+) -> str:
+    """Normalize one named-type spelling so top-level const lives only in `is_const`."""
+
+    normalized = spelling.strip()
+    if not is_const:
+        return normalized
+
+    if normalized.startswith("const "):
+        return normalized[len("const "):].strip()
+
+    if normalized.endswith(" const"):
+        return normalized[:-len(" const")].strip()
+
+    return normalized
 
 
 # ------------------------------------------------------------------------------

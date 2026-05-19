@@ -22,6 +22,7 @@ class CppType:
     template-instantiated types wrap other ``CppType`` objects recursively.
     """
 
+    # Whether this type value carries one top-level `const` qualifier.
     is_const: bool = False
 
     def render(self) -> str:
@@ -45,8 +46,11 @@ class NamedCppType(CppType):
     while ``name`` remains the original spelling used for rendering and emission.
     """
 
+    # Original source-spelled name preserved for diagnostics and default emission.
     name: str = ""
+    # Semantic declaration node this name refers to when the target is known.
     declaration: CppElement | None = None
+    # Canonicalized underlying type used for semantic reasoning when available.
     canonical: CppType | None = None
 
     def render(self) -> str:
@@ -58,6 +62,7 @@ class NamedCppType(CppType):
 class PointerCppType(CppType):
     """Represent a pointer type that wraps one pointee ``CppType``."""
 
+    # Type value referenced through this pointer.
     pointee: CppType | None = None
 
     def render(self) -> str:
@@ -72,6 +77,7 @@ class PointerCppType(CppType):
 class LValueReferenceCppType(CppType):
     """Represent an lvalue reference type that wraps one referred ``CppType``."""
 
+    # Type value referred to by this lvalue reference.
     referred: CppType | None = None
 
     def render(self) -> str:
@@ -86,6 +92,7 @@ class LValueReferenceCppType(CppType):
 class RValueReferenceCppType(CppType):
     """Represent an rvalue reference type that wraps one referred ``CppType``."""
 
+    # Type value referred to by this rvalue reference.
     referred: CppType | None = None
 
     def render(self) -> str:
@@ -100,7 +107,9 @@ class RValueReferenceCppType(CppType):
 class ArrayCppType(CppType):
     """Represent an array type that wraps one element ``CppType`` recursively."""
 
+    # Element type stored in each array slot.
     element_type: CppType | None = None
+    # Rendered array extent spelling when clang exposes one.
     extent: str | None = None
 
     def render(self) -> str:
@@ -114,8 +123,11 @@ class ArrayCppType(CppType):
 class FunctionCppType(CppType):
     """Represent a function type with recursive return and parameter types."""
 
+    # Return type produced by this function type.
     return_type: CppType | None = None
+    # Parameter type values in declared order.
     parameters: list[CppType] = field(default_factory=list)
+    # Whether this function type ends with a C-style variadic parameter pack.
     is_variadic: bool = False
 
     def render(self) -> str:
@@ -140,7 +152,9 @@ class FunctionCppType(CppType):
 class TemplateInstanceCppType(CppType):
     """Represent one template-instantiated type with recursive argument types."""
 
+    # Source-spelled template family name such as `std::vector`.
     template_name: str = ""
+    # Template argument type values in declared order.
     arguments: list[CppType] = field(default_factory=list)
 
     def render(self) -> str:
@@ -158,6 +172,7 @@ class TemplateInstanceCppType(CppType):
 class BuiltinCppType(CppType):
     """Represent one C++ language builtin value type such as ``int`` or ``bool``."""
 
+    # Semantic builtin category independent of exact source spelling.
     kind: Literal[
         "void",
         "nullptr_t",

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Walk libclang cursors and materialize semantic declaration nodes."""
 
-from typing import TYPE_CHECKING, Any, Iterable, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Iterable, TypeVar
 
 from clang.cindex import CursorKind
 
@@ -18,6 +18,7 @@ from ..model import (
     CppNamespace,
     CppParameter,
 )
+from ..model.type import cpp_types_equivalent
 from .build_facets import (
     build_class_cpp_facet,
     build_constructor_cpp_facet,
@@ -237,10 +238,19 @@ def _process_function_cursor(
     candidate_cpp = build_function_cpp_facet(cursor, context=context)
     existing = _lookup_registered_element(cursor, context, CppFunction)
     if existing is not None:
+        child_cursors = list(cursor.get_children())
         _merge_common_cpp_fields(existing, candidate_cpp, context, cursor)
-        _merge_cpp_scalar(existing, "return_type", candidate_cpp.return_type, context, cursor)
+        _merge_cpp_scalar(
+            existing,
+            "return_type",
+            candidate_cpp.return_type,
+            context,
+            cursor,
+            values_equivalent=cpp_types_equivalent,
+        )
         _merge_cpp_scalar(existing, "is_noexcept", candidate_cpp.is_noexcept, context, cursor)
-        visit_children(cursor.get_children(), existing, context)
+        _merge_callable_parameter_children(existing, child_cursors, context)
+        _visit_non_parameter_children(child_cursors, existing, context)
         return
 
     function = CppFunction(name=cursor.spelling, cpp=candidate_cpp)
@@ -260,15 +270,24 @@ def _process_method_cursor(
     candidate_cpp = build_method_cpp_facet(cursor, context=context)
     existing = _lookup_registered_element(cursor, context, CppMethod)
     if existing is not None:
+        child_cursors = list(cursor.get_children())
         _merge_common_cpp_fields(existing, candidate_cpp, context, cursor)
-        _merge_cpp_scalar(existing, "return_type", candidate_cpp.return_type, context, cursor)
+        _merge_cpp_scalar(
+            existing,
+            "return_type",
+            candidate_cpp.return_type,
+            context,
+            cursor,
+            values_equivalent=cpp_types_equivalent,
+        )
         _merge_cpp_scalar(existing, "is_noexcept", candidate_cpp.is_noexcept, context, cursor)
         _merge_cpp_scalar(existing, "is_const", candidate_cpp.is_const, context, cursor)
         _merge_cpp_scalar(existing, "is_static", candidate_cpp.is_static, context, cursor)
         _merge_cpp_scalar(existing, "is_virtual", candidate_cpp.is_virtual, context, cursor)
         _merge_cpp_scalar(existing, "is_pure_virtual", candidate_cpp.is_pure_virtual, context, cursor)
         _merge_cpp_scalar(existing, "visibility", candidate_cpp.visibility, context, cursor)
-        visit_children(cursor.get_children(), existing, context)
+        _merge_callable_parameter_children(existing, child_cursors, context)
+        _visit_non_parameter_children(child_cursors, existing, context)
         return
 
     method = CppMethod(name=cursor.spelling, cpp=candidate_cpp)
@@ -288,10 +307,12 @@ def _process_constructor_cursor(
     candidate_cpp = build_constructor_cpp_facet(cursor)
     existing = _lookup_registered_element(cursor, context, CppConstructor)
     if existing is not None:
+        child_cursors = list(cursor.get_children())
         _merge_common_cpp_fields(existing, candidate_cpp, context, cursor)
         _merge_cpp_scalar(existing, "is_noexcept", candidate_cpp.is_noexcept, context, cursor)
         _merge_cpp_scalar(existing, "visibility", candidate_cpp.visibility, context, cursor)
-        visit_children(cursor.get_children(), existing, context)
+        _merge_callable_parameter_children(existing, child_cursors, context)
+        _visit_non_parameter_children(child_cursors, existing, context)
         return
 
     constructor = CppConstructor(name=cursor.spelling, cpp=candidate_cpp)
@@ -496,10 +517,12 @@ def _merge_common_cpp_fields(
     cursor: Any,
     *,
     comment_field_name: str | None = "comment",
+    merge_original_name: bool = True,
 ) -> None:
     """Merge common parsed fields from one repeated declaration into an element."""
 
-    _merge_cpp_scalar(element, "original_name", getattr(candidate_cpp, "original_name", None), context, cursor)
+    if merge_original_name:
+        _merge_cpp_scalar(element, "original_name", getattr(candidate_cpp, "original_name", None), context, cursor)
     _merge_location_info(element.cpp.location, candidate_cpp.location)
     if comment_field_name is not None and hasattr(element.cpp, comment_field_name):
         merged_comment = _resolve_comment_conflict(
@@ -517,6 +540,9 @@ def _merge_cpp_scalar(
     new_value: Any,
     context: BuildContext,
     cursor: Any,
+    *,
+    values_equivalent: Callable[[Any, Any], bool] | None = None,
+    warn_on_conflict: bool = True,
 ) -> None:
     """Merge one scalar parsed field conservatively and warn on disagreement."""
 
@@ -528,7 +554,11 @@ def _merge_cpp_scalar(
         setattr(element.cpp, field_name, new_value)
         return
 
-    if current_value == new_value:
+    equivalent = values_equivalent or _values_equal
+    if equivalent(current_value, new_value):
+        return
+
+    if not warn_on_conflict:
         return
 
     _record_semantic_warning(
@@ -576,6 +606,68 @@ def _merge_location_info(existing: Any, new: Any) -> None:
     for declaration_location in new.declarations:
         if declaration_location not in existing.declarations:
             existing.declarations.append(declaration_location)
+
+
+def _merge_callable_parameter_children(
+    callable_element: Any,
+    child_cursors: Iterable[Any],
+    context: BuildContext,
+) -> None:
+    """Merge callable parameters positionally across repeated declarations."""
+
+    parameter_cursors = [
+        child_cursor
+        for child_cursor in child_cursors
+        if cursor_is_from_active_header(child_cursor, context.active_headers)
+        and _cursor_kind_matches(child_cursor, CursorKind.PARM_DECL)
+    ]
+    existing_parameters = list(getattr(callable_element, "parameters", []))
+
+    if len(existing_parameters) != len(parameter_cursors):
+        return
+
+    for existing_parameter, parameter_cursor in zip(
+        existing_parameters,
+        parameter_cursors,
+        strict=True,
+    ):
+        candidate_cpp = build_parameter_cpp_facet(parameter_cursor, context=context)
+        _register_element_for_cursor(parameter_cursor, existing_parameter, context)
+        _merge_common_cpp_fields(
+            existing_parameter,
+            candidate_cpp,
+            context,
+            parameter_cursor,
+            comment_field_name=None,
+            merge_original_name=False,
+        )
+        _merge_cpp_scalar(
+            existing_parameter,
+            "type",
+            candidate_cpp.type,
+            context,
+            parameter_cursor,
+            values_equivalent=cpp_types_equivalent,
+        )
+
+
+def _visit_non_parameter_children(
+    child_cursors: Iterable[Any],
+    owner: CppElement,
+    context: BuildContext,
+) -> None:
+    """Continue walking child cursors other than parameters."""
+
+    for child_cursor in child_cursors:
+        if _cursor_kind_matches(child_cursor, CursorKind.PARM_DECL):
+            continue
+        visit_cursor(child_cursor, owner, context)
+
+
+def _values_equal(left: Any, right: Any) -> bool:
+    """Return whether two parsed scalar values are equal."""
+
+    return left == right
 
 
 # ------------------------------------------------------------------------------
@@ -650,6 +742,12 @@ def _format_cursor_location(cursor: Any) -> str:
     """Render one short source-location string for warnings."""
 
     location = cursor_source_location(cursor)
+    return _format_source_location(location)
+
+
+def _format_source_location(location: Any) -> str:
+    """Render one source-location object into a stable short string."""
+
     if location is None:
         return "<unknown location>"
     return f"{location.file}:{location.line}:{location.column}"
