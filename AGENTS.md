@@ -57,6 +57,18 @@ As this is a lot of functionality, we will build the Oroboros code incrementally
 - Add short (one or two line) comments for code blocks, explaining their intend (e.g., what does the loop do?).
 - Avoid hard-coding Genesis-specific behavior in the parser core; put policy in configuration instead.
 
+## Development environment
+
+- The checked-in `environment.yml` currently defines the micromamba environment `oroboros`.
+- When running commands non-interactively, prefer `micromamba run -n oroboros ...` instead of relying on shell activation.
+- In sandboxed environments, `micromamba` may fail if it cannot write to the default cache directory under `~/.cache`.
+  In that case, prefix commands with:
+  `XDG_CACHE_HOME=/tmp/micromamba-cache MAMBA_ROOT_PREFIX=/home/lucas/Software/micromamba-envs`
+- A known-good test command pattern is:
+  `XDG_CACHE_HOME=/tmp/micromamba-cache MAMBA_ROOT_PREFIX=/home/lucas/Software/micromamba-envs micromamba run -n oroboros python -m unittest discover -s tests`
+- The `oroboros` environment contains the required clang Python bindings, but may not contain `pytest`.
+  Prefer the repository's `unittest` commands unless `pytest` has been installed explicitly.
+
 ## Current decisions
 
 - Implement nanobind first.
@@ -956,6 +968,16 @@ The example library should grow in layers rather than trying to cover everything
 - `nanobind` or backend-focused fixtures: later examples adapted from relevant backend features, such as operators, callbacks, ownership/lifetime, STL handling, and other binding-specific patterns
 
 The current parser-first example should therefore stay intentionally modest and align with what Oroboros can already materialize into the semantic model. As parser and emitter support expands, `cosmos` can be extended with more themed declarations in parallel.
+
+The project notes and fixtures should be kept in sync with the actual implementation. In practice, this means periodically checking and updating together:
+
+- `AGENTS.md`
+- `TODO.md`
+- the lightweight docs in `docs/`
+- the unit tests
+- the `example/` library and its parser/generator flow
+
+This should be treated as a regular maintenance checkpoint rather than something to re-scan mechanically after every tiny change. When a feature, API, parser capability, or workflow meaningfully changes, take a moment to confirm that these companion files and fixtures still describe and exercise the current reality.
 
 ## Reference sources
 

@@ -13,7 +13,21 @@ micromamba env create -f environment.yml
 Activate it:
 
 ```bash
-micromamba activate oroboros-clang
+micromamba activate oroboros
+```
+
+Or run commands inside it without activation:
+
+```bash
+micromamba run -n oroboros python -V
+```
+
+If `micromamba` cannot write to its default cache directory, use a writable cache path explicitly:
+
+```bash
+XDG_CACHE_HOME=/tmp/micromamba-cache \
+MAMBA_ROOT_PREFIX=/home/lucas/Software/micromamba-envs \
+micromamba run -n oroboros python -V
 ```
 
 Install the local repository in editable mode inside that environment:
@@ -73,8 +87,32 @@ Run the current header-discovery tests:
 PYTHONPATH=src python3 -m unittest tests.test_find_headers tests.test_main
 ```
 
+Run the parser tests inside the micromamba environment:
+
+```bash
+XDG_CACHE_HOME=/tmp/micromamba-cache \
+MAMBA_ROOT_PREFIX=/home/lucas/Software/micromamba-envs \
+micromamba run -n oroboros python -m unittest tests.test_parse
+```
+
 Run all unittest-based tests in the repository:
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests
+```
+
+Run the full test suite inside the micromamba environment:
+
+```bash
+XDG_CACHE_HOME=/tmp/micromamba-cache \
+MAMBA_ROOT_PREFIX=/home/lucas/Software/micromamba-envs \
+micromamba run -n oroboros python -m unittest discover -s tests
+```
+
+## Example code
+
+```bash
+cd oroboros/example
+cmake -B build/ && cmake --build build/
+./build/cosmos_app
 ```
