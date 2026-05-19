@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 from .comment import CppDoc, PyDoc
 from .element import CppElement
+from .lookup import make_named_child_view
 from .location import CppLocationInfo
 from .operator_ import CppOperator, CppOperatorBind
 from .type import CppType
@@ -125,3 +126,9 @@ class CppFunction(CppElement):
         """Attach one parameter to this free function."""
 
         return self._append_child(self.parameters, parameter)
+
+    @property
+    def parameter(self):
+        """Return a name-indexed view over this function's parameters."""
+
+        return make_named_child_view(self, "parameters")

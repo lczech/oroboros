@@ -3,9 +3,12 @@ from __future__ import annotations
 """Lookup helpers for finding semantic model elements inside one subtree."""
 
 from dataclasses import fields as dataclass_fields
-from typing import Iterator
+from typing import Generic, Iterator, TypeVar
 
 from .element import CppElement
+
+
+ElementT = TypeVar("ElementT", bound=CppElement)
 
 
 # ==================================================================================================
@@ -18,7 +21,7 @@ class ModelLookupError(LookupError):
 
 
 # ==================================================================================================
-#     Public Lookup
+#     Find Functions
 # ==================================================================================================
 
 
@@ -86,6 +89,148 @@ def find_one_by_name(
         query_description=f"name {name!r}",
         types=types,
     )
+
+
+def find(
+    scope: CppElement,
+    query: str,
+    *,
+    types: type[CppElement] | tuple[type[CppElement], ...] | None = None,
+) -> CppElement:
+    """Find exactly one element by either qualified or unqualified semantic name."""
+
+    if "::" in query:
+        return find_one_by_qualified_name(scope, query, types=types)
+    return find_one_by_name(scope, query, types=types)
+
+
+def find_all(
+    scope: CppElement,
+    query: str,
+    *,
+    types: type[CppElement] | tuple[type[CppElement], ...] | None = None,
+) -> list[CppElement]:
+    """Find all elements by either qualified or unqualified semantic name."""
+
+    if "::" in query:
+        return find_all_by_qualified_name(scope, query, types=types)
+    return find_all_by_name(scope, query, types=types)
+
+
+def find_direct_child(
+    scope: CppElement,
+    name: str,
+) -> CppElement | list[CppElement]:
+    """Find one direct child by semantic name across all immediate child collections."""
+
+    matches = [
+        child
+        for _, child in _iter_direct_child_nodes(scope, scope._describe_node())
+        if child.name == name
+    ]
+    if not matches:
+        raise ModelLookupError(
+            f"No direct child named {name!r} exists under {scope._describe_node()}."
+        )
+
+    if len(matches) == 1:
+        return matches[0]
+
+    if _all_overloadable(matches):
+        return matches
+
+    return _require_one_match(
+        scope,
+        matches,
+        query_description=f"direct child name {name!r}",
+        types=None,
+    )
+
+
+def direct_child_names(scope: CppElement) -> list[str]:
+    """Return the unique names of all direct child declarations under one scope."""
+
+    return list(
+        dict.fromkeys(
+            child.name
+            for _, child in _iter_direct_child_nodes(scope, scope._describe_node())
+        )
+    )
+
+
+# ==================================================================================================
+#     Name Views
+# ==================================================================================================
+
+
+def make_named_child_view(
+    owner: CppElement,
+    field_name: str,
+    *,
+    return_many: bool = False,
+) -> NamedChildView[CppElement]:
+    """Create one name-indexed view over one owned child collection."""
+
+    return NamedChildView(owner, field_name, return_many=return_many)
+
+
+class NamedChildView(Generic[ElementT]):
+    """Provide lightweight name-indexed access over one owned child collection."""
+
+    def __init__(
+        self,
+        owner: CppElement,
+        field_name: str,
+        *,
+        return_many: bool = False,
+    ) -> None:
+        self._owner = owner
+        self._field_name = field_name
+        self._return_many = return_many
+
+    def __getitem__(self, name: str) -> ElementT | list[ElementT]:
+        """Return one child by name, or all overloads when configured to do so."""
+
+        matches = self._matches_for_name(name)
+        if self._return_many:
+            if not matches:
+                raise ModelLookupError(
+                    f"No child named {name!r} exists in {self._owner._describe_node()}.{self._field_name}."
+                )
+            return matches
+
+        return _require_one_match(
+            self._owner,
+            matches,
+            query_description=f"{self._field_name.rstrip('s')} name {name!r}",
+            types=None,
+        )
+
+    def __contains__(self, name: object) -> bool:
+        """Return whether the owned collection contains at least one child by this name."""
+
+        if not isinstance(name, str):
+            return False
+        return bool(self._matches_for_name(name))
+
+    def keys(self) -> list[str]:
+        """Return the unique child names present in this view."""
+
+        return list(dict.fromkeys(child.name for child in self._items()))
+
+    def _items(self) -> list[ElementT]:
+        """Return the underlying owned child list."""
+
+        return list(getattr(self._owner, self._field_name, []))
+
+    def _matches_for_name(self, name: str) -> list[ElementT]:
+        """Return all child elements whose semantic name matches exactly."""
+
+        return [
+            child
+            for child in self._items()
+            if child.name == name
+        ]
 
 
 # ==================================================================================================
@@ -229,3 +374,20 @@ def _describe_types(
         type_names = ", ".join(type_.__name__ for type_ in types)
         return f" matching ({type_names})"
     return f" matching {types.__name__}"
+
+
+def _all_overloadable(elements: list[CppElement]) -> bool:
+    """Return whether all given elements belong to one overloadable declaration kind."""
+
+    if not elements:
+        return False
+
+    first_type = type(elements[0])
+    if any(type(element) is not first_type for element in elements):
+        return False
+
+    from .function import CppFunction
+    from .member import CppConstructor, CppMethod
+    from .template_ import CppFunctionTemplate
+
+    return issubclass(first_type, (CppFunction, CppMethod, CppConstructor, CppFunctionTemplate))

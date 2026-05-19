@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 from .comment import CppDoc, PyDoc
 from .element import CppElement
+from .lookup import make_named_child_view
 from .location import CppLocationInfo
 from .type import CppType
 from .visibility import CppVisibility
@@ -114,3 +115,9 @@ class CppEnum(CppElement):
         """Attach one enumerator to this enum."""
 
         return self._append_child(self.enumerators, enumerator)
+
+    @property
+    def enumerator(self):
+        """Return a name-indexed view over this enum's enumerators."""
+
+        return make_named_child_view(self, "enumerators")

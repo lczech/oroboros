@@ -131,6 +131,45 @@ class CppElement:
 
         return find_one_by_name(self, name, types=types)
 
+    def find(
+        self,
+        query: str,
+        *,
+        types: type["CppElement"] | tuple[type["CppElement"], ...] | None = None,
+    ) -> "CppElement":
+        """Find exactly one descendant by qualified or unqualified semantic name."""
+
+        from .lookup import find
+
+        return find(self, query, types=types)
+
+    def find_all(
+        self,
+        query: str,
+        *,
+        types: type["CppElement"] | tuple[type["CppElement"], ...] | None = None,
+    ) -> list["CppElement"]:
+        """Find all descendants by qualified or unqualified semantic name."""
+
+        from .lookup import find_all
+
+        return find_all(self, query, types=types)
+
+    def __getitem__(self, name: str) -> "CppElement" | list["CppElement"]:
+        """Resolve one direct child by name, returning overload groups as lists."""
+
+        from .lookup import find_direct_child
+
+        return find_direct_child(self, name)
+
+    @property
+    def element_names(self) -> list[str]:
+        """Return the unique names of all direct child elements for discovery."""
+
+        from .lookup import direct_child_names
+
+        return direct_child_names(self)
+
     def validate_tree(self) -> None:
         """Validate owner links and direct-child containment across this subtree."""
 

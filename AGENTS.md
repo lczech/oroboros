@@ -126,6 +126,29 @@ This structure should make it natural to:
 - compute inherited defaults by walking upward
 - emit code in scope-respecting order
 
+For interactive Python usage, the model should also remain easy to navigate
+without forcing users to remember many specialized helper names. In addition
+to typed child lists such as `.namespaces`, `.classes`, `.functions`, and
+`.methods`, scope-like nodes may expose lightweight name-indexed navigation and
+discovery helpers on top of those lists.
+
+The intended interaction style is:
+
+- direct-child navigation via `scope["name"]`, returning one direct child when
+  unique and a list for overloadable direct-child groups such as functions,
+  methods, and constructors
+- typed direct-child views such as `module.namespace["demo"]`,
+  `namespace.class_["Widget"]`, or `class_.method["size"]`
+- subtree search via generic helpers such as `find()` and `find_all()`, in
+  addition to the more explicit `find_one_by_name()` and
+  `find_one_by_qualified_name()` variants
+- direct-child discoverability via `scope.element_names` for quick interactive
+  inspection of available names at the current level
+
+These helpers should stay as a user-facing layer on top of the existing list
+storage. The underlying model should still preserve declaration order in typed
+lists rather than replacing those collections with dictionaries.
+
 ### Parsing approach
 
 The parser should stay narrow in responsibility:

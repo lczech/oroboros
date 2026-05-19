@@ -200,6 +200,72 @@ class ModelScaffoldTest(unittest.TestCase):
             cls,
         )
 
+    def test_named_child_views_navigate_unique_and_overloadable_collections(self) -> None:
+        method_a = CppMethod(name="foo")
+        method_b = CppMethod(name="foo")
+        field = CppField(name="size")
+        enum_ = CppEnum(name="Kind", enumerators=[CppEnumerator(name="primary")])
+        cls = CppClass(
+            name="Widget",
+            methods=[method_a, method_b],
+            fields=[field],
+            enums=[enum_],
+        )
+        function_a = CppFunction(name="make_widget")
+        function_b = CppFunction(name="make_widget")
+        namespace = CppNamespace(name="demo", classes=[cls], functions=[function_a, function_b])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        self.assertIs(module.namespace["demo"], namespace)
+        self.assertIs(namespace.class_["Widget"], cls)
+        self.assertIs(cls.field["size"], field)
+        self.assertIs(cls.enum["Kind"], enum_)
+        self.assertIs(enum_.enumerator["primary"], enum_.enumerators[0])
+        self.assertEqual(namespace.function["make_widget"], [function_a, function_b])
+        self.assertEqual(cls.method["foo"], [method_a, method_b])
+
+    def test_named_child_views_raise_on_missing_or_ambiguous_unique_names(self) -> None:
+        namespace_a = CppNamespace(name="demo")
+        namespace_b = CppNamespace(name="demo")
+        module = CppModule(name="bindings", namespaces=[namespace_a, namespace_b])
+
+        with self.assertRaises(ModelLookupError):
+            _ = module.namespace["demo"]
+
+        with self.assertRaises(ModelLookupError):
+            _ = module.function["missing"]
+
+    def test_generic_navigation_supports_chained_direct_child_lookup(self) -> None:
+        method = CppMethod(name="size")
+        cls = CppClass(name="Widget", methods=[method])
+        inner = CppNamespace(name="inner", classes=[cls])
+        outer = CppNamespace(name="outer", namespaces=[inner])
+        module = CppModule(name="bindings", namespaces=[outer])
+
+        self.assertIs(module["outer"], outer)
+        self.assertIs(module["outer"]["inner"], inner)
+        self.assertIs(module["outer"]["inner"]["Widget"], cls)
+        self.assertIs(module["outer"]["inner"]["Widget"]["size"], method)
+
+    def test_generic_navigation_returns_lists_for_overloadable_direct_children(self) -> None:
+        method_a = CppMethod(name="size")
+        method_b = CppMethod(name="size")
+        cls = CppClass(name="Widget", methods=[method_a, method_b])
+
+        self.assertEqual(cls["size"], [method_a, method_b])
+
+    def test_element_names_and_generic_find_helpers_improve_discovery(self) -> None:
+        method = CppMethod(name="size")
+        cls = CppClass(name="Widget", methods=[method])
+        namespace = CppNamespace(name="demo", classes=[cls])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        self.assertEqual(module.element_names, ["demo"])
+        self.assertEqual(namespace.element_names, ["Widget"])
+        self.assertEqual(cls.element_names, ["size"])
+        self.assertIs(module.find("demo::Widget"), cls)
+        self.assertEqual(module.find_all("size"), [method])
+
     def test_lookup_helpers_raise_on_missing_or_ambiguous_matches(self) -> None:
         cls = CppClass(
             name="Widget",

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from .comment import CppDoc, PyDoc
 from .element import CppElement
+from .lookup import make_named_child_view
 
 if TYPE_CHECKING:
     from .alias import CppAliasInfo
@@ -165,3 +166,39 @@ class CppModule(CppElement):
         """Attach one top-level enum to this semantic module."""
 
         return self._append_child(self.enums, enum)
+
+    @property
+    def namespace(self):
+        """Return a name-indexed view over top-level namespaces."""
+
+        return make_named_child_view(self, "namespaces")
+
+    @property
+    def class_(self):
+        """Return a name-indexed view over top-level classes."""
+
+        return make_named_child_view(self, "classes")
+
+    @property
+    def class_template(self):
+        """Return a name-indexed view over top-level class templates."""
+
+        return make_named_child_view(self, "class_templates")
+
+    @property
+    def function(self):
+        """Return a name-indexed view over top-level free functions."""
+
+        return make_named_child_view(self, "functions", return_many=True)
+
+    @property
+    def function_template(self):
+        """Return a name-indexed view over top-level function templates."""
+
+        return make_named_child_view(self, "function_templates", return_many=True)
+
+    @property
+    def enum(self):
+        """Return a name-indexed view over top-level enums."""
+
+        return make_named_child_view(self, "enums")

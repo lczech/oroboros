@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from .comment import CppDoc, PyDoc
 from .element import CppElement
 from .function import CppFunctionBindFacet, CppFunctionCppFacet, CppFunctionPyFacet, CppParameter
+from .lookup import make_named_child_view
 from .location import CppLocationInfo
 from .visibility import CppVisibility
 
@@ -98,6 +99,12 @@ class CppMethod(CppElement):
 
         return self._append_child(self.parameters, parameter)
 
+    @property
+    def parameter(self):
+        """Return a name-indexed view over this method's parameters."""
+
+        return make_named_child_view(self, "parameters")
+
 
 @dataclass(slots=True)
 class CppConstructor(CppElement):
@@ -117,3 +124,9 @@ class CppConstructor(CppElement):
         """Attach one parameter to this constructor."""
 
         return self._append_child(self.parameters, parameter)
+
+    @property
+    def parameter(self):
+        """Return a name-indexed view over this constructor's parameters."""
+
+        return make_named_child_view(self, "parameters")

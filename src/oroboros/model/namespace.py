@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from .comment import CppDoc, PyDoc
 from .element import CppElement
+from .lookup import make_named_child_view
 from .location import CppLocationInfo
 
 if TYPE_CHECKING:
@@ -154,3 +155,39 @@ class CppNamespace(CppElement):
         """Attach one enum declared directly in this namespace."""
 
         return self._append_child(self.enums, enum)
+
+    @property
+    def namespace(self):
+        """Return a name-indexed view over nested namespaces."""
+
+        return make_named_child_view(self, "namespaces")
+
+    @property
+    def class_(self):
+        """Return a name-indexed view over classes declared in this namespace."""
+
+        return make_named_child_view(self, "classes")
+
+    @property
+    def class_template(self):
+        """Return a name-indexed view over class templates declared in this namespace."""
+
+        return make_named_child_view(self, "class_templates")
+
+    @property
+    def function(self):
+        """Return a name-indexed view over free functions declared in this namespace."""
+
+        return make_named_child_view(self, "functions", return_many=True)
+
+    @property
+    def function_template(self):
+        """Return a name-indexed view over function templates declared in this namespace."""
+
+        return make_named_child_view(self, "function_templates", return_many=True)
+
+    @property
+    def enum(self):
+        """Return a name-indexed view over enums declared in this namespace."""
+
+        return make_named_child_view(self, "enums")

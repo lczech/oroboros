@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Literal
 
 from .comment import CppDoc, PyDoc
 from .element import CppElement
+from .lookup import make_named_child_view
 from .location import CppLocationInfo
 from .type import CppType
 from .visibility import CppVisibility
@@ -216,6 +217,48 @@ class CppClassMembers(CppElement):
         """Attach one nested function template family to this class scope."""
 
         return self._append_child(self.function_templates, template)
+
+    @property
+    def class_(self):
+        """Return a name-indexed view over nested classes."""
+
+        return make_named_child_view(self, "classes")
+
+    @property
+    def constructor(self):
+        """Return a name-indexed view over constructors declared in this class."""
+
+        return make_named_child_view(self, "constructors", return_many=True)
+
+    @property
+    def method(self):
+        """Return a name-indexed view over methods declared in this class."""
+
+        return make_named_child_view(self, "methods", return_many=True)
+
+    @property
+    def field(self):
+        """Return a name-indexed view over fields declared in this class."""
+
+        return make_named_child_view(self, "fields")
+
+    @property
+    def enum(self):
+        """Return a name-indexed view over nested enums declared in this class."""
+
+        return make_named_child_view(self, "enums")
+
+    @property
+    def class_template(self):
+        """Return a name-indexed view over nested class templates."""
+
+        return make_named_child_view(self, "class_templates")
+
+    @property
+    def function_template(self):
+        """Return a name-indexed view over nested function templates."""
+
+        return make_named_child_view(self, "function_templates", return_many=True)
 
 
 @dataclass(slots=True)
