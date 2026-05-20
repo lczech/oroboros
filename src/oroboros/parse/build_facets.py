@@ -2,20 +2,25 @@ from __future__ import annotations
 
 """Build parsed `.cpp` facet data from libclang cursors."""
 
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from clang.cindex import CursorKind
-
-from ..model import (
-    CppClassBase,
-    CppLocationInfo,
-    CppNonTypeTemplateParameter,
-    CppTemplateParameter,
-    CppTemplateTemplateParameter,
-    CppTypeTemplateParameter,
-    CppVisibility,
-    SourceLocation,
+from ..model import CppClassBase, CppLocationInfo
+from .build_templates import build_template_parameters
+from .cursor_data import (
+    cursor_alias_kind,
+    cursor_alias_target_type,
+    cursor_bool_method,
+    cursor_class_kind,
+    cursor_enum_underlying_type,
+    cursor_enum_value_spelling,
+    cursor_is_definition,
+    cursor_is_noexcept,
+    cursor_is_scoped_enum,
+    cursor_raw_comment,
+    cursor_source_location,
+    cursor_visibility,
+    is_base_specifier_cursor,
+    is_struct_cursor,
 )
 from .types import build_cpp_type
 
@@ -28,14 +33,11 @@ if TYPE_CHECKING:
 # ==================================================================================================
 
 
-# ------------------------------------------------------------------------------
-#     Declaration Facets
-# ------------------------------------------------------------------------------
-
-
 def build_namespace_cpp_facet(
     cursor: Any,
 ) -> Any:
+    """Build one parsed namespace facet from one clang cursor."""
+
     from ..model import CppNamespaceCppFacet
 
     return CppNamespaceCppFacet(
@@ -50,6 +52,8 @@ def build_alias_cpp_facet(
     *,
     context: BuildContext | None = None,
 ) -> Any:
+    """Build one parsed alias facet from one clang cursor."""
+
     from ..model import CppAliasCppFacet
 
     return CppAliasCppFacet(
@@ -70,6 +74,8 @@ def build_class_cpp_facet(
     *,
     context: BuildContext | None = None,
 ) -> Any:
+    """Build one parsed class/struct facet from one clang cursor."""
+
     from ..model import CppClassCppFacet
 
     return CppClassCppFacet(
@@ -87,6 +93,8 @@ def build_class_template_decl_cpp_facet(
     *,
     context: BuildContext | None = None,
 ) -> Any:
+    """Build one parsed generic class-template declaration facet."""
+
     from ..model import CppClassTemplateDeclCppFacet
 
     return CppClassTemplateDeclCppFacet(
@@ -105,6 +113,8 @@ def build_enum_cpp_facet(
     *,
     context: BuildContext | None = None,
 ) -> Any:
+    """Build one parsed enum facet from one clang cursor."""
+
     from ..model import CppEnumCppFacet
 
     return CppEnumCppFacet(
@@ -123,6 +133,8 @@ def build_enum_cpp_facet(
 def build_enumerator_cpp_facet(
     cursor: Any,
 ) -> Any:
+    """Build one parsed enumerator facet from one clang cursor."""
+
     from ..model import CppEnumeratorCppFacet
 
     return CppEnumeratorCppFacet(
@@ -138,6 +150,8 @@ def build_function_cpp_facet(
     *,
     context: BuildContext | None = None,
 ) -> Any:
+    """Build one parsed free-function facet from one clang cursor."""
+
     from ..model import CppFunctionCppFacet
 
     return CppFunctionCppFacet(
@@ -157,6 +171,8 @@ def build_function_template_decl_cpp_facet(
     *,
     context: BuildContext | None = None,
 ) -> Any:
+    """Build one parsed generic function-template declaration facet."""
+
     from ..model import CppFunctionTemplateDeclCppFacet
 
     return CppFunctionTemplateDeclCppFacet(
@@ -181,6 +197,8 @@ def build_method_cpp_facet(
     *,
     context: BuildContext | None = None,
 ) -> Any:
+    """Build one parsed method facet from one clang cursor."""
+
     from ..model import CppMethodCppFacet
 
     return CppMethodCppFacet(
@@ -203,6 +221,8 @@ def build_method_cpp_facet(
 def build_constructor_cpp_facet(
     cursor: Any,
 ) -> Any:
+    """Build one parsed constructor facet from one clang cursor."""
+
     from ..model import CppConstructorCppFacet
 
     return CppConstructorCppFacet(
@@ -219,6 +239,8 @@ def build_field_cpp_facet(
     *,
     context: BuildContext | None = None,
 ) -> Any:
+    """Build one parsed field facet from one clang cursor."""
+
     from ..model import CppFieldCppFacet
 
     return CppFieldCppFacet(
@@ -239,6 +261,8 @@ def build_parameter_cpp_facet(
     *,
     context: BuildContext | None = None,
 ) -> Any:
+    """Build one parsed parameter facet from one clang cursor."""
+
     from ..model import CppParameterCppFacet
 
     return CppParameterCppFacet(
@@ -251,67 +275,9 @@ def build_parameter_cpp_facet(
     )
 
 
-# ------------------------------------------------------------------------------
-#     Template Parameter Values
-# ------------------------------------------------------------------------------
-
-
-def build_template_parameters(
-    cursor: Any,
-    *,
-    context: BuildContext | None = None,
-) -> list[CppTemplateParameter]:
-    """Collect direct template parameter declarations from one template cursor."""
-
-    parameters: list[CppTemplateParameter] = []
-    for child_cursor in cursor.get_children():
-        parameter = build_template_parameter(child_cursor, context=context)
-        if parameter is not None:
-            parameters.append(parameter)
-    return parameters
-
-
-def build_template_parameter(
-    cursor: Any,
-    *,
-    context: BuildContext | None = None,
-) -> CppTemplateParameter | None:
-    """Convert one libclang template-parameter cursor into the semantic model."""
-
-    token_spellings = cursor_token_spellings(cursor)
-    is_parameter_pack = "..." in token_spellings
-
-    if getattr(cursor, "kind", None) == CursorKind.TEMPLATE_TYPE_PARAMETER:
-        keyword = "class" if "class" in token_spellings else "typename"
-        return CppTypeTemplateParameter(
-            name=cursor.spelling,
-            keyword=keyword,
-            is_parameter_pack=is_parameter_pack,
-        )
-
-    if getattr(cursor, "kind", None) == CursorKind.TEMPLATE_NON_TYPE_PARAMETER:
-        return CppNonTypeTemplateParameter(
-            name=cursor.spelling,
-            type=build_cpp_type(
-                getattr(cursor, "type", None),
-                context=context,
-            ),
-            is_parameter_pack=is_parameter_pack,
-        )
-
-    if getattr(cursor, "kind", None) == CursorKind.TEMPLATE_TEMPLATE_PARAMETER:
-        return CppTemplateTemplateParameter(
-            name=cursor.spelling,
-            parameters=build_template_parameters(cursor, context=context),
-            is_parameter_pack=is_parameter_pack,
-        )
-
-    return None
-
-
-# ------------------------------------------------------------------------------
-#     Source Locations and Provenance
-# ------------------------------------------------------------------------------
+# ==================================================================================================
+#     Source Locations And Relationships
+# ==================================================================================================
 
 
 def build_location_info(cursor: Any) -> CppLocationInfo:
@@ -326,202 +292,6 @@ def build_location_info(cursor: Any) -> CppLocationInfo:
         declarations=[location],
         definition=location if is_definition else None,
     )
-
-
-# ==================================================================================================
-#     Cursor Data Extraction
-# ==================================================================================================
-
-
-def cursor_source_location(cursor: Any) -> SourceLocation | None:
-    """Convert one clang cursor location into a semantic source location."""
-
-    location = getattr(cursor, "location", None)
-    if location is None:
-        return None
-
-    file_object = getattr(location, "file", None)
-    if file_object is None:
-        return None
-
-    file_name = getattr(file_object, "name", None)
-    if file_name is None:
-        return None
-
-    return SourceLocation(
-        file=Path(file_name).resolve(),
-        line=int(getattr(location, "line", 0)),
-        column=int(getattr(location, "column", 0)),
-    )
-
-
-def cursor_is_from_active_header(cursor: Any, active_headers: set[Path]) -> bool:
-    """Return whether one cursor belongs to one of the selected active headers."""
-
-    location = cursor_source_location(cursor)
-    if location is None:
-        return False
-    return location.file.resolve() in active_headers
-
-
-def cursor_kind_name(cursor: Any) -> str:
-    """Return one normalized libclang cursor-kind name for reporting."""
-
-    kind = getattr(cursor, "kind", None)
-    name = getattr(kind, "name", None)
-    if name is not None:
-        return str(name)
-    return str(kind)
-
-
-def cursor_token_spellings(cursor: Any) -> list[str]:
-    """Return the token spellings directly attached to one clang cursor."""
-
-    get_tokens = getattr(cursor, "get_tokens", None)
-    if not callable(get_tokens):
-        return []
-    return [token.spelling for token in get_tokens()]
-
-
-def cursor_alias_target_type(cursor: Any) -> Any:
-    """Return one alias cursor's underlying target type when libclang exposes it."""
-
-    target = getattr(cursor, "underlying_typedef_type", None)
-    if callable(target):
-        return target()
-    return target
-
-
-def cursor_alias_kind(cursor: Any) -> str | None:
-    """Return whether one alias cursor came from `using` or `typedef` syntax."""
-
-    kind = getattr(cursor, "kind", None)
-    if kind == CursorKind.TYPE_ALIAS_DECL:
-        return "using"
-    if kind == CursorKind.TYPEDEF_DECL:
-        return "typedef"
-    return None
-
-
-def cursor_raw_comment(cursor: Any) -> str | None:
-    """Return one raw clang comment block when libclang exposes it."""
-
-    raw_comment = getattr(cursor, "raw_comment", None)
-    if raw_comment is None:
-        return None
-
-    normalized = str(raw_comment).strip()
-    if not normalized:
-        return None
-    return normalized
-
-
-def cursor_usr(cursor: Any) -> str | None:
-    """Return one cursor USR when libclang exposes one for the entity."""
-
-    get_usr = getattr(cursor, "get_usr", None)
-    if not callable(get_usr):
-        return None
-
-    usr = get_usr()
-    if not usr:
-        return None
-    return str(usr)
-
-
-def cursor_visibility(cursor: Any) -> CppVisibility | None:
-    """Return one semantic C++ visibility value for one clang cursor."""
-
-    access_specifier = getattr(cursor, "access_specifier", None)
-    access_name = getattr(access_specifier, "name", None)
-    if access_name == "PUBLIC":
-        return CppVisibility.PUBLIC
-    if access_name == "PROTECTED":
-        return CppVisibility.PROTECTED
-    if access_name == "PRIVATE":
-        return CppVisibility.PRIVATE
-    return None
-
-
-def cursor_bool_method(cursor: Any, method_name: str) -> bool:
-    """Call one optional boolean libclang cursor method safely."""
-
-    method = getattr(cursor, method_name, None)
-    if callable(method):
-        return bool(method())
-    return False
-
-
-def cursor_is_definition(cursor: Any) -> bool:
-    """Return whether one clang cursor is a full definition."""
-
-    return cursor_bool_method(cursor, "is_definition")
-
-
-def cursor_is_noexcept(cursor: Any) -> bool:
-    """Return whether one clang cursor represents a noexcept callable."""
-
-    exception_spec_kind = getattr(cursor, "exception_specification_kind", None)
-    kind_name = getattr(exception_spec_kind, "name", None)
-    return kind_name in {"BASIC_NOEXCEPT", "COMPUTED_NOEXCEPT"}
-
-
-def cursor_is_scoped_enum(cursor: Any) -> bool:
-    """Return whether one clang enum cursor is scoped."""
-
-    is_scoped_enum = getattr(cursor, "is_scoped_enum", None)
-    if callable(is_scoped_enum):
-        return bool(is_scoped_enum())
-    return False
-
-
-def cursor_enum_underlying_type(cursor: Any) -> Any:
-    """Return one enum cursor's underlying type when libclang exposes it."""
-
-    enum_type = getattr(cursor, "enum_type", None)
-    if enum_type is not None:
-        return enum_type
-
-    underlying_enum_type = getattr(cursor, "underlying_enum_type", None)
-    if callable(underlying_enum_type):
-        return underlying_enum_type()
-
-    return None
-
-
-def cursor_enum_value_spelling(cursor: Any) -> str | None:
-    """Return one enumerator cursor value in textual form when available."""
-
-    enum_value = getattr(cursor, "enum_value", None)
-    if enum_value is None:
-        return None
-    return str(enum_value)
-
-
-def is_struct_cursor(cursor: Any) -> bool:
-    """Return whether one cursor is specifically a struct declaration."""
-
-    return getattr(cursor, "kind", None) == CursorKind.STRUCT_DECL
-
-
-def cursor_class_kind(cursor: Any) -> str:
-    """Return whether one class-like cursor uses `class` or `struct` syntax."""
-
-    if is_struct_cursor(cursor):
-        return "struct"
-    if getattr(cursor, "kind", None) == CursorKind.CLASS_DECL:
-        return "class"
-
-    token_spellings = cursor_token_spellings(cursor)
-    if "struct" in token_spellings:
-        return "struct"
-    return "class"
-
-
-def is_base_specifier_cursor(cursor: Any) -> bool:
-    """Return whether one cursor is a class-base specifier helper cursor."""
-
-    return getattr(cursor, "kind", None) == CursorKind.CXX_BASE_SPECIFIER
 
 
 def build_class_bases(

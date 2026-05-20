@@ -92,8 +92,10 @@ prioritized engineering work here.
   Families, declarations, observed instances, and selected instances exist,
   but substitution/specialization behavior is still not complete. The current
   spelling-based template fallback should stay minimal; qualifier and wrapper
-  association in parsed template-argument spellings is brittle and should
-  eventually give way to clang-driven synthetic instantiation.
+  association in parsed template-argument spellings is brittle. The main path
+  should move toward emitter-side binding helper templates instantiated once
+  per selected argument list, with deeper clang-driven specialization parsing
+  only as an optional later refinement.
 
 ### Next parser/model slices
 
@@ -104,10 +106,9 @@ prioritized engineering work here.
   Raw comments are preserved, but they still need to flow into the richer doc
   model, including parameter-doc extraction and later Python-facing doc
   translation.
-- Clang-driven selected template instantiation.
-  Prefer synthetic instantiation probes or aliases in the parse translation
-  unit so clang materializes configured class/function template instances for
-  us, instead of expanding Python-side manual specialization logic.
+- Template instance selection ergonomics.
+  Selected template instances should become easy to request and customize in
+  the model, without depending on fake specialized declaration trees.
 
 ## Binding Policy Model
 
@@ -162,6 +163,9 @@ prioritized engineering work here.
 
 - Nanobind emitter implementation.
 - Pybind11 emitter implementation after the nanobind pipeline is stable.
+- Template-family emission via generated C++ binding helper templates.
+  Emit one generic binding helper per template family and instantiate it once
+  per selected argument list, so the C++ compiler performs specialization.
 - Incremental write behavior for generated files.
   Write via temp files and replace only when content changes.
 - Namespace-to-Python-module emission behavior.
@@ -169,15 +173,6 @@ prioritized engineering work here.
 
 ## Parser / Project Configuration
 
-- Current helper/configuration fixes from review.
-  - `find_included_headers()` should honor its own relative-path contract for
-    `header_file` by resolving relative root headers against `base_dir`.
-  - `update_activation_header()` should stop rewriting files when content is
-    unchanged, so activation-header timestamps remain stable for incremental
-    builds.
-  - Toolchain autodetection should probe only the missing pieces
-    (`resource_dir` and/or `system_include_dirs`) instead of always requiring
-    the full compiler capability set.
 - Revisit parser builder helper layering once the parse stage stabilizes.
   In particular, check whether the `build_*_cpp_facet()` helpers still buy
   enough readability over direct construction, and whether `clang_walk.py`

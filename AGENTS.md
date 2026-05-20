@@ -95,8 +95,9 @@ As this is a lot of functionality, we will build the Oroboros code incrementally
 - Model template families, generic template declarations, and template instances separately.
   A `CppClassTemplate` or `CppFunctionTemplate` groups one generic parsed declaration in `.declaration`, any selected concrete `.instances`, and `.defaults` that apply to those instances and their descendants.
   Template instances shall be first-class customizable objects with their own `.cpp`, `.bind`, `.py`, and `.defaults`.
-  Selected template instances should preferably be materialized through clang-driven synthetic instantiation requests in the generated translation unit, rather than by manual Python-side template-type substitution across copied model subtrees.
-  Manual subtree specialization should be treated as a narrow fallback only if a concrete clang-based path proves insufficient for a specific case.
+  Selected template instances should primarily be treated as user-selected binding targets attached to one generic declaration.
+  Emission should prefer generated C++ binding helper templates that are instantiated once per selected argument list, so the C++ compiler performs the real specialization work.
+  Full clang-materialized specialized subtrees are not required for the main emitter design and should only be pursued later if a concrete need for richer per-instance semantic introspection proves it worthwhile.
 - Prefer external C++ add-on hooks for custom bindings, while still allowing Python-driven model customization.
 - Mirror C++ namespaces as Python submodules within a single compiled extension module.
 - Make the handling of the top-level namespace configurable.
@@ -233,8 +234,12 @@ The current parser internals are also intentionally split into:
   parser-local build state such as the active-header set and USR map
 - `clang_walk.py` for cursor traversal, dispatch, namespace reopening, skipped
   kind tracking, and USR-based node reuse
-- `build_facets.py` for cursor-to-`.cpp` facet extraction and lower-level
-  cursor data helpers
+- `cursor_data.py` for low-level libclang cursor helpers
+- `build_facets.py` for cursor-to-`.cpp` facet extraction
+- `build_templates.py` for template-parameter extraction
+- `node_registry.py` for USR-based node attachment/reuse and namespace reopening
+- `merge_declarations.py` for redeclaration merging and parser warnings
+- `process_declarations.py` for concrete declaration-kind processing
 
 Comments/docs, operators, destructor/conversion functions, `VAR_DECL`, and
 fuller parser-side redeclaration enrichment are still follow-up work.
