@@ -31,4 +31,7 @@ struct RelicInfo {
     bool consecrated {false};
 };
 
+/** Alias used to exercise namespace-level alias declarations in the example library. */
+using RealmCode = Realm;
+
 }  // namespace cosmos::types

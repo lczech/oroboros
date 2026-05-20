@@ -146,7 +146,7 @@ def _validate_element_semantics(
     _validate_owner_kind(node, path, errors)
     _validate_constructor_name(node, path, errors)
     _validate_method_like_flags(node, path, errors)
-    _validate_alias_metadata(node, path, errors)
+    _validate_alias_target(node, path, errors)
     _validate_enumerator_value_sanity(node, path, errors)
     _validate_template_family(node, path, errors)
     _validate_overload_indices(node, path, errors)
@@ -311,6 +311,7 @@ def _validate_duplicate_child_names(
         "class_templates",
         "enums",
         "fields",
+        "aliases",
         "enumerators",
     ]
 
@@ -352,6 +353,7 @@ def _validate_owner_kind(
 ) -> None:
     """Validate that selected element kinds appear only under valid owners."""
 
+    from .alias import CppAlias
     from .class_ import CppClassMembers, CppField
     from .enum import CppEnumerator
     from .function import CppFunction, CppParameter
@@ -379,6 +381,12 @@ def _validate_owner_kind(
         errors.append(
             f"{path} is owned by {owner._describe_node()}, but free functions must be "
             f"owned by the module root or a namespace."
+        )
+
+    if isinstance(node, CppAlias) and not isinstance(owner, (CppModule, CppNamespace, CppClassMembers)):
+        errors.append(
+            f"{path} is owned by {owner._describe_node()}, but aliases must be owned by "
+            f"the module root, a namespace, or a class-like declaration."
         )
 
     if isinstance(node, CppParameter) and not isinstance(
@@ -510,51 +518,20 @@ def _validate_method_like_flags(
         )
 
 
-def _validate_alias_metadata(
+def _validate_alias_target(
     node: CppElement,
     path: str,
     errors: list[str],
 ) -> None:
-    """Validate qualified alias metadata stored on one scope node."""
+    """Validate that alias declarations carry a usable target type."""
 
-    cpp_facet = getattr(node, "cpp", None)
-    aliases = getattr(cpp_facet, "aliases", None)
-    if aliases is None:
+    from .alias import CppAlias
+
+    if not isinstance(node, CppAlias):
         return
 
-    for index, alias in enumerate(aliases):
-        _validate_cpp_name(
-            alias.name,
-            f"{path}.cpp.aliases[{index}].name",
-            errors,
-        )
-
-        if alias.qualified_name is None:
-            continue
-
-        _validate_cpp_qualified_name(
-            alias.qualified_name,
-            f"{path}.cpp.aliases[{index}].qualified_name",
-            errors,
-        )
-
-        expected_qualified_name = _expected_nested_qualified_name(node.qualified_name, alias.name)
-        if alias.qualified_name != expected_qualified_name:
-            errors.append(
-                f"{path}.cpp.aliases[{index}] has qualified_name {alias.qualified_name!r}, "
-                f"expected {expected_qualified_name!r}."
-            )
-
-
-def _expected_nested_qualified_name(
-    scope_qualified_name: str,
-    name: str,
-) -> str:
-    """Build the expected qualified name of one scope-local declaration."""
-
-    if scope_qualified_name:
-        return f"{scope_qualified_name}::{name}"
-    return name
+    if node.cpp.target is None:
+        errors.append(f"{path}.cpp.target is missing for this alias declaration.")
 
 
 def _validate_template_family(
@@ -831,11 +808,13 @@ def _is_cpp_identifier(name: str) -> bool:
 def _is_valid_named_type_declaration(declaration: CppElement) -> bool:
     """Check whether one declaration node may be referenced by a named type."""
 
+    from .alias import CppAlias
     from .class_template import CppClassTemplateDecl, CppClassTemplateInstance
 
     return isinstance(
         declaration,
         (
+            CppAlias,
             CppClass,
             CppEnum,
             CppClassTemplateDecl,

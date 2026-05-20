@@ -11,7 +11,7 @@ from .lookup import make_named_child_view
 from .location import CppLocationInfo
 
 if TYPE_CHECKING:
-    from .alias import CppAliasInfo
+    from .alias import CppAlias
     from .class_ import CppClass, CppClassBindFacet
     from .enum import CppEnum, CppEnumBindFacet
     from .function import CppFunction, CppFunctionBindFacet
@@ -32,7 +32,6 @@ class CppNamespaceCppFacet:
     comment: str | None = None
     doc: CppDoc | None = None
     is_inline: bool = False
-    aliases: list["CppAliasInfo"] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -115,6 +114,8 @@ class CppNamespace(CppElement):
     function_templates: list["CppFunctionTemplate"] = field(default_factory=list)
     # Enums declared directly inside this namespace.
     enums: list["CppEnum"] = field(default_factory=list)
+    # Aliases declared directly inside this namespace.
+    aliases: list["CppAlias"] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Adopt all typed child declaration collections."""
@@ -125,6 +126,7 @@ class CppNamespace(CppElement):
         self._adopt_children(self.functions)
         self._adopt_children(self.function_templates)
         self._adopt_children(self.enums)
+        self._adopt_children(self.aliases)
 
     def add_namespace(self, namespace: "CppNamespace") -> "CppNamespace":
         """Attach one nested namespace to this namespace."""
@@ -155,6 +157,11 @@ class CppNamespace(CppElement):
         """Attach one enum declared directly in this namespace."""
 
         return self._append_child(self.enums, enum)
+
+    def add_alias(self, alias: "CppAlias") -> "CppAlias":
+        """Attach one alias declared directly in this namespace."""
+
+        return self._append_child(self.aliases, alias)
 
     @property
     def namespace(self):
@@ -191,3 +198,9 @@ class CppNamespace(CppElement):
         """Return a name-indexed view over enums declared in this namespace."""
 
         return make_named_child_view(self, "enums")
+
+    @property
+    def alias(self):
+        """Return a name-indexed view over aliases declared in this namespace."""
+
+        return make_named_child_view(self, "aliases")

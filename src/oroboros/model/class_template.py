@@ -171,6 +171,7 @@ def add_class_template_instance(
         constructors=_copy_children(declaration.constructors),
         methods=_copy_children(declaration.methods),
         fields=_copy_children(declaration.fields),
+        aliases=_copy_children(declaration.aliases),
         enums=_copy_children(declaration.enums),
         class_templates=_copy_children(declaration.class_templates),
         function_templates=_copy_children(declaration.function_templates),

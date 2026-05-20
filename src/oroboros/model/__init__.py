@@ -1,6 +1,6 @@
 """Semantic model package for Oroboros."""
 
-from .alias import CppAliasInfo, find_aliases
+from .alias import CppAlias, CppAliasBindFacet, CppAliasCppFacet, CppAliasPyFacet, find_aliases
 from .class_ import (
     CppClass,
     CppClassBase,
@@ -101,12 +101,16 @@ from .type import (
     PointerCppType,
     RValueReferenceCppType,
     TemplateInstanceCppType,
+    cpp_types_equivalent,
 )
 from .validation import ModelSemanticValidationError, validate_semantics
 from .visibility import CppVisibility
 
 __all__ = [
-    "CppAliasInfo",
+    "CppAlias",
+    "CppAliasBindFacet",
+    "CppAliasCppFacet",
+    "CppAliasPyFacet",
     "CppClass",
     "CppClassBase",
     "CppClassBindFacet",
@@ -206,6 +210,7 @@ __all__ = [
     "add_function_template_instance",
     "add_observed_template_instances",
     "build_py_doc_from_cpp_doc",
+    "cpp_types_equivalent",
     "find_aliases",
     "summarize_tree",
     "validate_semantics",

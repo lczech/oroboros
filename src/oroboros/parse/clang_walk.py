@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Callable, Iterable, TypeVar
 from clang.cindex import CursorKind
 
 from ..model import (
+    CppAlias,
     CppClass,
     CppConstructor,
     CppElement,
@@ -20,6 +21,7 @@ from ..model import (
 )
 from ..model.type import cpp_types_equivalent
 from .build_facets import (
+    build_alias_cpp_facet,
     build_class_cpp_facet,
     build_constructor_cpp_facet,
     build_enum_cpp_facet,
@@ -127,6 +129,10 @@ def _visit_declaration_cursor(
         _process_function_cursor(cursor, owner, context)
         return
 
+    if _cursor_kind_matches(cursor, CursorKind.TYPE_ALIAS_DECL, CursorKind.TYPEDEF_DECL):
+        _process_alias_cursor(cursor, owner, context)
+        return
+
     if _cursor_kind_matches(cursor, CursorKind.CXX_METHOD):
         _process_method_cursor(cursor, owner, context)
         return
@@ -218,8 +224,7 @@ def _process_enumerator_cursor(
     candidate_cpp = build_enumerator_cpp_facet(cursor)
     existing = _lookup_registered_element(cursor, context, CppEnumerator)
     if existing is not None:
-        _merge_common_cpp_fields(existing, candidate_cpp, context, cursor)
-        _merge_cpp_scalar(existing, "value_spelling", candidate_cpp.value_spelling, context, cursor)
+        _warn_unexpected_repeated_declaration(context, cursor, "enumerator")
         return
 
     enumerator = CppEnumerator(name=cursor.spelling, cpp=candidate_cpp)
@@ -258,6 +263,25 @@ def _process_function_cursor(
     if attached is not None:
         _register_element_for_cursor(cursor, attached, context)
         visit_children(cursor.get_children(), attached, context)
+
+
+def _process_alias_cursor(
+    cursor: Any,
+    owner: CppElement,
+    context: BuildContext,
+) -> None:
+    """Create or enrich one alias declaration."""
+
+    candidate_cpp = build_alias_cpp_facet(cursor, context=context)
+    existing = _lookup_registered_element(cursor, context, CppAlias)
+    if existing is not None:
+        _warn_unexpected_repeated_declaration(context, cursor, "alias")
+        return
+
+    alias = CppAlias(name=cursor.spelling, cpp=candidate_cpp)
+    attached = _attach_node(owner, "add_alias", alias)
+    if attached is not None:
+        _register_element_for_cursor(cursor, attached, context)
 
 
 def _process_method_cursor(
@@ -332,10 +356,7 @@ def _process_field_cursor(
     candidate_cpp = build_field_cpp_facet(cursor, context=context)
     existing = _lookup_registered_element(cursor, context, CppField)
     if existing is not None:
-        _merge_common_cpp_fields(existing, candidate_cpp, context, cursor)
-        _merge_cpp_scalar(existing, "type", candidate_cpp.type, context, cursor)
-        _merge_cpp_scalar(existing, "is_static", candidate_cpp.is_static, context, cursor)
-        _merge_cpp_scalar(existing, "visibility", candidate_cpp.visibility, context, cursor)
+        _warn_unexpected_repeated_declaration(context, cursor, "field")
         return
 
     field = CppField(name=cursor.spelling, cpp=candidate_cpp)
@@ -354,8 +375,7 @@ def _process_parameter_cursor(
     candidate_cpp = build_parameter_cpp_facet(cursor, context=context)
     existing = _lookup_registered_element(cursor, context, CppParameter)
     if existing is not None:
-        _merge_common_cpp_fields(existing, candidate_cpp, context, cursor, comment_field_name=None)
-        _merge_cpp_scalar(existing, "type", candidate_cpp.type, context, cursor)
+        _warn_unexpected_repeated_declaration(context, cursor, "parameter")
         return
 
     parameter = CppParameter(name=cursor.spelling, cpp=candidate_cpp)
@@ -729,6 +749,20 @@ def _record_semantic_warning(context: BuildContext, warning: str) -> None:
 
     if warning not in context.semantic_warnings:
         context.semantic_warnings.append(warning)
+
+
+def _warn_unexpected_repeated_declaration(
+    context: BuildContext,
+    cursor: Any,
+    declaration_kind: str,
+) -> None:
+    """Warn when a non-redeclarable declaration kind repeats by semantic identity."""
+
+    _record_semantic_warning(
+        context,
+        f"Encountered repeated {declaration_kind} declaration for {_describe_cursor_entity(cursor)} at "
+        f"{_format_cursor_location(cursor)}; keeping the first declaration.",
+    )
 
 
 def _describe_cursor_entity(cursor: Any) -> str:

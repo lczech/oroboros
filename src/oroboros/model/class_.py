@@ -13,7 +13,7 @@ from .type import CppType
 from .visibility import CppVisibility
 
 if TYPE_CHECKING:
-    from .alias import CppAliasInfo
+    from .alias import CppAlias
     from .enum import CppEnum, CppEnumBindFacet
     from .member import CppConstructor, CppConstructorBindFacet, CppMethod, CppMethodBindFacet
     from .template_ import CppClassTemplate, CppFunctionTemplate
@@ -48,7 +48,6 @@ class CppClassCppFacet:
     doc: CppDoc | None = None
     kind: Literal["class", "struct"] = "class"
     visibility: CppVisibility | None = None
-    aliases: list["CppAliasInfo"] = dataclass_field(default_factory=list)
     bases: list[CppClassBase] = dataclass_field(default_factory=list)
 
 
@@ -165,6 +164,8 @@ class CppClassMembers(CppElement):
     methods: list["CppMethod"] = dataclass_field(default_factory=list)
     # Fields declared directly inside this class scope.
     fields: list["CppField"] = dataclass_field(default_factory=list)
+    # Aliases declared directly inside this class scope.
+    aliases: list["CppAlias"] = dataclass_field(default_factory=list)
     # Enums declared directly inside this class scope.
     enums: list["CppEnum"] = dataclass_field(default_factory=list)
     # Nested class template families declared inside this class scope.
@@ -179,6 +180,7 @@ class CppClassMembers(CppElement):
         self._adopt_children(self.constructors)
         self._adopt_children(self.methods)
         self._adopt_children(self.fields)
+        self._adopt_children(self.aliases)
         self._adopt_children(self.enums)
         self._adopt_children(self.class_templates)
         self._adopt_children(self.function_templates)
@@ -202,6 +204,11 @@ class CppClassMembers(CppElement):
         """Attach one field to this class scope."""
 
         return self._append_child(self.fields, field)
+
+    def add_alias(self, alias: "CppAlias") -> "CppAlias":
+        """Attach one alias to this class scope."""
+
+        return self._append_child(self.aliases, alias)
 
     def add_enum(self, enum: "CppEnum") -> "CppEnum":
         """Attach one nested enum to this class scope."""
@@ -241,6 +248,12 @@ class CppClassMembers(CppElement):
         """Return a name-indexed view over fields declared in this class."""
 
         return make_named_child_view(self, "fields")
+
+    @property
+    def alias(self):
+        """Return a name-indexed view over aliases declared in this class."""
+
+        return make_named_child_view(self, "aliases")
 
     @property
     def enum(self):

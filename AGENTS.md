@@ -210,6 +210,7 @@ The current implemented parser slice already materializes:
 - namespaces
 - classes and structs
 - enums and enumerators
+- aliases and typedefs
 - free functions
 - methods
 - constructors
@@ -232,8 +233,8 @@ The current parser internals are also intentionally split into:
 - `build_facets.py` for cursor-to-`.cpp` facet extraction and lower-level
   cursor data helpers
 
-Comments/docs, aliases, templates, operators, destructor/conversion functions,
-and fuller parser-side redeclaration enrichment are still follow-up work.
+Comments/docs, templates, operators, destructor/conversion functions, and
+fuller parser-side redeclaration enrichment are still follow-up work.
 
 The next parser work should focus first on:
 
@@ -300,10 +301,10 @@ Typical contents:
 - source location
 - raw comment
 - normalized comment
+- alias target type for alias declarations
 - parameters
 - return type
 - bases
-- scoped alias metadata for `using` and `typedef` declarations
 - template parameters
 - enum values
 - overload and signature information

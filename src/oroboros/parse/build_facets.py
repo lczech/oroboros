@@ -36,6 +36,26 @@ def build_namespace_cpp_facet(
     )
 
 
+def build_alias_cpp_facet(
+    cursor: Any,
+    *,
+    context: BuildContext | None = None,
+) -> Any:
+    from ..model import CppAliasCppFacet
+
+    return CppAliasCppFacet(
+        original_name=cursor.spelling or None,
+        target=build_cpp_type(
+            cursor_alias_target_type(cursor),
+            context=context,
+        ),
+        location=build_location_info(cursor),
+        comment=cursor_raw_comment(cursor),
+        visibility=cursor_visibility(cursor),
+        kind=cursor_alias_kind(cursor),
+    )
+
+
 def build_class_cpp_facet(
     cursor: Any,
     *,
@@ -243,6 +263,26 @@ def cursor_kind_name(cursor: Any) -> str:
     if name is not None:
         return str(name)
     return str(kind)
+
+
+def cursor_alias_target_type(cursor: Any) -> Any:
+    """Return one alias cursor's underlying target type when libclang exposes it."""
+
+    target = getattr(cursor, "underlying_typedef_type", None)
+    if callable(target):
+        return target()
+    return target
+
+
+def cursor_alias_kind(cursor: Any) -> str | None:
+    """Return whether one alias cursor came from `using` or `typedef` syntax."""
+
+    kind = getattr(cursor, "kind", None)
+    if kind == CursorKind.TYPE_ALIAS_DECL:
+        return "using"
+    if kind == CursorKind.TYPEDEF_DECL:
+        return "typedef"
+    return None
 
 
 def cursor_raw_comment(cursor: Any) -> str | None:

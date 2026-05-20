@@ -11,7 +11,7 @@ from .element import CppElement
 from .lookup import make_named_child_view
 
 if TYPE_CHECKING:
-    from .alias import CppAliasInfo
+    from .alias import CppAlias
     from .class_ import CppClass, CppClassBindFacet
     from .enum import CppEnum, CppEnumBindFacet
     from .function import CppFunction, CppFunctionBindFacet
@@ -31,7 +31,6 @@ class CppModuleCppFacet:
     header_files: list[Path] = field(default_factory=list)
     comment: str | None = None
     doc: CppDoc | None = None
-    aliases: list["CppAliasInfo"] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -120,6 +119,8 @@ class CppModule(CppElement):
     function_templates: list["CppFunctionTemplate"] = field(default_factory=list)
     # Top-level enums parsed into this semantic module.
     enums: list["CppEnum"] = field(default_factory=list)
+    # Top-level aliases declared in this semantic module.
+    aliases: list["CppAlias"] = field(default_factory=list)
 
     @property
     def scope_name(self) -> str | None:
@@ -136,6 +137,7 @@ class CppModule(CppElement):
         self._adopt_children(self.functions)
         self._adopt_children(self.function_templates)
         self._adopt_children(self.enums)
+        self._adopt_children(self.aliases)
 
     def add_namespace(self, namespace: "CppNamespace") -> "CppNamespace":
         """Attach one top-level namespace to this semantic module."""
@@ -166,6 +168,11 @@ class CppModule(CppElement):
         """Attach one top-level enum to this semantic module."""
 
         return self._append_child(self.enums, enum)
+
+    def add_alias(self, alias: "CppAlias") -> "CppAlias":
+        """Attach one top-level alias to this semantic module."""
+
+        return self._append_child(self.aliases, alias)
 
     @property
     def namespace(self):
@@ -202,3 +209,9 @@ class CppModule(CppElement):
         """Return a name-indexed view over top-level enums."""
 
         return make_named_child_view(self, "enums")
+
+    @property
+    def alias(self):
+        """Return a name-indexed view over top-level aliases."""
+
+        return make_named_child_view(self, "aliases")

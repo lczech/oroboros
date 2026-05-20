@@ -49,10 +49,10 @@ prioritized engineering work here.
   into the richer documentation model and parameter-doc fields.
 - Unsupported libclang declaration kinds that should be tracked explicitly.
   The current walker materializes namespaces, classes/structs, enums,
-  free functions, methods, constructors, fields, and parameters. Still
+  aliases/typedefs, free functions, methods, constructors, fields, and
+  parameters. Still
   missing at the cursor-dispatch level are:
   - `VAR_DECL` for free variables and static data members
-  - `TYPE_ALIAS_DECL` and `TYPEDEF_DECL` for `using` / `typedef`
   - `CLASS_TEMPLATE` and `FUNCTION_TEMPLATE` for template declarations
   - `DESTRUCTOR`
   - `CONVERSION_FUNCTION`
@@ -83,7 +83,8 @@ prioritized engineering work here.
   now exist, but more clang type kinds, richer qualifiers, and better
   user-facing type-query helpers are still needed.
 - Type aliases / `using` / `typedef`.
-  Lightweight alias metadata exists, but full alias handling and policy use is
+  Alias declarations are now first-class semantic nodes, but emission policy,
+  alias-target linking behavior for named type uses, and template aliases are
   still incomplete.
 - Access control and visibility.
   Visibility now exists on several semantic nodes, but access-specifier-driven

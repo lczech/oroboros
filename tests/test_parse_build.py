@@ -8,6 +8,7 @@ from clang.cindex import CursorKind, TypeKind
 
 from oroboros.model import (
     BuiltinCppType,
+    CppAlias,
     CppClass,
     CppMethod,
     CppVisibility,
@@ -491,6 +492,167 @@ class ParseBuildTest(unittest.TestCase):
 
         build_result.module.validate_semantics()
 
+    def test_build_module_from_clang_materializes_alias_declarations(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        widget_cursor = _fake_cursor(
+            "CLASS_DECL",
+            "Widget",
+            file=active_header,
+            usr="c:@N@demo@S@Widget",
+        )
+        translation_unit = SimpleNamespace(
+            cursor=_fake_cursor(
+                "TRANSLATION_UNIT",
+                "",
+                file=active_header,
+                children=[
+                    _fake_cursor(
+                        "NAMESPACE",
+                        "demo",
+                        file=active_header,
+                        children=[
+                            widget_cursor,
+                            _fake_cursor(
+                                "TYPE_ALIAS_DECL",
+                                "Alias",
+                                file=active_header,
+                                usr="c:@N@demo@Alias",
+                                type=_fake_type("TYPEDEF", "Alias"),
+                                underlying_typedef_type=_fake_type(
+                                    "ELABORATED",
+                                    "Widget",
+                                    declaration_cursor=widget_cursor,
+                                ),
+                            ),
+                            _fake_cursor(
+                                "TYPEDEF_DECL",
+                                "WidgetAlias",
+                                file=active_header,
+                                usr="c:@N@demo@T@WidgetAlias",
+                                type=_fake_type("TYPEDEF", "WidgetAlias"),
+                                underlying_typedef_type=_fake_type(
+                                    "ELABORATED",
+                                    "Widget",
+                                    declaration_cursor=widget_cursor,
+                                ),
+                            ),
+                        ],
+                    )
+                ],
+            )
+        )
+
+        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
+        namespace = build_result.module.namespaces[0]
+
+        self.assertEqual([alias.name for alias in namespace.aliases], ["Alias", "WidgetAlias"])
+        self.assertIsInstance(namespace.aliases[0], CppAlias)
+        self.assertEqual(namespace.aliases[0].qualified_name, "demo::Alias")
+        self.assertEqual(namespace.aliases[0].cpp.kind, "using")
+        self.assertIsInstance(namespace.aliases[0].cpp.target, NamedCppType)
+        self.assertIs(namespace.aliases[0].cpp.target.declaration, namespace.classes[0])
+        self.assertEqual(namespace.aliases[1].cpp.kind, "typedef")
+
+    def test_build_module_from_clang_warns_on_unexpected_repeated_non_redeclarable_declarations(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        translation_unit = SimpleNamespace(
+            cursor=_fake_cursor(
+                "TRANSLATION_UNIT",
+                "",
+                file=active_header,
+                children=[
+                    _fake_cursor(
+                        "NAMESPACE",
+                        "demo",
+                        file=active_header,
+                        children=[
+                            _fake_cursor(
+                                "TYPE_ALIAS_DECL",
+                                "Index",
+                                file=active_header,
+                                usr="c:@N@demo@Alias",
+                                type=_fake_type("TYPEDEF", "Index"),
+                                underlying_typedef_type=_fake_type("ULONG", "unsigned long"),
+                            ),
+                            _fake_cursor(
+                                "TYPE_ALIAS_DECL",
+                                "Index",
+                                file=active_header,
+                                usr="c:@N@demo@Alias",
+                                type=_fake_type("TYPEDEF", "Index"),
+                                underlying_typedef_type=_fake_type("UINT", "unsigned int"),
+                            ),
+                            _fake_cursor(
+                                "CLASS_DECL",
+                                "Widget",
+                                file=active_header,
+                                children=[
+                                    _fake_cursor(
+                                        "FIELD_DECL",
+                                        "size_",
+                                        file=active_header,
+                                        usr="c:@N@demo@S@Widget@FI@size_",
+                                        type=_fake_type("INT", "int"),
+                                    ),
+                                    _fake_cursor(
+                                        "FIELD_DECL",
+                                        "size_",
+                                        file=active_header,
+                                        usr="c:@N@demo@S@Widget@FI@size_",
+                                        type=_fake_type("BOOL", "bool"),
+                                    ),
+                                    _fake_cursor(
+                                        "ENUM_DECL",
+                                        "Kind",
+                                        file=active_header,
+                                        children=[
+                                            _fake_cursor(
+                                                "ENUM_CONSTANT_DECL",
+                                                "primary",
+                                                file=active_header,
+                                                usr="c:@N@demo@S@Widget@E@Kind@primary",
+                                                enum_value=1,
+                                            ),
+                                            _fake_cursor(
+                                                "ENUM_CONSTANT_DECL",
+                                                "primary",
+                                                file=active_header,
+                                                usr="c:@N@demo@S@Widget@E@Kind@primary",
+                                                enum_value=2,
+                                            ),
+                                        ],
+                                    ),
+                                ],
+                            ),
+                        ],
+                    )
+                ],
+            )
+        )
+
+        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
+        namespace = build_result.module.namespaces[0]
+        widget = namespace.classes[0]
+
+        self.assertEqual(len(namespace.aliases), 1)
+        self.assertEqual(namespace.aliases[0].name, "Index")
+        self.assertIsInstance(namespace.aliases[0].cpp.target, BuiltinCppType)
+        self.assertEqual(namespace.aliases[0].cpp.target.kind, "unsigned_long")
+        self.assertEqual(len(widget.fields), 1)
+        self.assertIsInstance(widget.fields[0].cpp.type, BuiltinCppType)
+        self.assertEqual(widget.fields[0].cpp.type.kind, "int")
+        self.assertEqual(len(widget.enums[0].enumerators), 1)
+        self.assertEqual(widget.enums[0].enumerators[0].cpp.value_spelling, "1")
+        self.assertTrue(
+            any("repeated alias declaration" in warning for warning in build_result.warnings)
+        )
+        self.assertTrue(
+            any("repeated field declaration" in warning for warning in build_result.warnings)
+        )
+        self.assertTrue(
+            any("repeated enumerator declaration" in warning for warning in build_result.warnings)
+        )
+
     def test_build_module_from_clang_tracks_unsupported_cursor_kinds(self) -> None:
         active_header = Path("/tmp/project/demo.hpp")
         translation_unit = SimpleNamespace(
@@ -504,8 +666,6 @@ class ParseBuildTest(unittest.TestCase):
                         "demo",
                         file=active_header,
                         children=[
-                            _fake_cursor("TYPEDEF_DECL", "AliasA", file=active_header),
-                            _fake_cursor("TYPEDEF_DECL", "AliasB", file=active_header),
                             _fake_cursor("UNION_DECL", "Storage", file=active_header),
                             _fake_cursor("CXX_ACCESS_SPEC_DECL", "", file=active_header),
                         ],
@@ -519,7 +679,6 @@ class ParseBuildTest(unittest.TestCase):
         self.assertEqual(
             build_result.skipped_kind_counts,
             {
-                "TYPEDEF_DECL": 2,
                 "UNION_DECL": 1,
             },
         )
@@ -597,6 +756,7 @@ def _fake_cursor(
     exception_specification_kind: str | None = None,
     enum_type: SimpleNamespace | None = None,
     enum_value: int | None = None,
+    underlying_typedef_type: SimpleNamespace | None = None,
     methods: dict[str, object] | None = None,
 ) -> SimpleNamespace:
     cursor = SimpleNamespace(
@@ -611,6 +771,7 @@ def _fake_cursor(
         ),
         enum_type=enum_type,
         enum_value=enum_value,
+        underlying_typedef_type=underlying_typedef_type,
         raw_comment=raw_comment,
         location=SimpleNamespace(
             file=SimpleNamespace(name=str(file)),

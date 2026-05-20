@@ -82,6 +82,9 @@ private:
 /** An oracle with a sanctuary and one remembered omen. */
 class Oracle {
 public:
+    /** Alias used to exercise class-scoped alias declarations in the example library. */
+    using SanctuaryName = std::string;
+
     Oracle();
     explicit Oracle(std::string sanctuary);
 

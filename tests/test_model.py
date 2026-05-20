@@ -6,7 +6,7 @@ import unittest
 from oroboros.model import (
     ArrayCppType,
     BuiltinCppType,
-    CppAliasInfo,
+    CppAlias,
     CppClass,
     CppClassBase,
     CppClassBindFacet,
@@ -58,10 +58,12 @@ from oroboros.model import (
     NamedCppType,
     PointerCppType,
     SourceLocation,
+    TemplateInstanceCppType,
     add_class_template_instance,
     add_function_template_instance,
     add_observed_template_instances,
     build_py_doc_from_cpp_doc,
+    cpp_types_equivalent,
 )
 
 
@@ -77,13 +79,7 @@ class ModelScaffoldTest(unittest.TestCase):
             methods=[method],
             enums=[enum_],
         )
-        cls.cpp.aliases.append(
-            CppAliasInfo(
-                name="SizeType",
-                qualified_name="demo::Widget::SizeType",
-                target=NamedCppType(name="std::size_t"),
-            )
-        )
+        cls.add_alias(CppAlias(name="SizeType")).cpp.target = NamedCppType(name="std::size_t")
         namespace = CppNamespace(name="demo", classes=[cls])
         module = CppModule(name="bindings", namespaces=[namespace])
 
@@ -98,53 +94,29 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertEqual(cls.qualified_name, "demo::Widget")
         self.assertEqual(method.qualified_name, "demo::Widget::size")
         self.assertEqual(parameter.qualified_name, "demo::Widget::size::value")
-        self.assertEqual(cls.cpp.aliases[0].qualified_name, "demo::Widget::SizeType")
+        self.assertEqual(cls.aliases[0].qualified_name, "demo::Widget::SizeType")
 
-    def test_aliases_preserve_target_type_and_can_be_found_in_scope_metadata(self) -> None:
+    def test_aliases_preserve_target_type_and_can_be_found_in_scope_tree(self) -> None:
         namespace = CppNamespace(name="demo")
-        namespace.cpp.aliases.append(
-            CppAliasInfo(
-                name="Index",
-                qualified_name="demo::Index",
-                target=NamedCppType(name="std::size_t"),
-                kind="using",
-            )
-        )
+        namespace.add_alias(CppAlias(name="Index")).cpp.target = NamedCppType(name="std::size_t")
+        namespace.aliases[0].cpp.kind = "using"
 
-        self.assertEqual(namespace.cpp.aliases[0].qualified_name, "demo::Index")
-        self.assertEqual(namespace.cpp.aliases[0].target.render(), "std::size_t")
-        self.assertEqual(namespace.cpp.aliases[0].kind, "using")
+        self.assertEqual(namespace.aliases[0].qualified_name, "demo::Index")
+        self.assertEqual(namespace.aliases[0].cpp.target.render(), "std::size_t")
+        self.assertEqual(namespace.aliases[0].cpp.kind, "using")
 
     def test_find_aliases_discovers_class_aliases_across_subtrees(self) -> None:
         cls = CppClass(name="Widget")
         namespace = CppNamespace(name="demo", classes=[cls])
-        namespace.cpp.aliases.extend(
-            [
-                CppAliasInfo(
-                    name="WidgetAlias",
-                    qualified_name="demo::WidgetAlias",
-                    target=NamedCppType(name="demo::Widget"),
-                ),
-                CppAliasInfo(
-                    name="SizeType",
-                    qualified_name="demo::SizeType",
-                    target=NamedCppType(name="std::size_t"),
-                ),
-            ]
-        )
+        namespace.add_alias(CppAlias(name="WidgetAlias")).cpp.target = NamedCppType(name="demo::Widget")
+        namespace.add_alias(CppAlias(name="SizeType")).cpp.target = NamedCppType(name="std::size_t")
         nested = CppNamespace(name="detail")
-        nested.cpp.aliases.append(
-            CppAliasInfo(
-                name="WidgetHandle",
-                qualified_name="demo::detail::WidgetHandle",
-                target=NamedCppType(name="demo::Widget"),
-            )
-        )
+        nested.add_alias(CppAlias(name="WidgetHandle")).cpp.target = NamedCppType(name="demo::Widget")
         namespace.add_namespace(nested)
 
         aliases = find_aliases(namespace, cls)
 
-        self.assertEqual(
+        self.assertCountEqual(
             [alias.name for alias in aliases],
             ["WidgetAlias", "WidgetHandle"],
         )
@@ -152,12 +124,10 @@ class ModelScaffoldTest(unittest.TestCase):
     def test_find_aliases_matches_class_targets_via_declaration_links_with_qualifiers(self) -> None:
         cls = CppClass(name="Widget")
         namespace = CppNamespace(name="demo", classes=[cls])
-        namespace.cpp.aliases.append(
-            CppAliasInfo(
-                name="WidgetAlias",
-                qualified_name="demo::WidgetAlias",
-                target=NamedCppType(name="Widget", declaration=cls, is_const=True),
-            )
+        namespace.add_alias(CppAlias(name="WidgetAlias")).cpp.target = NamedCppType(
+            name="Widget",
+            declaration=cls,
+            is_const=True,
         )
 
         aliases = find_aliases(namespace, cls)
@@ -166,20 +136,33 @@ class ModelScaffoldTest(unittest.TestCase):
 
     def test_find_aliases_matches_type_targets_via_canonical_structure(self) -> None:
         namespace = CppNamespace(name="demo")
-        namespace.cpp.aliases.append(
-            CppAliasInfo(
-                name="Index",
-                qualified_name="demo::Index",
-                target=NamedCppType(
-                    name="uint64_t",
-                    canonical=BuiltinCppType(kind="unsigned_long"),
-                ),
-            )
+        namespace.add_alias(CppAlias(name="Index")).cpp.target = NamedCppType(
+            name="uint64_t",
+            canonical=BuiltinCppType(kind="unsigned_long"),
         )
 
         aliases = find_aliases(namespace, BuiltinCppType(kind="unsigned_long"))
 
         self.assertEqual([alias.name for alias in aliases], ["Index"])
+
+    def test_find_aliases_follows_alias_chains_to_the_underlying_class(self) -> None:
+        widget = CppClass(name="Widget")
+        namespace = CppNamespace(name="demo", classes=[widget])
+        first = namespace.add_alias(CppAlias(name="A"))
+        first.cpp.target = NamedCppType(name="Widget", declaration=widget)
+        second = namespace.add_alias(CppAlias(name="B"))
+        second.cpp.target = NamedCppType(
+            name="A",
+            declaration=first,
+            canonical=NamedCppType(name="Widget", declaration=widget),
+        )
+
+        aliases = find_aliases(namespace, widget)
+
+        self.assertCountEqual(
+            [alias.name for alias in aliases],
+            ["A", "B"],
+        )
 
     def test_lookup_helpers_find_elements_by_name_and_qualified_name(self) -> None:
         method = CppMethod(name="foo")
@@ -555,15 +538,17 @@ class ModelScaffoldTest(unittest.TestCase):
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
 
-    def test_validate_semantics_rejects_alias_qualified_name_mismatches(self) -> None:
+    def test_validate_semantics_rejects_duplicate_alias_names_in_one_scope(self) -> None:
         namespace = CppNamespace(name="demo")
-        namespace.cpp.aliases.append(
-            CppAliasInfo(
-                name="Index",
-                qualified_name="demo::WrongIndex",
-                target=NamedCppType(name="std::size_t"),
-            )
-        )
+        namespace.add_alias(CppAlias(name="Index")).cpp.target = NamedCppType(name="std::size_t")
+        namespace.add_alias(CppAlias(name="Index")).cpp.target = BuiltinCppType(kind="unsigned_long")
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_aliases_without_target_types(self) -> None:
+        namespace = CppNamespace(name="demo", aliases=[CppAlias(name="Index")])
         module = CppModule(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
@@ -690,13 +675,7 @@ class ModelScaffoldTest(unittest.TestCase):
 
     def test_validate_semantics_rejects_alias_names_with_invalid_characters(self) -> None:
         namespace = CppNamespace(name="demo")
-        namespace.cpp.aliases.append(
-            CppAliasInfo(
-                name="Index-Alias",
-                qualified_name="demo::Index-Alias",
-                target=NamedCppType(name="std::size_t"),
-            )
-        )
+        namespace.add_alias(CppAlias(name="Index-Alias")).cpp.target = NamedCppType(name="std::size_t")
         module = CppModule(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
@@ -924,6 +903,24 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertIs(first_instance, second_instance)
         self.assertEqual(len(function_template.instances), 1)
 
+    def test_class_template_instances_copy_alias_children_from_the_declaration(self) -> None:
+        class_template = CppClassTemplate(name="Box")
+        class_template.declaration.cpp.template_parameters.append(
+            CppTypeTemplateParameter(name="T")
+        )
+        class_template.declaration.add_alias(CppAlias(name="Value")).cpp.target = NamedCppType(name="T")
+
+        instance = add_class_template_instance(
+            class_template,
+            [CppTypeTemplateArgument(type=NamedCppType(name="int"))],
+        )
+
+        self.assertEqual([alias.name for alias in instance.aliases], ["Value"])
+        self.assertIsNot(instance.aliases[0], class_template.declaration.aliases[0])
+        self.assertEqual(instance.aliases[0].qualified_name, "Box::Value")
+        self.assertIsInstance(instance.aliases[0].cpp.target, NamedCppType)
+        self.assertEqual(instance.aliases[0].cpp.target.name, "T")
+
     def test_template_instance_validation_rejects_missing_required_arguments(self) -> None:
         function_template = CppFunctionTemplate(name="make_value")
         function_template.declaration.cpp.template_parameters.extend(
@@ -1071,6 +1068,19 @@ class ModelScaffoldTest(unittest.TestCase):
         )
 
         self.assertEqual(cpp_type.render(), "void (*)(int)")
+
+    def test_alias_linked_named_cpp_types_still_compare_equivalent_to_their_target(self) -> None:
+        widget = CppClass(name="Widget")
+        alias = CppAlias(name="WidgetAlias")
+        alias.cpp.target = NamedCppType(name="Widget", declaration=widget)
+        alias_type = NamedCppType(
+            name="WidgetAlias",
+            declaration=alias,
+            canonical=NamedCppType(name="Widget", declaration=widget),
+        )
+        widget_type = NamedCppType(name="Widget", declaration=widget)
+
+        self.assertTrue(cpp_types_equivalent(alias_type, widget_type))
 
     def test_named_and_builtin_cpp_types_cover_different_use_cases(self) -> None:
         builtin_type = BuiltinCppType(kind="int")

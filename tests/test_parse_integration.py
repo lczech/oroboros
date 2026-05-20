@@ -7,6 +7,7 @@ import unittest
 from oroboros.model import (
     ArrayCppType,
     BuiltinCppType,
+    CppAlias,
     CppVisibility,
     FunctionCppType,
     LValueReferenceCppType,
@@ -256,30 +257,81 @@ WidgetAlias make_typedef(WidgetAlias value);
         widget = namespace.classes[0]
         make_alias = namespace.functions[0]
         make_typedef = namespace.functions[1]
+        alias = namespace.aliases[0]
+        typedef_alias = namespace.aliases[1]
+
+        self.assertEqual([alias.name for alias in namespace.aliases], ["Alias", "WidgetAlias"])
+        self.assertEqual(alias.cpp.kind, "using")
+        self.assertEqual(typedef_alias.cpp.kind, "typedef")
+        self.assertIsInstance(alias.cpp.target, NamedCppType)
+        self.assertIs(alias.cpp.target.declaration, widget)
+        self.assertIsInstance(typedef_alias.cpp.target, NamedCppType)
+        self.assertIs(typedef_alias.cpp.target.declaration, widget)
 
         self.assertIsInstance(make_alias.cpp.return_type, NamedCppType)
         self.assertEqual(make_alias.cpp.return_type.name, "Alias")
-        self.assertIsNone(make_alias.cpp.return_type.declaration)
+        self.assertIs(make_alias.cpp.return_type.declaration, alias)
         self.assertIsInstance(make_alias.cpp.return_type.canonical, NamedCppType)
         self.assertIs(make_alias.cpp.return_type.canonical.declaration, widget)
 
         self.assertIsInstance(make_alias.parameters[0].cpp.type, NamedCppType)
         self.assertEqual(make_alias.parameters[0].cpp.type.name, "Alias")
-        self.assertIsNone(make_alias.parameters[0].cpp.type.declaration)
+        self.assertIs(make_alias.parameters[0].cpp.type.declaration, alias)
         self.assertIsInstance(make_alias.parameters[0].cpp.type.canonical, NamedCppType)
         self.assertIs(make_alias.parameters[0].cpp.type.canonical.declaration, widget)
 
         self.assertIsInstance(make_typedef.cpp.return_type, NamedCppType)
         self.assertEqual(make_typedef.cpp.return_type.name, "WidgetAlias")
-        self.assertIsNone(make_typedef.cpp.return_type.declaration)
+        self.assertIs(make_typedef.cpp.return_type.declaration, typedef_alias)
         self.assertIsInstance(make_typedef.cpp.return_type.canonical, NamedCppType)
         self.assertIs(make_typedef.cpp.return_type.canonical.declaration, widget)
 
         self.assertIsInstance(make_typedef.parameters[0].cpp.type, NamedCppType)
         self.assertEqual(make_typedef.parameters[0].cpp.type.name, "WidgetAlias")
-        self.assertIsNone(make_typedef.parameters[0].cpp.type.declaration)
+        self.assertIs(make_typedef.parameters[0].cpp.type.declaration, typedef_alias)
         self.assertIsInstance(make_typedef.parameters[0].cpp.type.canonical, NamedCppType)
         self.assertIs(make_typedef.parameters[0].cpp.type.canonical.declaration, widget)
+
+    def test_parse_headers_materializes_alias_nodes_with_distinct_scope_and_comments(self) -> None:
+        source = """
+namespace demo {
+
+struct Widget {};
+
+/** Namespace alias used for handle-style APIs. */
+using WidgetHandle = Widget;
+
+struct Holder {
+    /** Class-local alias used inside holder declarations. */
+    using LocalWidget = Widget;
+};
+
+}
+"""
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.namespaces[0]
+        widget = namespace.classes[0]
+        holder = namespace.classes[1]
+        widget_handle = namespace.aliases[0]
+        local_widget = holder.aliases[0]
+
+        self.assertIsInstance(widget_handle, CppAlias)
+        self.assertEqual(widget_handle.qualified_name, "demo::WidgetHandle")
+        self.assertEqual(widget_handle.cpp.kind, "using")
+        self.assertIsNotNone(widget_handle.cpp.comment)
+        self.assertIn("handle-style APIs", widget_handle.cpp.comment)
+        self.assertIsInstance(widget_handle.cpp.target, NamedCppType)
+        self.assertIs(widget_handle.cpp.target.declaration, widget)
+
+        self.assertIsInstance(local_widget, CppAlias)
+        self.assertEqual(local_widget.qualified_name, "demo::Holder::LocalWidget")
+        self.assertEqual(local_widget.cpp.kind, "using")
+        self.assertIsNotNone(local_widget.cpp.comment)
+        self.assertIn("holder declarations", local_widget.cpp.comment)
+        self.assertIsInstance(local_widget.cpp.target, NamedCppType)
+        self.assertIs(local_widget.cpp.target.declaration, widget)
 
     def test_parse_headers_preserves_scope_relative_named_type_spellings(self) -> None:
         source = """

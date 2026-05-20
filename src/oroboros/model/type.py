@@ -257,6 +257,13 @@ def cpp_type_key(cpp_type: CppType | None) -> tuple[object, ...]:
 
     if isinstance(cpp_type, NamedCppType):
         declaration = cpp_type.declaration
+        from .alias import CppAlias
+
+        if isinstance(declaration, CppAlias) and cpp_type.canonical is not None:
+            return _with_top_level_const(
+                cpp_type_key(cpp_type.canonical),
+                cpp_type.is_const,
+            )
         if declaration is not None:
             return ("named_decl", cpp_type.is_const, declaration.qualified_name)
         if cpp_type.canonical is not None:
