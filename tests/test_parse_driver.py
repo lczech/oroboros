@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import subprocess
 from types import SimpleNamespace
 from unittest.mock import patch
 import unittest
@@ -89,16 +88,60 @@ class ParseDriverTest(unittest.TestCase):
             language="c++",
         )
 
-        with patch("oroboros.parse.toolchain.detect_compiler_toolchain") as detect_toolchain:
-            detect_toolchain.return_value = SimpleNamespace(
-                resource_dir=Path("/tmp/detected-resource"),
-                system_include_dirs=[Path("/tmp/detected-system")],
-            )
+        with (
+            patch("oroboros.parse.toolchain._detect_resource_dir", return_value=Path("/tmp/detected-resource")) as detect_resource,
+            patch(
+                "oroboros.parse.toolchain._detect_system_include_dirs",
+                return_value=[Path("/tmp/detected-system")],
+            ) as detect_system_includes,
+        ):
             updated = _resolve_parser_config_toolchain(config)
 
-        detect_toolchain.assert_called_once_with("clang++", language="c++")
+        detect_resource.assert_called_once_with("clang++")
+        detect_system_includes.assert_called_once_with("clang++", language="c++")
         self.assertEqual(updated.include_dirs, [Path("/tmp/project-inc")])
         self.assertEqual(updated.resource_dir, Path("/tmp/detected-resource"))
+        self.assertEqual(updated.system_include_dirs, [Path("/tmp/detected-system")])
+
+    def test_resolve_parser_config_toolchain_only_probes_missing_resource_dir(self) -> None:
+        config = ParserConfig(
+            auto_detect_toolchain=True,
+            toolchain_compiler="clang++",
+            language="c++",
+            system_include_dirs=[Path("/tmp/already-set")],
+        )
+
+        with (
+            patch("oroboros.parse.toolchain._detect_resource_dir", return_value=Path("/tmp/detected-resource")) as detect_resource,
+            patch("oroboros.parse.toolchain._detect_system_include_dirs") as detect_system_includes,
+        ):
+            updated = _resolve_parser_config_toolchain(config)
+
+        detect_resource.assert_called_once_with("clang++")
+        detect_system_includes.assert_not_called()
+        self.assertEqual(updated.resource_dir, Path("/tmp/detected-resource"))
+        self.assertEqual(updated.system_include_dirs, [Path("/tmp/already-set")])
+
+    def test_resolve_parser_config_toolchain_only_probes_missing_system_include_dirs(self) -> None:
+        config = ParserConfig(
+            auto_detect_toolchain=True,
+            toolchain_compiler="clang++",
+            language="c++",
+            resource_dir=Path("/tmp/already-resource"),
+        )
+
+        with (
+            patch("oroboros.parse.toolchain._detect_resource_dir") as detect_resource,
+            patch(
+                "oroboros.parse.toolchain._detect_system_include_dirs",
+                return_value=[Path("/tmp/detected-system")],
+            ) as detect_system_includes,
+        ):
+            updated = _resolve_parser_config_toolchain(config)
+
+        detect_resource.assert_not_called()
+        detect_system_includes.assert_called_once_with("clang++", language="c++")
+        self.assertEqual(updated.resource_dir, Path("/tmp/already-resource"))
         self.assertEqual(updated.system_include_dirs, [Path("/tmp/detected-system")])
 
     def test_parse_system_include_dirs_extracts_verbose_search_list(self) -> None:
@@ -130,19 +173,20 @@ some trailer
         )
 
     def test_detect_compiler_toolchain_reports_missing_compiler_cleanly(self) -> None:
-        with patch("oroboros.parse.toolchain._detect_resource_dir", side_effect=FileNotFoundError()):
+        with patch(
+            "oroboros.parse.toolchain._detect_resource_dir",
+            side_effect=RuntimeError("compiler was not found"),
+        ):
             with self.assertRaisesRegex(RuntimeError, "was not found"):
                 detect_compiler_toolchain("missing-clang")
 
     def test_detect_compiler_toolchain_reports_probe_failure_with_guidance(self) -> None:
-        probe_error = subprocess.CalledProcessError(
-            returncode=1,
-            cmd=["clang++", "-E", "-v", "-"],
-            stderr="probe failed",
-        )
         with (
             patch("oroboros.parse.toolchain._detect_resource_dir", return_value=Path("/tmp/resource")),
-            patch("oroboros.parse.toolchain._run_compiler_include_probe", side_effect=probe_error),
+            patch(
+                "oroboros.parse.toolchain._detect_system_include_dirs",
+                side_effect=RuntimeError("First compiler message: probe failed"),
+            ),
         ):
             with self.assertRaisesRegex(RuntimeError, "First compiler message: probe failed"):
                 detect_compiler_toolchain("clang++")

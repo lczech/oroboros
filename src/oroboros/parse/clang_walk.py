@@ -454,21 +454,26 @@ def _ensure_namespace(
 ) -> CppNamespace | None:
     """Return one existing or newly created namespace for one parser cursor."""
 
+    candidate_cpp = build_namespace_cpp_facet(cursor)
     existing = _lookup_registered_element(cursor, context, CppNamespace)
     if existing is not None:
+        _merge_common_cpp_fields(existing, candidate_cpp, context, cursor)
+        _merge_cpp_scalar(existing, "is_inline", candidate_cpp.is_inline, context, cursor)
         return existing
 
     namespace_name = cursor.spelling
     existing_namespaces = getattr(owner, "namespaces", None)
-    if existing_namespaces is not None:
+    if namespace_name and existing_namespaces is not None:
         for namespace in existing_namespaces:
             if namespace.name == namespace_name:
+                _merge_common_cpp_fields(namespace, candidate_cpp, context, cursor)
+                _merge_cpp_scalar(namespace, "is_inline", candidate_cpp.is_inline, context, cursor)
                 _register_element_for_cursor(cursor, namespace, context)
                 return namespace
 
     namespace = CppNamespace(
         name=namespace_name,
-        cpp=build_namespace_cpp_facet(cursor),
+        cpp=candidate_cpp,
     )
     attached = _attach_node(owner, "add_namespace", namespace)
     if attached is not None:

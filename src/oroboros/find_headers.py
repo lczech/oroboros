@@ -117,7 +117,10 @@ def find_included_headers(base_dir: str | Path, header_file: str | Path) -> list
     """Collect included project headers in preorder, starting from one header file."""
 
     resolved_base_dir = _normalize_path(Path(base_dir))
-    root_header = _normalize_path(Path(header_file))
+    root_header_path = Path(header_file)
+    if not root_header_path.is_absolute():
+        root_header_path = resolved_base_dir / root_header_path
+    root_header = _normalize_path(root_header_path)
 
     discovered_headers: list[HeaderFile] = []
     visited_paths: set[Path] = set()

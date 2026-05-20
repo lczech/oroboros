@@ -65,6 +65,19 @@ class FindHeadersTest(unittest.TestCase):
             ],
         )
 
+    def test_find_included_headers_accepts_root_header_relative_to_base_dir(self) -> None:
+        base_dir = REPO_ROOT / "example" / "inc"
+
+        header_files = find_included_headers(base_dir, "cosmos/cosmos.hpp")
+
+        self.assertEqual(
+            header_files[0],
+            HeaderFile(
+                full_path=(base_dir / "cosmos" / "cosmos.hpp").resolve(),
+                relative_path=Path("cosmos/cosmos.hpp"),
+            ),
+        )
+
     def test_find_included_headers_skips_external_root_and_follows_local_dependencies(self) -> None:
         with TemporaryDirectory() as temp_dir_name:
             temp_dir = Path(temp_dir_name)

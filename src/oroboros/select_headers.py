@@ -103,15 +103,13 @@ def parse_activation_header(
     return selected_headers
 
 
-def write_activation_header(
+def _render_activation_header(
     header_files: list[HeaderFile],
-    target_file: str | Path,
     *,
     with_sections: bool = False,
-) -> None:
-    """Write a C++ activation header file from a discovered header list."""
+) -> str:
+    """Render one activation header file without writing it yet."""
 
-    target_path = Path(target_file)
     lines = ["#pragma once", ""]
     current_directory: str | None = None
 
@@ -138,7 +136,23 @@ def write_activation_header(
             include_line = f"// {include_line}"
         lines.append(include_line)
 
-    target_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return "\n".join(lines) + "\n"
+
+
+def write_activation_header(
+    header_files: list[HeaderFile],
+    target_file: str | Path,
+    *,
+    with_sections: bool = False,
+) -> None:
+    """Write a C++ activation header file from a discovered header list."""
+
+    target_path = Path(target_file)
+    rendered_text = _render_activation_header(
+        header_files,
+        with_sections=with_sections,
+    )
+    target_path.write_text(rendered_text, encoding="utf-8")
 
 
 def update_activation_header(
@@ -183,13 +197,13 @@ def update_activation_header(
     ]
 
     previous_content = target_path.read_text(encoding="utf-8") if target_path.exists() else None
-    write_activation_header(
+    updated_content = _render_activation_header(
         selected_headers,
-        target_path,
         with_sections=with_sections,
     )
-    updated_content = target_path.read_text(encoding="utf-8")
     updated_file = previous_content != updated_content
+    if updated_file:
+        target_path.write_text(updated_content, encoding="utf-8")
 
     return ActivationHeaderUpdateResult(
         activation_header=target_path,

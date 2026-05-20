@@ -382,12 +382,14 @@ def _all_overloadable(elements: list[CppElement]) -> bool:
     if not elements:
         return False
 
-    first_type = type(elements[0])
-    if any(type(element) is not first_type for element in elements):
-        return False
-
     from .function import CppFunction
+    from .function_template import CppFunctionTemplate
     from .member import CppConstructor, CppMethod
-    from .template_ import CppFunctionTemplate
 
-    return issubclass(first_type, (CppFunction, CppMethod, CppConstructor, CppFunctionTemplate))
+    if all(isinstance(element, CppConstructor) for element in elements):
+        return True
+
+    return all(
+        isinstance(element, (CppFunction, CppMethod, CppFunctionTemplate))
+        for element in elements
+    )

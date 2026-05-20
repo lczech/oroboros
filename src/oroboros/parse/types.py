@@ -125,6 +125,10 @@ def _build_cpp_type(
     )
     template_instance = _parse_template_instance_spelling(spelling, is_const=is_const)
     if template_instance is not None:
+        # The current template fallback still parses structure from spelling.
+        # Use any libclang-exposed template-argument types only to enrich that
+        # temporary result with declaration links and canonical nested types.
+        _enrich_fallback_type_from_clang(template_instance, clang_type, context)
         return template_instance
 
     canonical = None
@@ -189,26 +193,49 @@ def _build_type_from_spelling(spelling: str) -> CppType:
     """Build one fallback semantic type from a plain C++ spelling fragment."""
 
     normalized = spelling.strip()
-    is_const = normalized.startswith("const ") or normalized.endswith(" const")
-    normalized = _normalize_name_type_spelling(normalized, is_const=is_const)
+
+    # Peel top-level wrapper constness before normalizing inner named-type spellings.
+    if normalized.endswith(" const"):
+        without_const = normalized[:-len(" const")].rstrip()
+
+        if without_const.endswith("&&"):
+            return RValueReferenceCppType(
+                referred = _build_type_from_spelling(without_const[:-2]),
+                is_const = True,
+            )
+
+        if without_const.endswith("&"):
+            return LValueReferenceCppType(
+                referred = _build_type_from_spelling(without_const[:-1]),
+                is_const = True,
+            )
+
+        if without_const.endswith("*"):
+            return PointerCppType(
+                pointee = _build_type_from_spelling(without_const[:-1]),
+                is_const = True,
+            )
 
     if normalized.endswith("&&"):
         return RValueReferenceCppType(
-            referred=_build_type_from_spelling(normalized[:-2]),
-            is_const=is_const,
+            referred = _build_type_from_spelling(normalized[:-2]),
+            is_const = False,
         )
 
     if normalized.endswith("&"):
         return LValueReferenceCppType(
-            referred=_build_type_from_spelling(normalized[:-1]),
-            is_const=is_const,
+            referred = _build_type_from_spelling(normalized[:-1]),
+            is_const = False,
         )
 
     if normalized.endswith("*"):
         return PointerCppType(
-            pointee=_build_type_from_spelling(normalized[:-1]),
-            is_const=is_const,
+            pointee = _build_type_from_spelling(normalized[:-1]),
+            is_const = False,
         )
+
+    is_const = normalized.startswith("const ") or normalized.endswith(" const")
+    normalized = _normalize_name_type_spelling(normalized, is_const=is_const)
 
     template_instance = _parse_template_instance_spelling(normalized, is_const=is_const)
     if template_instance is not None:
@@ -239,6 +266,82 @@ def _normalize_name_type_spelling(
         return normalized[:-len(" const")].strip()
 
     return normalized
+
+
+def _enrich_fallback_type_from_clang(
+    cpp_type: CppType | None,
+    clang_type: Any,
+    context: BuildContext | None,
+) -> None:
+    """Attach declaration links and canonical info to one spelling-parsed fallback type."""
+    # This is temporary, before we have more complete clang-based parsing for template instances.
+
+    if cpp_type is None or clang_type is None or context is None:
+        return
+
+    if isinstance(cpp_type, NamedCppType):
+        _record_named_type_declaration_link(cpp_type, clang_type, context)
+        if cpp_type.canonical is None:
+            canonical_type = _call_optional_method(clang_type, "get_canonical")
+            if canonical_type is not None and not _same_type_identity(clang_type, canonical_type):
+                cpp_type.canonical = _build_cpp_type(
+                    canonical_type,
+                    allow_canonical=False,
+                    context=context,
+                )
+        return
+
+    if isinstance(cpp_type, PointerCppType):
+        _enrich_fallback_type_from_clang(
+            cpp_type.pointee,
+            _call_optional_method(clang_type, "get_pointee"),
+            context,
+        )
+        return
+
+    if isinstance(cpp_type, LValueReferenceCppType | RValueReferenceCppType):
+        _enrich_fallback_type_from_clang(
+            cpp_type.referred,
+            _call_optional_method(clang_type, "get_pointee"),
+            context,
+        )
+        return
+
+    if isinstance(cpp_type, ArrayCppType):
+        _enrich_fallback_type_from_clang(
+            cpp_type.element_type,
+            _call_optional_method(clang_type, "get_array_element_type"),
+            context,
+        )
+        return
+
+    if isinstance(cpp_type, FunctionCppType):
+        _enrich_fallback_type_from_clang(
+            cpp_type.return_type,
+            _call_optional_method(clang_type, "get_result"),
+            context,
+        )
+        argument_types = list(_call_optional_method(clang_type, "argument_types", []))
+        if len(argument_types) != len(cpp_type.parameters):
+            return
+        for parameter_type, argument_type in zip(
+            cpp_type.parameters,
+            argument_types,
+            strict=True,
+        ):
+            _enrich_fallback_type_from_clang(parameter_type, argument_type, context)
+        return
+
+    if isinstance(cpp_type, TemplateInstanceCppType):
+        template_argument_types = _template_argument_types(clang_type)
+        if len(template_argument_types) != len(cpp_type.arguments):
+            return
+        for argument, template_argument_type in zip(
+            cpp_type.arguments,
+            template_argument_types,
+            strict=True,
+        ):
+            _enrich_fallback_type_from_clang(argument, template_argument_type, context)
 
 
 # ------------------------------------------------------------------------------
@@ -294,6 +397,28 @@ def _split_template_arguments(argument_text: str) -> list[str]:
         arguments.append(tail)
 
     return arguments
+
+
+def _template_argument_types(clang_type: Any) -> list[Any]:
+    """Return clang template argument types when libclang exposes them."""
+
+    get_argument_count = getattr(clang_type, "get_num_template_arguments", None)
+    get_argument_type = getattr(clang_type, "get_template_argument_type", None)
+    if not callable(get_argument_count) or not callable(get_argument_type):
+        return []
+
+    argument_count = get_argument_count()
+    if not isinstance(argument_count, int) or argument_count <= 0:
+        return []
+
+    argument_types: list[Any] = []
+    for index in range(argument_count):
+        argument_type = get_argument_type(index)
+        if argument_type is None:
+            return []
+        argument_types.append(argument_type)
+
+    return argument_types
 
 
 # ==================================================================================================

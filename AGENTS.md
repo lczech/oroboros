@@ -95,6 +95,8 @@ As this is a lot of functionality, we will build the Oroboros code incrementally
 - Model template families, generic template declarations, and template instances separately.
   A `CppClassTemplate` or `CppFunctionTemplate` groups one generic parsed declaration in `.declaration`, any selected concrete `.instances`, and `.defaults` that apply to those instances and their descendants.
   Template instances shall be first-class customizable objects with their own `.cpp`, `.bind`, `.py`, and `.defaults`.
+  Selected template instances should preferably be materialized through clang-driven synthetic instantiation requests in the generated translation unit, rather than by manual Python-side template-type substitution across copied model subtrees.
+  Manual subtree specialization should be treated as a narrow fallback only if a concrete clang-based path proves insufficient for a specific case.
 - Prefer external C++ add-on hooks for custom bindings, while still allowing Python-driven model customization.
 - Mirror C++ namespaces as Python submodules within a single compiled extension module.
 - Make the handling of the top-level namespace configurable.
@@ -233,18 +235,20 @@ The current parser internals are also intentionally split into:
 - `build_facets.py` for cursor-to-`.cpp` facet extraction and lower-level
   cursor data helpers
 
-Comments/docs, templates, operators, destructor/conversion functions, and
-fuller parser-side redeclaration enrichment are still follow-up work.
+Comments/docs, template declarations, operators, destructor/conversion
+functions, `VAR_DECL`, and fuller parser-side redeclaration enrichment are
+still follow-up work.
 
 The next parser work should focus first on:
 
-- redeclaration enrichment beyond simple node reuse, so later declarations can
-  add missing facts such as definitions, declaration locations, and richer
-  metadata to already-created nodes
-- linking `NamedCppType.declaration` back to parsed declaration nodes via the
-  parser-local USR registry where libclang provides enough identity
-- parsing `using` and `typedef` aliases, using the same identity and linking
-  infrastructure rather than string-based matching
+- `VAR_DECL` support for free variables and static data members
+- real `CLASS_TEMPLATE` / `FUNCTION_TEMPLATE` parsing into the existing
+  template-family model
+- normalized comment/doc parsing on top of the preserved raw comments,
+  including parameter-doc extraction
+- clang-driven synthetic selected template instantiation, so configured
+  template instances can be materialized by clang rather than by broader
+  Python-side specialization logic
 
 ### Naming
 

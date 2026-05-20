@@ -222,6 +222,40 @@ class SelectHeadersTest(unittest.TestCase):
             ),
         )
 
+    def test_update_activation_header_skips_rewrite_when_content_is_unchanged(self) -> None:
+        with TemporaryDirectory() as temp_dir_name:
+            temp_dir = Path(temp_dir_name)
+            target_file = temp_dir / "activated_headers.hpp"
+            target_file.write_text(
+                "\n".join(
+                    [
+                        "#pragma once",
+                        "",
+                        "#include <demo/a.hpp>",
+                        "// #include <demo/b.hpp>",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            original_mtime_ns = target_file.stat().st_mtime_ns
+            header_files = [
+                HeaderFile(full_path=temp_dir / "a.hpp", relative_path=Path("demo/a.hpp")),
+                HeaderFile(full_path=temp_dir / "b.hpp", relative_path=Path("demo/b.hpp")),
+            ]
+
+            update_result = update_activation_header(
+                header_files,
+                target_file,
+                default_active=False,
+            )
+
+            updated_mtime_ns = target_file.stat().st_mtime_ns
+
+        self.assertFalse(update_result.created_file)
+        self.assertFalse(update_result.updated_file)
+        self.assertEqual(original_mtime_ns, updated_mtime_ns)
+
     def test_print_update_report_formats_added_and_removed_headers(self) -> None:
         with TemporaryDirectory() as temp_dir_name:
             temp_dir = Path(temp_dir_name)

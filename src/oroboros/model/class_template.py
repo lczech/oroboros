@@ -113,6 +113,15 @@ class CppClassTemplate(CppElement):
 
         return None
 
+    @property
+    def qualified_name(self) -> str:
+        """Return the semantic qualified name of this template family wrapper."""
+
+        declaration = self.declaration
+        if declaration is not None:
+            return declaration.qualified_name
+        return super().qualified_name
+
     def __post_init__(self) -> None:
         """Create and adopt the generic declaration plus any selected instances."""
 

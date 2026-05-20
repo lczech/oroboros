@@ -125,6 +125,7 @@ void Widget::resize(int size) const {}
         result = _parse_headers_from_sources(
             {
                 "a.hpp": """
+/// Namespace docs.
 namespace demo {
 struct Widget {};
 }
@@ -141,6 +142,35 @@ int make_widget() { return 1; }
         self.assertEqual(len(result.module.namespaces), 1)
         namespace = result.module.namespaces[0]
         self.assertEqual(namespace.name, "demo")
+        self.assertEqual(len(namespace.cpp.location.declarations), 2)
+        self.assertIsNotNone(namespace.cpp.comment)
+        self.assertIn("Namespace docs.", namespace.cpp.comment)
+        self.assertEqual(len(namespace.classes), 1)
+        self.assertEqual(namespace.classes[0].name, "Widget")
+        self.assertEqual(len(namespace.functions), 1)
+        self.assertEqual(namespace.functions[0].name, "make_widget")
+
+    def test_parse_headers_merge_anonymous_namespaces_by_semantic_identity(self) -> None:
+        result = _parse_headers_from_sources(
+            {
+                "a.hpp": """
+namespace {
+struct Widget {};
+}
+""",
+                "b.hpp": """
+namespace {
+int make_widget() { return 1; }
+}
+""",
+            },
+            header_order=["a.hpp", "b.hpp"],
+        )
+
+        self.assertEqual(len(result.module.namespaces), 1)
+        namespace = result.module.namespaces[0]
+        self.assertEqual(namespace.name, "")
+        self.assertEqual(len(namespace.cpp.location.declarations), 2)
         self.assertEqual(len(namespace.classes), 1)
         self.assertEqual(namespace.classes[0].name, "Widget")
         self.assertEqual(len(namespace.functions), 1)
@@ -441,6 +471,7 @@ void take_nested(Box<Pair<int, Widget>> value) {}
 
         namespace = result.module.namespaces[0]
         functions = {function.name: function for function in namespace.functions}
+        widget = namespace.classes[0]
 
         values_type = functions["take_values"].parameters[0].cpp.type
         callback_type = functions["take_callback"].parameters[0].cpp.type
@@ -471,6 +502,7 @@ void take_nested(Box<Pair<int, Widget>> value) {}
         self.assertEqual(nested_type.arguments[0].arguments[0].kind, "int")
         self.assertIsInstance(nested_type.arguments[0].arguments[1], NamedCppType)
         self.assertEqual(nested_type.arguments[0].arguments[1].name, "Widget")
+        self.assertIs(nested_type.arguments[0].arguments[1].declaration, widget)
 
     def test_parse_headers_merges_redeclared_constructor_parameters_by_position(self) -> None:
         source = """

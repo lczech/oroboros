@@ -14,6 +14,7 @@ from oroboros.model import (
     CppVisibility,
     LValueReferenceCppType,
     NamedCppType,
+    PointerCppType,
     TemplateInstanceCppType,
 )
 from oroboros.parse import ParserConfig
@@ -553,6 +554,127 @@ class ParseBuildTest(unittest.TestCase):
         self.assertIs(namespace.aliases[0].cpp.target.declaration, namespace.classes[0])
         self.assertEqual(namespace.aliases[1].cpp.kind, "typedef")
 
+    def test_build_module_from_clang_merges_reopened_namespace_provenance(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        translation_unit = SimpleNamespace(
+            cursor=_fake_cursor(
+                "TRANSLATION_UNIT",
+                "",
+                file=active_header,
+                children=[
+                    _fake_cursor(
+                        "NAMESPACE",
+                        "demo",
+                        file=active_header,
+                        line=3,
+                        raw_comment=None,
+                        children=[
+                            _fake_cursor(
+                                "CLASS_DECL",
+                                "Widget",
+                                file=active_header,
+                                usr="c:@N@demo@S@Widget",
+                            ),
+                        ],
+                    ),
+                    _fake_cursor(
+                        "NAMESPACE",
+                        "demo",
+                        file=active_header,
+                        line=12,
+                        raw_comment="/// Namespace docs.",
+                        children=[
+                            _fake_cursor(
+                                "FUNCTION_DECL",
+                                "make_widget",
+                                file=active_header,
+                                usr="c:@N@demo@F@make_widget#",
+                                result_type=_fake_type("INT", "int"),
+                            ),
+                        ],
+                    ),
+                ],
+            )
+        )
+
+        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
+        namespace = build_result.module.namespaces[0]
+
+        self.assertEqual(namespace.name, "demo")
+        self.assertEqual(len(namespace.cpp.location.declarations), 2)
+        self.assertIsNotNone(namespace.cpp.comment)
+        self.assertIn("Namespace docs.", namespace.cpp.comment)
+        self.assertEqual(len(namespace.classes), 1)
+        self.assertEqual(len(namespace.functions), 1)
+
+    def test_build_module_from_clang_links_nested_template_argument_types_to_declarations(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        widget_cursor = _fake_cursor(
+            "CLASS_DECL",
+            "Widget",
+            file=active_header,
+            usr="c:@N@demo@S@Widget",
+        )
+        translation_unit = SimpleNamespace(
+            cursor=_fake_cursor(
+                "TRANSLATION_UNIT",
+                "",
+                file=active_header,
+                children=[
+                    _fake_cursor(
+                        "NAMESPACE",
+                        "demo",
+                        file=active_header,
+                        children=[
+                            widget_cursor,
+                            _fake_cursor(
+                                "FUNCTION_DECL",
+                                "take_nested",
+                                file=active_header,
+                                result_type=_fake_type("VOID", "void"),
+                                children=[
+                                    _fake_cursor(
+                                        "PARM_DECL",
+                                        "value",
+                                        file=active_header,
+                                        type=_fake_type(
+                                            "UNEXPOSED",
+                                            "Box<Pair<int, Widget>>",
+                                            template_argument_types=[
+                                                _fake_type(
+                                                    "UNEXPOSED",
+                                                    "Pair<int, Widget>",
+                                                    template_argument_types=[
+                                                        _fake_type("INT", "int"),
+                                                        _fake_type(
+                                                            "ELABORATED",
+                                                            "Widget",
+                                                            declaration_cursor=widget_cursor,
+                                                        ),
+                                                    ],
+                                                ),
+                                            ],
+                                        ),
+                                    ),
+                                ],
+                            ),
+                        ],
+                    )
+                ],
+            )
+        )
+
+        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
+        parameter_type = build_result.module.namespaces[0].functions[0].parameters[0].cpp.type
+
+        self.assertIsInstance(parameter_type, TemplateInstanceCppType)
+        self.assertIsInstance(parameter_type.arguments[0], TemplateInstanceCppType)
+        self.assertIsInstance(parameter_type.arguments[0].arguments[1], NamedCppType)
+        self.assertIs(
+            parameter_type.arguments[0].arguments[1].declaration,
+            build_result.module.namespaces[0].classes[0],
+        )
+
     def test_build_module_from_clang_warns_on_unexpected_repeated_non_redeclarable_declarations(self) -> None:
         active_header = Path("/tmp/project/demo.hpp")
         translation_unit = SimpleNamespace(
@@ -739,6 +861,33 @@ class ParseTypesTest(unittest.TestCase):
         self.assertIsInstance(cpp_type.canonical.arguments[0], NamedCppType)
         self.assertEqual(cpp_type.canonical.arguments[0].name, "std::string")
 
+    def test_build_cpp_type_parses_pointer_constness_correctly_in_template_argument_spellings(self) -> None:
+        clang_type = _fake_type(
+            "ELABORATED",
+            "Pair<Widget const* const, const Widget* const>",
+        )
+
+        cpp_type = build_cpp_type(clang_type)
+
+        self.assertIsInstance(cpp_type, TemplateInstanceCppType)
+        self.assertEqual(cpp_type.template_name, "Pair")
+        self.assertEqual(len(cpp_type.arguments), 2)
+
+        first_argument = cpp_type.arguments[0]
+        second_argument = cpp_type.arguments[1]
+
+        self.assertIsInstance(first_argument, PointerCppType)
+        self.assertTrue(first_argument.is_const)
+        self.assertIsInstance(first_argument.pointee, NamedCppType)
+        self.assertEqual(first_argument.pointee.name, "Widget")
+        self.assertTrue(first_argument.pointee.is_const)
+
+        self.assertIsInstance(second_argument, PointerCppType)
+        self.assertTrue(second_argument.is_const)
+        self.assertIsInstance(second_argument.pointee, NamedCppType)
+        self.assertEqual(second_argument.pointee.name, "Widget")
+        self.assertTrue(second_argument.pointee.is_const)
+
 
 def _fake_cursor(
     kind_name: str,
@@ -796,6 +945,7 @@ def _fake_type(
     array_size: int | None = None,
     result_type: SimpleNamespace | None = None,
     argument_types: list[SimpleNamespace] | None = None,
+    template_argument_types: list[SimpleNamespace] | None = None,
     is_variadic: bool = False,
     canonical: SimpleNamespace | None = None,
     declaration_cursor: SimpleNamespace | None = None,
@@ -809,6 +959,8 @@ def _fake_type(
         get_array_size=lambda: -1 if array_size is None else array_size,
         get_result=lambda: result_type,
         argument_types=lambda: list(argument_types or []),
+        get_num_template_arguments=lambda: len(template_argument_types or []),
+        get_template_argument_type=lambda index: list(template_argument_types or [])[index],
         is_function_variadic=lambda: is_variadic,
         get_declaration=lambda: declaration_cursor,
     )

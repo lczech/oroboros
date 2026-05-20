@@ -34,26 +34,11 @@ def detect_compiler_toolchain(
 ) -> CompilerToolchain:
     """Detect the resource directory and system include paths for one compiler."""
 
-    try:
-        resource_dir = _detect_resource_dir(compiler)
-        include_output = _run_compiler_include_probe(compiler, language=language)
-    except FileNotFoundError as error:
-        raise RuntimeError(
-            "Toolchain autodetection is enabled, but the compiler "
-            f"{compiler!r} was not found. Install that compiler, point "
-            "`toolchain_compiler` at a working compiler executable, or disable "
-            "`auto_detect_toolchain` and set `resource_dir` plus "
-            "`system_include_dirs` manually."
-        ) from error
-    except (OSError, subprocess.CalledProcessError) as error:
-        details = _format_subprocess_error(error)
-        raise RuntimeError(
-            "Failed to detect parser toolchain settings from compiler "
-            f"{compiler!r}.{details} Disable `auto_detect_toolchain` and set "
-            "`resource_dir` plus `system_include_dirs` manually if needed."
-        ) from error
-
-    system_include_dirs = _parse_system_include_dirs(include_output)
+    resource_dir = _detect_resource_dir(compiler)
+    system_include_dirs = _detect_system_include_dirs(
+        compiler,
+        language=language,
+    )
     return CompilerToolchain(
         resource_dir=resource_dir,
         system_include_dirs=system_include_dirs,
@@ -80,38 +65,74 @@ def _resolve_parser_config_toolchain(
     if not needs_resource_dir and not needs_system_includes:
         return updated_config
 
-    toolchain = detect_compiler_toolchain(
-        updated_config.toolchain_compiler,
-        language=updated_config.language,
-    )
+    if needs_resource_dir:
+        updated_config.resource_dir = _detect_resource_dir(
+            updated_config.toolchain_compiler,
+        )
 
-    if updated_config.resource_dir is None:
-        updated_config.resource_dir = toolchain.resource_dir
-
-    if not updated_config.system_include_dirs:
-        updated_config.system_include_dirs = list(toolchain.system_include_dirs)
+    if needs_system_includes:
+        updated_config.system_include_dirs = _detect_system_include_dirs(
+            updated_config.toolchain_compiler,
+            language=updated_config.language,
+        )
 
     return updated_config
-
-
-# ==================================================================================================
-#     Compiler Probes
-# ==================================================================================================
 
 
 def _detect_resource_dir(compiler: str) -> Path | None:
     """Ask one compiler for its clang builtin header resource directory."""
 
-    completed_process = subprocess.run(
-        [compiler, "-print-resource-dir"],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        completed_process = subprocess.run(
+            [compiler, "-print-resource-dir"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as error:
+        raise RuntimeError(
+            "Toolchain autodetection is enabled, but the compiler "
+            f"{compiler!r} was not found while probing its clang resource "
+            "directory. Install that compiler, point `toolchain_compiler` at "
+            "a working compiler executable, or disable `auto_detect_toolchain` "
+            "and set `resource_dir` manually."
+        ) from error
+    except (OSError, subprocess.CalledProcessError) as error:
+        details = _format_subprocess_error(error)
+        raise RuntimeError(
+            "Failed to detect the parser clang resource directory from compiler "
+            f"{compiler!r}.{details} Disable `auto_detect_toolchain` and set "
+            "`resource_dir` manually if needed."
+        ) from error
+
     output = completed_process.stdout.strip()
     if not output:
         return None
     return Path(output).resolve()
+
+
+def _detect_system_include_dirs(compiler: str, *, language: str) -> list[Path]:
+    """Ask one compiler for its system include directories."""
+
+    try:
+        include_output = _run_compiler_include_probe(compiler, language=language)
+    except FileNotFoundError as error:
+        raise RuntimeError(
+            "Toolchain autodetection is enabled, but the compiler "
+            f"{compiler!r} was not found while probing its system include "
+            "directories. Install that compiler, point `toolchain_compiler` at "
+            "a working compiler executable, or disable `auto_detect_toolchain` "
+            "and set `system_include_dirs` manually."
+        ) from error
+    except (OSError, subprocess.CalledProcessError) as error:
+        details = _format_subprocess_error(error)
+        raise RuntimeError(
+            "Failed to detect parser system include directories from compiler "
+            f"{compiler!r}.{details} Disable `auto_detect_toolchain` and set "
+            "`system_include_dirs` manually if needed."
+        ) from error
+
+    return _parse_system_include_dirs(include_output)
 
 
 def _run_compiler_include_probe(compiler: str, *, language: str) -> str:

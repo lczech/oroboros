@@ -237,6 +237,17 @@ class ModelScaffoldTest(unittest.TestCase):
 
         self.assertEqual(cls["size"], [method_a, method_b])
 
+    def test_generic_navigation_returns_mixed_callable_groups_for_functions_and_templates(self) -> None:
+        function = CppFunction(name="make_widget")
+        function_template = CppFunctionTemplate(name="make_widget")
+        namespace = CppNamespace(
+            name="demo",
+            functions=[function],
+            function_templates=[function_template],
+        )
+
+        self.assertEqual(namespace["make_widget"], [function, function_template])
+
     def test_element_names_and_generic_find_helpers_improve_discovery(self) -> None:
         method = CppMethod(name="size")
         cls = CppClass(name="Widget", methods=[method])
@@ -757,12 +768,17 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertIs(function_template.declaration.owner, function_template)
         self.assertIs(class_instance.owner, class_template)
         self.assertIs(function_instance.owner, function_template)
-        self.assertEqual(class_template.qualified_name, "demo")
-        self.assertEqual(function_template.qualified_name, "demo")
+        self.assertEqual(class_template.qualified_name, "demo::Vector")
+        self.assertEqual(function_template.qualified_name, "demo::make_value")
         self.assertEqual(class_template.declaration.qualified_name, "demo::Vector")
         self.assertEqual(function_template.declaration.qualified_name, "demo::make_value")
         self.assertEqual(class_instance.qualified_name, "demo::Vector")
         self.assertEqual(function_instance.qualified_name, "demo::make_value")
+        self.assertIs(module.find_one_by_qualified_name("demo::Vector", types=CppClassTemplate), class_template)
+        self.assertIs(
+            module.find_one_by_qualified_name("demo::make_value", types=CppFunctionTemplate),
+            function_template,
+        )
         self.assertIs(module.namespaces[0], namespace)
 
     def test_observed_template_instances_materialize_recursively_in_subtrees(self) -> None:

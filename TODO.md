@@ -91,7 +91,29 @@ prioritized engineering work here.
   behavior and parser coverage may still need refinement.
 - Templates in general.
   Families, declarations, observed instances, and selected instances exist,
-  but substitution/specialization behavior is still not complete.
+  but substitution/specialization behavior is still not complete. The current
+  spelling-based template fallback should stay minimal; qualifier and wrapper
+  association in parsed template-argument spellings is brittle and should
+  eventually give way to clang-driven synthetic instantiation.
+
+### Next parser/model slices
+
+- `VAR_DECL` support for free variables and static data members.
+  This is the cleanest next semantic-coverage expansion and is already backed
+  by a real clang-observed gap in the current parser.
+- Real template declaration parsing for `CLASS_TEMPLATE` and
+  `FUNCTION_TEMPLATE`.
+  The semantic model already supports template families, declarations, and
+  selected instances, but the clang walker still needs to materialize those
+  families from real template declaration cursors.
+- Normalized comment and documentation parsing.
+  Raw comments are preserved, but they still need to flow into the richer doc
+  model, including parameter-doc extraction and later Python-facing doc
+  translation.
+- Clang-driven selected template instantiation.
+  Prefer synthetic instantiation probes or aliases in the parse translation
+  unit so clang materializes configured class/function template instances for
+  us, instead of expanding Python-side manual specialization logic.
 
 ## Binding Policy Model
 
@@ -153,6 +175,15 @@ prioritized engineering work here.
 
 ## Parser / Project Configuration
 
+- Current helper/configuration fixes from review.
+  - `find_included_headers()` should honor its own relative-path contract for
+    `header_file` by resolving relative root headers against `base_dir`.
+  - `update_activation_header()` should stop rewriting files when content is
+    unchanged, so activation-header timestamps remain stable for incremental
+    builds.
+  - Toolchain autodetection should probe only the missing pieces
+    (`resource_dir` and/or `system_include_dirs`) instead of always requiring
+    the full compiler capability set.
 - Revisit parser builder helper layering once the parse stage stabilizes.
   In particular, check whether the `build_*_cpp_facet()` helpers still buy
   enough readability over direct construction, and whether `clang_walk.py`
@@ -182,6 +213,12 @@ prioritized engineering work here.
 - Add one real libclang integration test for typedef-preserving type spellings,
   parallel to the alias case, to pin the intended separation between written
   spelling, declaration link, and canonical underlying type.
+- Add one real libclang integration test for reopened namespaces that carry
+  multiple declaration locations/comments, including anonymous-namespace
+  behavior where appropriate.
+- Add one real libclang integration test for nested declaration linking inside
+  spelling-parsed template arguments, to pin the current gap and the intended
+  future behavior once clang-driven template instantiation covers more of it.
 
 ## Outputs Beyond Bindings
 
