@@ -24,6 +24,14 @@ types::RelicInfo describe_relic(std::string_view name, types::Realm realm, int p
     };
 }
 
+types::Reliquary<types::RelicInfo> bless_reliquary(types::RelicInfo relic)
+{
+    relic.consecrated = true;
+    return types::Reliquary<types::RelicInfo> {
+        .value = std::move(relic),
+    };
+}
+
 namespace omens {
 
 types::OmenKind classify_comet(int brightness)

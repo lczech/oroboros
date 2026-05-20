@@ -61,6 +61,7 @@ def build_alias_cpp_facet(
         target=build_cpp_type(
             cursor_alias_target_type(cursor),
             context=context,
+            source_cursor=cursor,
         ),
         location=build_location_info(cursor),
         comment=cursor_raw_comment(cursor),
@@ -122,6 +123,7 @@ def build_enum_cpp_facet(
         underlying_type=build_cpp_type(
             cursor_enum_underlying_type(cursor),
             context=context,
+            source_cursor=cursor,
         ),
         location=build_location_info(cursor),
         comment=cursor_raw_comment(cursor),
@@ -159,6 +161,7 @@ def build_function_cpp_facet(
         return_type=build_cpp_type(
             getattr(cursor, "result_type", None),
             context=context,
+            source_cursor=cursor,
         ),
         location=build_location_info(cursor),
         comment=cursor_raw_comment(cursor),
@@ -180,6 +183,7 @@ def build_function_template_decl_cpp_facet(
         return_type=build_cpp_type(
             getattr(cursor, "result_type", None),
             context=context,
+            source_cursor=cursor,
         ),
         location=build_location_info(cursor),
         comment=cursor_raw_comment(cursor),
@@ -206,6 +210,7 @@ def build_method_cpp_facet(
         return_type=build_cpp_type(
             getattr(cursor, "result_type", None),
             context=context,
+            source_cursor=cursor,
         ),
         location=build_location_info(cursor),
         comment=cursor_raw_comment(cursor),
@@ -248,6 +253,7 @@ def build_field_cpp_facet(
         type=build_cpp_type(
             getattr(cursor, "type", None),
             context=context,
+            source_cursor=cursor,
         ),
         location=build_location_info(cursor),
         comment=cursor_raw_comment(cursor),
@@ -270,6 +276,7 @@ def build_parameter_cpp_facet(
         type=build_cpp_type(
             getattr(cursor, "type", None),
             context=context,
+            source_cursor=cursor,
         ),
         location=build_location_info(cursor),
     )
@@ -309,6 +316,7 @@ def build_class_bases(
         base_type = build_cpp_type(
             getattr(child_cursor, "type", None),
             context=context,
+            source_cursor=child_cursor,
         )
         if base_type is None:
             continue

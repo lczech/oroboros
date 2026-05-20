@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <string>
 
@@ -30,6 +31,18 @@ struct RelicInfo {
     int power {0};
     bool consecrated {false};
 };
+
+/** Small generic wrapper used to exercise class template parsing in the example library. */
+template <class T>
+struct Reliquary {
+    T value {};
+};
+
+/** Alias used to exercise nested template arguments with one non-type value. */
+using RelicQuartet = std::array<RelicInfo, 4>;
+
+/** Alias used to exercise a nested template alias target in parsed C++ types. */
+using ReliquaryShelf = Reliquary<RelicQuartet>;
 
 /** Alias used to exercise namespace-level alias declarations in the example library. */
 using RealmCode = Realm;

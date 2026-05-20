@@ -10,8 +10,10 @@ from oroboros.model import (
     CppAlias,
     CppClassTemplate,
     CppFunctionTemplate,
+    CppNonTypeTemplateArgument,
     CppNonTypeTemplateParameter,
     CppTemplateTemplateParameter,
+    CppTypeTemplateArgument,
     CppTypeTemplateParameter,
     CppVisibility,
     FunctionCppType,
@@ -77,6 +79,134 @@ T make_value(T value) {
         self.assertEqual(function_template.declaration.parameters[0].name, "value")
         self.assertIsInstance(function_template.declaration.cpp.return_type, NamedCppType)
         self.assertEqual(function_template.declaration.cpp.return_type.name, "T")
+
+    def test_parse_headers_materializes_structured_template_features_end_to_end(self) -> None:
+        source = """
+#include <array>
+
+namespace demo::types {
+
+struct RelicInfo {
+    int power {0};
+};
+
+template <class T>
+struct Reliquary {
+    T value {};
+};
+
+using RelicQuartet = std::array<RelicInfo, 4>;
+using ReliquaryShelf = Reliquary<RelicQuartet>;
+
+}  // namespace demo::types
+
+namespace demo::functions {
+
+template <class T>
+T echo_prophecy(T value) {
+    return value;
+}
+
+types::Reliquary<types::RelicInfo> bless_reliquary(types::RelicInfo relic);
+
+}  // namespace demo::functions
+"""
+
+        result = _parse_headers_from_sources(
+            {"demo.hpp": source},
+            parser_config=ParserConfig(
+                cxx_standard="c++20",
+                auto_detect_toolchain=False,
+                validate_model=True,
+            ),
+        )
+
+        root_namespace = result.module.namespaces[0]
+        types_namespace = root_namespace.namespaces[0]
+        functions_namespace = root_namespace.namespaces[1]
+
+        class_template = types_namespace.class_templates[0]
+        self.assertIsInstance(class_template, CppClassTemplate)
+        self.assertEqual(class_template.name, "Reliquary")
+        self.assertEqual(len(class_template.declaration.cpp.template_parameters), 1)
+        self.assertIsInstance(class_template.declaration.cpp.template_parameters[0], CppTypeTemplateParameter)
+        self.assertEqual(class_template.declaration.cpp.template_parameters[0].name, "T")
+        self.assertEqual(len(class_template.declaration.fields), 1)
+        self.assertEqual(class_template.declaration.fields[0].name, "value")
+
+        relic_quartet = types_namespace.alias["RelicQuartet"]
+        self.assertIsInstance(relic_quartet, CppAlias)
+        self.assertIsInstance(relic_quartet.cpp.target, TemplateInstanceCppType)
+        self.assertEqual(relic_quartet.cpp.target.template_name, "std::array")
+        self.assertEqual(len(relic_quartet.cpp.target.arguments), 2)
+        self.assertIsInstance(relic_quartet.cpp.target.arguments[0], CppTypeTemplateArgument)
+        self.assertIsInstance(relic_quartet.cpp.target.arguments[0].type, NamedCppType)
+        self.assertEqual(relic_quartet.cpp.target.arguments[0].type.name, "RelicInfo")
+        self.assertIsInstance(relic_quartet.cpp.target.arguments[1], CppNonTypeTemplateArgument)
+        self.assertEqual(relic_quartet.cpp.target.arguments[1].value, "4")
+
+        reliquary_shelf = types_namespace.alias["ReliquaryShelf"]
+        self.assertIsInstance(reliquary_shelf.cpp.target, TemplateInstanceCppType)
+        self.assertEqual(reliquary_shelf.cpp.target.template_name, "Reliquary")
+        self.assertEqual(len(reliquary_shelf.cpp.target.arguments), 1)
+        self.assertIsInstance(reliquary_shelf.cpp.target.arguments[0], CppTypeTemplateArgument)
+        self.assertIsInstance(reliquary_shelf.cpp.target.arguments[0].type, NamedCppType)
+        self.assertEqual(reliquary_shelf.cpp.target.arguments[0].type.name, "RelicQuartet")
+        self.assertIs(reliquary_shelf.cpp.target.arguments[0].type.declaration, relic_quartet)
+
+        function_template = functions_namespace.function_templates[0]
+        self.assertIsInstance(function_template, CppFunctionTemplate)
+        self.assertEqual(function_template.name, "echo_prophecy")
+        self.assertEqual(len(function_template.declaration.cpp.template_parameters), 1)
+        self.assertIsInstance(function_template.declaration.cpp.template_parameters[0], CppTypeTemplateParameter)
+        self.assertEqual(function_template.declaration.cpp.template_parameters[0].name, "T")
+        self.assertEqual(len(function_template.declaration.parameters), 1)
+        self.assertEqual(function_template.declaration.parameters[0].name, "value")
+        self.assertIsInstance(function_template.declaration.cpp.return_type, NamedCppType)
+        self.assertEqual(function_template.declaration.cpp.return_type.name, "T")
+
+        bless_reliquary = functions_namespace.functions[0]
+        self.assertEqual(bless_reliquary.name, "bless_reliquary")
+        self.assertIsInstance(bless_reliquary.cpp.return_type, TemplateInstanceCppType)
+        self.assertEqual(bless_reliquary.cpp.return_type.template_name, "types::Reliquary")
+        self.assertEqual(len(bless_reliquary.cpp.return_type.arguments), 1)
+        self.assertIsInstance(bless_reliquary.cpp.return_type.arguments[0], CppTypeTemplateArgument)
+        self.assertIsInstance(bless_reliquary.cpp.return_type.arguments[0].type, NamedCppType)
+        self.assertEqual(bless_reliquary.cpp.return_type.arguments[0].type.name, "types::RelicInfo")
+
+    def test_parse_headers_collects_observed_class_template_instances_from_declaration_types(self) -> None:
+        source = """
+namespace demo {
+
+struct RelicInfo {};
+
+template <class T>
+struct Box {
+    T value {};
+};
+
+using RelicBox = Box<RelicInfo>;
+
+struct Holder {
+    Box<RelicInfo> primary;
+};
+
+Box<RelicInfo> make_box();
+
+}
+"""
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.namespaces[0]
+        box_template = namespace.class_templates[0]
+        observed_instances = box_template.declaration.cpp.observed_instances
+
+        self.assertEqual(len(observed_instances), 1)
+        self.assertEqual(len(observed_instances[0].locations), 3)
+        self.assertIsInstance(observed_instances[0].arguments[0], CppTypeTemplateArgument)
+        self.assertIsInstance(observed_instances[0].arguments[0].type, NamedCppType)
+        self.assertEqual(observed_instances[0].arguments[0].type.name, "RelicInfo")
 
     def test_parse_headers_materializes_basic_declarations_end_to_end(self) -> None:
         source = """
@@ -554,14 +684,17 @@ void take_nested(Box<Pair<int, Widget>> value) {}
         self.assertIsInstance(nested_type, TemplateInstanceCppType)
         self.assertEqual(nested_type.template_name, "Box")
         self.assertEqual(len(nested_type.arguments), 1)
-        self.assertIsInstance(nested_type.arguments[0], TemplateInstanceCppType)
-        self.assertEqual(nested_type.arguments[0].template_name, "Pair")
-        self.assertEqual(len(nested_type.arguments[0].arguments), 2)
-        self.assertIsInstance(nested_type.arguments[0].arguments[0], BuiltinCppType)
-        self.assertEqual(nested_type.arguments[0].arguments[0].kind, "int")
-        self.assertIsInstance(nested_type.arguments[0].arguments[1], NamedCppType)
-        self.assertEqual(nested_type.arguments[0].arguments[1].name, "Widget")
-        self.assertIs(nested_type.arguments[0].arguments[1].declaration, widget)
+        self.assertIsInstance(nested_type.arguments[0], CppTypeTemplateArgument)
+        self.assertIsInstance(nested_type.arguments[0].type, TemplateInstanceCppType)
+        self.assertEqual(nested_type.arguments[0].type.template_name, "Pair")
+        self.assertEqual(len(nested_type.arguments[0].type.arguments), 2)
+        self.assertIsInstance(nested_type.arguments[0].type.arguments[0], CppTypeTemplateArgument)
+        self.assertIsInstance(nested_type.arguments[0].type.arguments[0].type, BuiltinCppType)
+        self.assertEqual(nested_type.arguments[0].type.arguments[0].type.kind, "int")
+        self.assertIsInstance(nested_type.arguments[0].type.arguments[1], CppTypeTemplateArgument)
+        self.assertIsInstance(nested_type.arguments[0].type.arguments[1].type, NamedCppType)
+        self.assertEqual(nested_type.arguments[0].type.arguments[1].type.name, "Widget")
+        self.assertIs(nested_type.arguments[0].type.arguments[1].type.declaration, widget)
 
     def test_parse_headers_merges_redeclared_constructor_parameters_by_position(self) -> None:
         source = """
@@ -623,6 +756,7 @@ def _parse_headers_from_sources(
     sources: dict[str, str],
     *,
     header_order: list[str] | None = None,
+    parser_config: ParserConfig | None = None,
 ):
     """Parse one small temporary header set with the real libclang pipeline."""
 
@@ -637,7 +771,8 @@ def _parse_headers_from_sources(
 
         return parse_headers(
             headers,
-            ParserConfig(
+            parser_config
+            or ParserConfig(
                 auto_detect_toolchain=False,
                 cxx_standard="c++20",
             ),

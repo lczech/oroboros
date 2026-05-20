@@ -2,15 +2,15 @@ from __future__ import annotations
 
 """Class-template model objects and helpers."""
 
-from copy import deepcopy
 from dataclasses import dataclass, field as dataclass_field
 from typing import TYPE_CHECKING
 
 from .class_ import (
-    CppClass,
     CppClassBindFacet,
     CppClassCppFacet,
+    CppClassDefaults,
     CppClassMembers,
+    CppClassPyFacet,
     CppFieldBindFacet,
 )
 from .element import CppElement
@@ -18,8 +18,8 @@ from .member import CppConstructorBindFacet, CppMethodBindFacet
 from .template_ import (
     CppObservedTemplateInstance,
     CppTemplateArgument,
+    CppTemplateBindFacet,
     CppTemplateParameter,
-    _copy_children,
     _synchronize_template_name,
     _template_argument_key,
     _validate_template_arguments,
@@ -43,8 +43,8 @@ class CppClassTemplateDeclCppFacet(CppClassCppFacet):
 
 
 @dataclass(slots=True)
-class CppClassTemplateInstanceCppFacet(CppClassCppFacet):
-    """Store parsed C++ details for one concrete class template instance."""
+class CppClassTemplateInstanceCppFacet:
+    """Store selected template arguments for one class template instance."""
 
     template_arguments: list[CppTemplateArgument] = dataclass_field(default_factory=list)
 
@@ -89,17 +89,25 @@ class CppClassTemplateDecl(CppClassMembers):
 
 
 @dataclass(slots=True)
-class CppClassTemplateInstance(CppClass):
-    """Represent one selected class template instantiation to be bound."""
+class CppClassTemplateInstance(CppElement):
+    """Represent one selected class template instantiation as a binding target."""
 
-    # Parsed C++ details for this concrete class template instance.
+    # Selected template arguments for this concrete class template instance.
     cpp: CppClassTemplateInstanceCppFacet = dataclass_field(default_factory=CppClassTemplateInstanceCppFacet)
+    # Binding settings attached directly to this selected instance.
+    bind: CppClassBindFacet = dataclass_field(default_factory=CppClassBindFacet)
+    # Python-facing choices attached directly to this selected instance.
+    py: CppClassPyFacet = dataclass_field(default_factory=CppClassPyFacet)
+    # Descendant defaults for future instance-local emitted customization.
+    defaults: CppClassDefaults = dataclass_field(default_factory=CppClassDefaults)
 
 
 @dataclass(slots=True)
 class CppClassTemplate(CppElement):
     """Group one generic class template declaration with its selected instances."""
 
+    # Binding policy attached to this template family wrapper itself.
+    bind: CppTemplateBindFacet = dataclass_field(default_factory=CppTemplateBindFacet)
     # Parsed generic class template declaration, including observed instances.
     declaration: CppClassTemplateDecl | None = None
     # Selected concrete instantiations to bind for this template family.
@@ -139,6 +147,14 @@ class CppClassTemplate(CppElement):
 
         return self._append_child(self.instances, instance)
 
+    def add_observed_instances(self) -> list[CppClassTemplateInstance]:
+        """Materialize all parser-observed instances attached to this template family."""
+
+        return [
+            add_class_template_instance(self, observed_instance.arguments)
+            for observed_instance in self.declaration.cpp.observed_instances
+        ]
+
 
 # ==================================================================================================
 #     Helpers
@@ -168,22 +184,8 @@ def add_class_template_instance(
     instance = CppClassTemplateInstance(
         name=template.name,
         cpp=CppClassTemplateInstanceCppFacet(
-            original_name=declaration.cpp.original_name,
-            location=deepcopy(declaration.cpp.location),
-            comment=declaration.cpp.comment,
-            doc=declaration.cpp.doc,
-            kind=declaration.cpp.kind,
-            bases=deepcopy(declaration.cpp.bases),
-            template_arguments=deepcopy(arguments),
+            template_arguments=list(arguments),
         ),
-        classes=_copy_children(declaration.classes),
-        constructors=_copy_children(declaration.constructors),
-        methods=_copy_children(declaration.methods),
-        fields=_copy_children(declaration.fields),
-        aliases=_copy_children(declaration.aliases),
-        enums=_copy_children(declaration.enums),
-        class_templates=_copy_children(declaration.class_templates),
-        function_templates=_copy_children(declaration.function_templates),
     )
     return template.add_instance(instance)
 

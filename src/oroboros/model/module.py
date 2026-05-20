@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from .enum import CppEnum, CppEnumBindFacet
     from .function import CppFunction, CppFunctionBindFacet
     from .namespace import CppNamespace, CppNamespaceBindFacet
-    from .template_ import CppClassTemplate, CppFunctionTemplate
+    from .template_ import CppClassTemplate, CppFunctionTemplate, CppTemplateBindFacet
 
 
 # ==================================================================================================
@@ -54,7 +54,9 @@ class CppModuleDefaults:
 
     namespace: "CppNamespaceBindFacet" = field(default_factory=lambda: _make_namespace_bind_facet())
     class_: "CppClassBindFacet" = field(default_factory=lambda: _make_class_bind_facet())
+    class_template: "CppTemplateBindFacet" = field(default_factory=lambda: _make_template_bind_facet())
     function: "CppFunctionBindFacet" = field(default_factory=lambda: _make_function_bind_facet())
+    function_template: "CppTemplateBindFacet" = field(default_factory=lambda: _make_template_bind_facet())
     enum: "CppEnumBindFacet" = field(default_factory=lambda: _make_enum_bind_facet())
 
 
@@ -80,6 +82,14 @@ def _make_function_bind_facet() -> "CppFunctionBindFacet":
     from .function import CppFunctionBindFacet
 
     return CppFunctionBindFacet()
+
+
+def _make_template_bind_facet() -> "CppTemplateBindFacet":
+    """Create one template-bind facet without import cycles at module import time."""
+
+    from .template_ import CppTemplateBindFacet
+
+    return CppTemplateBindFacet()
 
 
 def _make_enum_bind_facet() -> "CppEnumBindFacet":

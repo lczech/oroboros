@@ -2,16 +2,15 @@ from __future__ import annotations
 
 """Function-template model objects and helpers."""
 
-from copy import deepcopy
 from dataclasses import dataclass, field as dataclass_field
 
 from .element import CppElement
-from .function import CppFunction, CppFunctionBindFacet, CppFunctionCppFacet, CppParameter
+from .function import CppFunctionBindFacet, CppFunctionCppFacet, CppFunctionPyFacet, CppParameter
 from .template_ import (
     CppObservedTemplateInstance,
     CppTemplateArgument,
+    CppTemplateBindFacet,
     CppTemplateParameter,
-    _copy_children,
     _synchronize_template_name,
     _template_argument_key,
     _validate_template_arguments,
@@ -36,14 +35,10 @@ class CppFunctionTemplateDeclCppFacet(CppFunctionCppFacet):
 
 
 @dataclass(slots=True)
-class CppFunctionTemplateInstanceCppFacet(CppFunctionCppFacet):
-    """Store parsed C++ details for one concrete function template instance."""
+class CppFunctionTemplateInstanceCppFacet:
+    """Store selected template arguments for one function template instance."""
 
     template_arguments: list[CppTemplateArgument] = dataclass_field(default_factory=list)
-    is_const: bool = False
-    is_static: bool = False
-    is_virtual: bool = False
-    is_pure_virtual: bool = False
 
 
 @dataclass(slots=True)
@@ -80,17 +75,23 @@ class CppFunctionTemplateDecl(CppElement):
 
 
 @dataclass(slots=True)
-class CppFunctionTemplateInstance(CppFunction):
-    """Represent one selected function template instantiation to be bound."""
+class CppFunctionTemplateInstance(CppElement):
+    """Represent one selected function template instantiation as a binding target."""
 
-    # Parsed C++ details for this concrete function template instance.
+    # Selected template arguments for this concrete function template instance.
     cpp: CppFunctionTemplateInstanceCppFacet = dataclass_field(default_factory=CppFunctionTemplateInstanceCppFacet)
+    # Binding settings attached directly to this selected instance.
+    bind: CppFunctionBindFacet = dataclass_field(default_factory=CppFunctionBindFacet)
+    # Python-facing choices attached directly to this selected instance.
+    py: CppFunctionPyFacet = dataclass_field(default_factory=CppFunctionPyFacet)
 
 
 @dataclass(slots=True)
 class CppFunctionTemplate(CppElement):
     """Group one generic function template declaration with its selected instances."""
 
+    # Binding policy attached to this template family wrapper itself.
+    bind: CppTemplateBindFacet = dataclass_field(default_factory=CppTemplateBindFacet)
     # Parsed generic function template declaration, including observed instances.
     declaration: CppFunctionTemplateDecl | None = None
     # Selected concrete instantiations to bind for this template family.
@@ -130,6 +131,14 @@ class CppFunctionTemplate(CppElement):
 
         return self._append_child(self.instances, instance)
 
+    def add_observed_instances(self) -> list[CppFunctionTemplateInstance]:
+        """Materialize all parser-observed instances attached to this template family."""
+
+        return [
+            add_function_template_instance(self, observed_instance.arguments)
+            for observed_instance in self.declaration.cpp.observed_instances
+        ]
+
 
 # ==================================================================================================
 #     Helpers
@@ -159,21 +168,8 @@ def add_function_template_instance(
     instance = CppFunctionTemplateInstance(
         name=template.name,
         cpp=CppFunctionTemplateInstanceCppFacet(
-            original_name=declaration.cpp.original_name,
-            operator=deepcopy(declaration.cpp.operator),
-            return_type=deepcopy(declaration.cpp.return_type),
-            location=deepcopy(declaration.cpp.location),
-            comment=declaration.cpp.comment,
-            doc=declaration.cpp.doc,
-            overload_index=declaration.cpp.overload_index,
-            is_noexcept=declaration.cpp.is_noexcept,
-            template_arguments=deepcopy(arguments),
-            is_const=declaration.cpp.is_const,
-            is_static=declaration.cpp.is_static,
-            is_virtual=declaration.cpp.is_virtual,
-            is_pure_virtual=declaration.cpp.is_pure_virtual,
+            template_arguments=list(arguments),
         ),
-        parameters=_copy_children(declaration.parameters),
     )
     return template.add_instance(instance)
 

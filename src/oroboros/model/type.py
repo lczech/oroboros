@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from .element import CppElement
+    from .template_ import CppTemplateArgument
 
 
 # ==================================================================================================
@@ -150,16 +151,16 @@ class FunctionCppType(CppType):
 
 @dataclass(slots=True)
 class TemplateInstanceCppType(CppType):
-    """Represent one template-instantiated type with recursive argument types."""
+    """Represent one template-instantiated type with structured arguments."""
 
     # Source-spelled template family name such as `std::vector`.
     template_name: str = ""
-    # Template argument type values in declared order.
-    arguments: list[CppType] = field(default_factory=list)
+    # Structured template arguments in declared order.
+    arguments: list["CppTemplateArgument"] = field(default_factory=list)
 
     def render(self) -> str:
         qualifier = "const " if self.is_const else ""
-        rendered_arguments = ", ".join(argument.render() for argument in self.arguments)
+        rendered_arguments = ", ".join(_render_template_argument(argument) for argument in self.arguments)
         return f"{qualifier}{self.template_name}<{rendered_arguments}>"
 
 
@@ -300,11 +301,13 @@ def cpp_type_key(cpp_type: CppType | None) -> tuple[object, ...]:
         )
 
     if isinstance(cpp_type, TemplateInstanceCppType):
+        from .template_ import _single_template_argument_key
+
         return (
             "template_instance",
             cpp_type.is_const,
             cpp_type.template_name,
-            tuple(cpp_type_key(argument) for argument in cpp_type.arguments),
+            tuple(_single_template_argument_key(argument) for argument in cpp_type.arguments),
         )
 
     if isinstance(cpp_type, BuiltinCppType):
@@ -328,3 +331,24 @@ def _with_top_level_const(
     if not is_const or type_key == ("none",):
         return type_key
     return (type_key[0], True, *type_key[2:])
+
+
+def _render_template_argument(argument: "CppTemplateArgument") -> str:
+    """Render one structured template argument back into C++ spelling."""
+
+    from .template_ import (
+        CppNonTypeTemplateArgument,
+        CppTemplateTemplateArgument,
+        CppTypeTemplateArgument,
+    )
+
+    if isinstance(argument, CppTypeTemplateArgument):
+        return argument.type.render() if argument.type is not None else ""
+
+    if isinstance(argument, CppNonTypeTemplateArgument):
+        return argument.value
+
+    if isinstance(argument, CppTemplateTemplateArgument):
+        return argument.name
+
+    raise TypeError(f"Unsupported template argument for rendering: {type(argument)!r}")

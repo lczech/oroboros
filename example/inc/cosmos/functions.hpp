@@ -24,6 +24,15 @@ types::RelicInfo describe_relic(
     int power
 );
 
+/** Echo one typed value through a small function template. */
+template <class T>
+T echo_prophecy(T value) {
+    return value;
+}
+
+/** Wrap one relic in a template-based reliquary. */
+types::Reliquary<types::RelicInfo> bless_reliquary(types::RelicInfo relic);
+
 // ================================================================================================
 //   cosmos::functions::omens
 // ================================================================================================

@@ -96,6 +96,12 @@ prioritized engineering work here.
   should move toward emitter-side binding helper templates instantiated once
   per selected argument list, with deeper clang-driven specialization parsing
   only as an optional later refinement.
+  Use-site template-instantiated types now carry structured template arguments,
+  including non-type arguments, and parser-observed class template instances
+  are collected from declaration-surface type uses. Use-site template-template
+  arguments are still not richly inferred, block-scope body observations are
+  intentionally ignored, and template parameter defaults remain intentionally
+  unused for now.
 
 ### Next parser/model slices
 

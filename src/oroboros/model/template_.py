@@ -11,6 +11,19 @@ from .type import CppType, cpp_type_key
 
 
 # ==================================================================================================
+#     Facets
+# ==================================================================================================
+
+
+@dataclass(slots=True)
+class CppTemplateBindFacet:
+    """Store binding policy attached to one template family."""
+
+    # Whether parser-observed template instances should be materialized by helper policy.
+    materialize_observed_instances: bool | None = None
+
+
+# ==================================================================================================
 #     Template Values
 # ==================================================================================================
 
@@ -24,8 +37,11 @@ from .type import CppType, cpp_type_key
 class CppTemplateParameter:
     """Represent one declared parameter slot of a C++ template."""
 
+    # Source-spelled parameter name, which may be empty for unnamed slots.
     name: str
+    # Optional default argument placeholder; currently unused by the parser/emitter pipeline.
     default: CppTemplateArgument | None = None
+    # Whether this slot accepts a parameter pack.
     is_parameter_pack: bool = False
 
 
@@ -33,6 +49,8 @@ class CppTemplateParameter:
 class CppTypeTemplateParameter(CppTemplateParameter):
     """Represent one type template parameter."""
 
+    # Whether this slot binds a type, such as the `T` in `template<class T>`.
+    # Preserve whether the declaration spelled that type slot as `typename` or `class`.
     keyword: Literal["typename", "class"] = "typename"
 
 
@@ -40,6 +58,8 @@ class CppTypeTemplateParameter(CppTemplateParameter):
 class CppNonTypeTemplateParameter(CppTemplateParameter):
     """Represent one non-type template parameter."""
 
+    # Whether this slot binds a value, such as the `N` in `template<int N>`.
+    # Store the declared type of that value slot, for example `int` or `std::size_t`.
     type: CppType | None = None
 
 
@@ -47,6 +67,7 @@ class CppNonTypeTemplateParameter(CppTemplateParameter):
 class CppTemplateTemplateParameter(CppTemplateParameter):
     """Represent one template-template parameter with recursive inner slots."""
 
+    # Inner parameter signature accepted by the template-template argument.
     parameters: list[CppTemplateParameter] = dataclass_field(default_factory=list)
 
 
@@ -64,6 +85,7 @@ class CppTemplateArgument:
 class CppTypeTemplateArgument(CppTemplateArgument):
     """Represent one type template argument."""
 
+    # Structured type supplied to this argument slot.
     type: CppType | None = None
 
 
@@ -71,7 +93,9 @@ class CppTypeTemplateArgument(CppTemplateArgument):
 class CppNonTypeTemplateArgument(CppTemplateArgument):
     """Represent one non-type template argument."""
 
+    # Source-spelled value expression such as `4` or `true`.
     value: str = ""
+    # Optional semantic type of the value when clang exposes it.
     type: CppType | None = None
 
 
@@ -79,7 +103,9 @@ class CppNonTypeTemplateArgument(CppTemplateArgument):
 class CppTemplateTemplateArgument(CppTemplateArgument):
     """Represent one template-template argument."""
 
+    # Source-spelled template family name such as `Allocator`.
     name: str = ""
+    # Declared inner template-parameter signature when known.
     parameters: list["CppTemplateParameter"] = dataclass_field(default_factory=list)
 
 
@@ -92,7 +118,9 @@ class CppTemplateTemplateArgument(CppTemplateArgument):
 class CppObservedTemplateInstance:
     """Store one concrete template instantiation observed in parsed C++ code."""
 
+    # Concrete template arguments observed at one use site.
     arguments: list[CppTemplateArgument] = dataclass_field(default_factory=list)
+    # Source locations where this concrete argument list was observed.
     locations: list[SourceLocation] = dataclass_field(default_factory=list)
 
 
@@ -415,6 +443,30 @@ def add_observed_template_instances(
     return created_instances
 
 
+def add_enabled_observed_template_instances(
+    scope: TemplateScope,
+    *,
+    include_class_templates: bool = True,
+    include_function_templates: bool = True,
+    recurse: bool = True,
+) -> list[CppElement]:
+    """Materialize only the observed template instances enabled by effective bind policy."""
+
+    created_instances: list[CppElement] = []
+
+    for class_template in _iter_class_templates(scope, recurse=recurse):
+        if not include_class_templates or not _template_materializes_observed_instances(class_template):
+            continue
+        created_instances.extend(class_template.add_observed_instances())
+
+    for function_template in _iter_function_templates(scope, recurse=recurse):
+        if not include_function_templates or not _template_materializes_observed_instances(function_template):
+            continue
+        created_instances.extend(function_template.add_observed_instances())
+
+    return created_instances
+
+
 def _iter_class_templates(
     scope: TemplateScope,
     *,
@@ -470,3 +522,24 @@ def _iter_nested_template_scopes(scope: TemplateScope) -> list[CppElement]:
         template.declaration for template in getattr(scope, "class_templates", [])
     )
     return nested_scopes
+
+
+def _template_materializes_observed_instances(template: TemplateFamily) -> bool:
+    """Resolve whether one template family should materialize parser-observed instances."""
+
+    direct_setting = template.bind.materialize_observed_instances
+    if direct_setting is not None:
+        return direct_setting
+
+    default_bucket_name = "class_template" if isinstance(template, CppClassTemplate) else "function_template"
+
+    current: CppElement | None = template.owner
+    while current is not None:
+        defaults = getattr(current, "defaults", None)
+        if defaults is not None:
+            default_bucket = getattr(defaults, default_bucket_name, None)
+            if default_bucket is not None and default_bucket.materialize_observed_instances is not None:
+                return default_bucket.materialize_observed_instances
+        current = current.owner
+
+    return False

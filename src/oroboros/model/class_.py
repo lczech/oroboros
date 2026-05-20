@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from .alias import CppAlias
     from .enum import CppEnum, CppEnumBindFacet
     from .member import CppConstructor, CppConstructorBindFacet, CppMethod, CppMethodBindFacet
-    from .template_ import CppClassTemplate, CppFunctionTemplate
+    from .template_ import CppClassTemplate, CppFunctionTemplate, CppTemplateBindFacet
 
 
 # ==================================================================================================
@@ -117,9 +117,11 @@ class CppClassDefaults:
     """Store descendant defaults for one class scope."""
 
     class_: CppClassBindFacet = dataclass_field(default_factory=CppClassBindFacet)
+    class_template: "CppTemplateBindFacet" = dataclass_field(default_factory=lambda: _make_template_bind_facet())
     method: "CppMethodBindFacet" = dataclass_field(default_factory=lambda: _make_method_bind_facet())
     constructor: "CppConstructorBindFacet" = dataclass_field(default_factory=lambda: _make_constructor_bind_facet())
     field: CppFieldBindFacet = dataclass_field(default_factory=CppFieldBindFacet)
+    function_template: "CppTemplateBindFacet" = dataclass_field(default_factory=lambda: _make_template_bind_facet())
     enum: "CppEnumBindFacet" = dataclass_field(default_factory=lambda: _make_enum_bind_facet())
 
 
@@ -137,6 +139,14 @@ def _make_constructor_bind_facet() -> "CppConstructorBindFacet":
     from .member import CppConstructorBindFacet
 
     return CppConstructorBindFacet()
+
+
+def _make_template_bind_facet() -> "CppTemplateBindFacet":
+    """Create one template-bind facet without import cycles at module import time."""
+
+    from .template_ import CppTemplateBindFacet
+
+    return CppTemplateBindFacet()
 
 
 def _make_enum_bind_facet() -> "CppEnumBindFacet":

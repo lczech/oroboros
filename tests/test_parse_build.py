@@ -11,6 +11,12 @@ from oroboros.model import (
     CppAlias,
     CppClass,
     CppMethod,
+    CppNonTypeTemplateArgument,
+    CppNonTypeTemplateParameter,
+    CppTemplateTemplateArgument,
+    CppTemplateTemplateParameter,
+    CppTypeTemplateArgument,
+    CppTypeTemplateParameter,
     CppVisibility,
     LValueReferenceCppType,
     NamedCppType,
@@ -668,10 +674,12 @@ class ParseBuildTest(unittest.TestCase):
         parameter_type = build_result.module.namespaces[0].functions[0].parameters[0].cpp.type
 
         self.assertIsInstance(parameter_type, TemplateInstanceCppType)
-        self.assertIsInstance(parameter_type.arguments[0], TemplateInstanceCppType)
-        self.assertIsInstance(parameter_type.arguments[0].arguments[1], NamedCppType)
+        self.assertIsInstance(parameter_type.arguments[0], CppTypeTemplateArgument)
+        self.assertIsInstance(parameter_type.arguments[0].type, TemplateInstanceCppType)
+        self.assertIsInstance(parameter_type.arguments[0].type.arguments[1], CppTypeTemplateArgument)
+        self.assertIsInstance(parameter_type.arguments[0].type.arguments[1].type, NamedCppType)
         self.assertIs(
-            parameter_type.arguments[0].arguments[1].declaration,
+            parameter_type.arguments[0].type.arguments[1].type.declaration,
             build_result.module.namespaces[0].classes[0],
         )
 
@@ -858,8 +866,9 @@ class ParseTypesTest(unittest.TestCase):
         self.assertIsInstance(cpp_type.canonical, TemplateInstanceCppType)
         self.assertEqual(cpp_type.canonical.template_name, "std::vector")
         self.assertEqual(len(cpp_type.canonical.arguments), 1)
-        self.assertIsInstance(cpp_type.canonical.arguments[0], NamedCppType)
-        self.assertEqual(cpp_type.canonical.arguments[0].name, "std::string")
+        self.assertIsInstance(cpp_type.canonical.arguments[0], CppTypeTemplateArgument)
+        self.assertIsInstance(cpp_type.canonical.arguments[0].type, NamedCppType)
+        self.assertEqual(cpp_type.canonical.arguments[0].type.name, "std::string")
 
     def test_build_cpp_type_parses_pointer_constness_correctly_in_template_argument_spellings(self) -> None:
         clang_type = _fake_type(
@@ -873,8 +882,10 @@ class ParseTypesTest(unittest.TestCase):
         self.assertEqual(cpp_type.template_name, "Pair")
         self.assertEqual(len(cpp_type.arguments), 2)
 
-        first_argument = cpp_type.arguments[0]
-        second_argument = cpp_type.arguments[1]
+        self.assertIsInstance(cpp_type.arguments[0], CppTypeTemplateArgument)
+        self.assertIsInstance(cpp_type.arguments[1], CppTypeTemplateArgument)
+        first_argument = cpp_type.arguments[0].type
+        second_argument = cpp_type.arguments[1].type
 
         self.assertIsInstance(first_argument, PointerCppType)
         self.assertTrue(first_argument.is_const)
@@ -888,6 +899,28 @@ class ParseTypesTest(unittest.TestCase):
         self.assertEqual(second_argument.pointee.name, "Widget")
         self.assertTrue(second_argument.pointee.is_const)
 
+    def test_build_cpp_type_preserves_non_type_template_arguments(self) -> None:
+        clang_type = _fake_type(
+            "ELABORATED",
+            "std::array<int, 4>",
+            template_argument_types=[
+                _fake_type("INT", "int"),
+                _fake_type("INT", "int"),
+            ],
+        )
+
+        cpp_type = build_cpp_type(clang_type)
+
+        self.assertIsInstance(cpp_type, TemplateInstanceCppType)
+        self.assertEqual(cpp_type.template_name, "std::array")
+        self.assertEqual(len(cpp_type.arguments), 2)
+        self.assertIsInstance(cpp_type.arguments[0], CppTypeTemplateArgument)
+        self.assertIsInstance(cpp_type.arguments[0].type, BuiltinCppType)
+        self.assertEqual(cpp_type.arguments[0].type.kind, "int")
+        self.assertIsInstance(cpp_type.arguments[1], CppNonTypeTemplateArgument)
+        self.assertEqual(cpp_type.arguments[1].value, "4")
+        self.assertIsInstance(cpp_type.arguments[1].type, BuiltinCppType)
+        self.assertEqual(cpp_type.arguments[1].type.kind, "int")
 
 def _fake_cursor(
     kind_name: str,

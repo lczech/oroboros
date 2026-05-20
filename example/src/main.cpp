@@ -24,6 +24,16 @@ int main()
     std::cout << "  Power rating: " << relic.power << '\n';
     std::cout << "  Consecrated: " << (relic.consecrated ? "yes" : "no") << '\n';
 
+    const auto blessed_reliquary = bless_reliquary(relic);
+    RelicQuartet reliquary_row {};
+    reliquary_row[0] = blessed_reliquary.value;
+    const ReliquaryShelf shelf {.value = reliquary_row};
+    std::cout << "The relic is sealed for safekeeping.\n";
+    std::cout << "  Echoed power rating: " << echo_prophecy(relic.power) << '\n';
+    std::cout << "  Shelf guardian relic: " << shelf.value[0].name << '\n';
+    std::cout << "  Shelf guardian consecrated: "
+              << (shelf.value[0].consecrated ? "yes" : "no") << '\n';
+
     Mortal mortal("Odysseus", -1200);
     mortal.set_vocation(Mortal::Vocation::philosopher);
     std::cout << "A mortal introduces himself.\n";

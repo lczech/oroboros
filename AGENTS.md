@@ -227,6 +227,23 @@ The current implemented parser slice already materializes:
 - structured recursive types for builtins, named types, pointers, references,
   arrays, function types, and simple template-instantiation spellings
 
+For templates specifically, the current parser/model boundary is:
+
+- real template-family and generic template-declaration parsing is in place
+- selected template instances are lightweight binding-target nodes, not fully
+  specialized copied declaration trees
+- use-site template-instantiated types now store structured template arguments,
+  including non-type arguments such as the `4` in `std::array<int, 4>`
+- parser-observed class template instances are now collected from declaration-
+  surface type uses and can be materialized either explicitly through helper
+  functions or selectively via inherited template-family bind policy resolved
+  through `.defaults`
+- template parameter defaults remain present in the model shape but are
+  currently unused, and the parser does not try to recover them
+- use-site template-template arguments are still not richly inferred in the
+  general type parser, and block-scope function-body observations are still
+  intentionally out of scope
+
 The current parser internals are also intentionally split into:
 
 - `clang_driver.py` for libclang invocation and translation-unit creation
@@ -249,9 +266,6 @@ The next parser work should focus first on:
 - `VAR_DECL` support for free variables and static data members
 - normalized comment/doc parsing on top of the preserved raw comments,
   including parameter-doc extraction
-- clang-driven synthetic selected template instantiation, so configured
-  template instances can be materialized by clang rather than by broader
-  Python-side specialization logic
 
 ### Naming
 
