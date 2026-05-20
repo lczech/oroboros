@@ -49,11 +49,10 @@ prioritized engineering work here.
   into the richer documentation model and parameter-doc fields.
 - Unsupported libclang declaration kinds that should be tracked explicitly.
   The current walker materializes namespaces, classes/structs, enums,
-  aliases/typedefs, free functions, methods, constructors, fields, and
-  parameters. Still
+  aliases/typedefs, free functions, methods, constructors, fields,
+  parameters, and template declarations. Still
   missing at the cursor-dispatch level are:
   - `VAR_DECL` for free variables and static data members
-  - `CLASS_TEMPLATE` and `FUNCTION_TEMPLATE` for template declarations
   - `DESTRUCTOR`
   - `CONVERSION_FUNCTION`
   - `UNION_DECL`
@@ -101,11 +100,6 @@ prioritized engineering work here.
 - `VAR_DECL` support for free variables and static data members.
   This is the cleanest next semantic-coverage expansion and is already backed
   by a real clang-observed gap in the current parser.
-- Real template declaration parsing for `CLASS_TEMPLATE` and
-  `FUNCTION_TEMPLATE`.
-  The semantic model already supports template families, declarations, and
-  selected instances, but the clang walker still needs to materialize those
-  families from real template declaration cursors.
 - Normalized comment and documentation parsing.
   Raw comments are preserved, but they still need to flow into the richer doc
   model, including parameter-doc extraction and later Python-facing doc

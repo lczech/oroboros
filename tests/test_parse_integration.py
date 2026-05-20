@@ -8,6 +8,11 @@ from oroboros.model import (
     ArrayCppType,
     BuiltinCppType,
     CppAlias,
+    CppClassTemplate,
+    CppFunctionTemplate,
+    CppNonTypeTemplateParameter,
+    CppTemplateTemplateParameter,
+    CppTypeTemplateParameter,
     CppVisibility,
     FunctionCppType,
     LValueReferenceCppType,
@@ -19,6 +24,60 @@ from oroboros.parse import ParserConfig, parse_headers
 
 
 class ParseIntegrationTest(unittest.TestCase):
+    def test_parse_headers_materializes_real_template_declarations(self) -> None:
+        source = """
+namespace demo {
+
+template <class T, int N, template <class> class Wrapper>
+struct Box {
+    T value;
+};
+
+template <class T>
+T make_value(T value) {
+    return value;
+}
+
+}
+"""
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.namespaces[0]
+        class_template = namespace.class_templates[0]
+        function_template = namespace.function_templates[0]
+
+        self.assertIsInstance(class_template, CppClassTemplate)
+        self.assertEqual(class_template.name, "Box")
+        self.assertEqual(class_template.qualified_name, "demo::Box")
+        self.assertEqual(class_template.declaration.qualified_name, "demo::Box")
+        self.assertEqual(len(class_template.declaration.cpp.template_parameters), 3)
+        self.assertIsInstance(class_template.declaration.cpp.template_parameters[0], CppTypeTemplateParameter)
+        self.assertEqual(class_template.declaration.cpp.template_parameters[0].name, "T")
+        self.assertIsInstance(class_template.declaration.cpp.template_parameters[1], CppNonTypeTemplateParameter)
+        self.assertEqual(class_template.declaration.cpp.template_parameters[1].name, "N")
+        self.assertIsInstance(class_template.declaration.cpp.template_parameters[1].type, BuiltinCppType)
+        self.assertEqual(class_template.declaration.cpp.template_parameters[1].type.kind, "int")
+        self.assertIsInstance(class_template.declaration.cpp.template_parameters[2], CppTemplateTemplateParameter)
+        self.assertEqual(class_template.declaration.cpp.template_parameters[2].name, "Wrapper")
+        self.assertEqual(len(class_template.declaration.cpp.template_parameters[2].parameters), 1)
+        self.assertIsInstance(class_template.declaration.cpp.template_parameters[2].parameters[0], CppTypeTemplateParameter)
+        self.assertEqual(class_template.declaration.cpp.template_parameters[2].parameters[0].name, "")
+        self.assertEqual(len(class_template.declaration.fields), 1)
+        self.assertEqual(class_template.declaration.fields[0].name, "value")
+
+        self.assertIsInstance(function_template, CppFunctionTemplate)
+        self.assertEqual(function_template.name, "make_value")
+        self.assertEqual(function_template.qualified_name, "demo::make_value")
+        self.assertEqual(function_template.declaration.qualified_name, "demo::make_value")
+        self.assertEqual(len(function_template.declaration.cpp.template_parameters), 1)
+        self.assertIsInstance(function_template.declaration.cpp.template_parameters[0], CppTypeTemplateParameter)
+        self.assertEqual(function_template.declaration.cpp.template_parameters[0].name, "T")
+        self.assertEqual(len(function_template.declaration.parameters), 1)
+        self.assertEqual(function_template.declaration.parameters[0].name, "value")
+        self.assertIsInstance(function_template.declaration.cpp.return_type, NamedCppType)
+        self.assertEqual(function_template.declaration.cpp.return_type.name, "T")
+
     def test_parse_headers_materializes_basic_declarations_end_to_end(self) -> None:
         source = """
 namespace demo {

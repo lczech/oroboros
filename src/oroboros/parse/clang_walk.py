@@ -9,12 +9,16 @@ from clang.cindex import CursorKind
 from ..model import (
     CppAlias,
     CppClass,
+    CppClassTemplate,
+    CppClassTemplateDecl,
     CppConstructor,
     CppElement,
     CppEnum,
     CppEnumerator,
     CppField,
     CppFunction,
+    CppFunctionTemplate,
+    CppFunctionTemplateDecl,
     CppMethod,
     CppNamespace,
     CppParameter,
@@ -23,11 +27,13 @@ from ..model.type import cpp_types_equivalent
 from .build_facets import (
     build_alias_cpp_facet,
     build_class_cpp_facet,
+    build_class_template_decl_cpp_facet,
     build_constructor_cpp_facet,
     build_enum_cpp_facet,
     build_enumerator_cpp_facet,
     build_field_cpp_facet,
     build_function_cpp_facet,
+    build_function_template_decl_cpp_facet,
     build_method_cpp_facet,
     build_namespace_cpp_facet,
     build_parameter_cpp_facet,
@@ -117,6 +123,10 @@ def _visit_declaration_cursor(
         _process_class_cursor(cursor, owner, context)
         return
 
+    if _cursor_kind_matches(cursor, CursorKind.CLASS_TEMPLATE):
+        _process_class_template_cursor(cursor, owner, context)
+        return
+
     if _cursor_kind_matches(cursor, CursorKind.ENUM_DECL):
         _process_enum_cursor(cursor, owner, context)
         return
@@ -127,6 +137,10 @@ def _visit_declaration_cursor(
 
     if _cursor_kind_matches(cursor, CursorKind.FUNCTION_DECL):
         _process_function_cursor(cursor, owner, context)
+        return
+
+    if _cursor_kind_matches(cursor, CursorKind.FUNCTION_TEMPLATE):
+        _process_function_template_cursor(cursor, owner, context)
         return
 
     if _cursor_kind_matches(cursor, CursorKind.TYPE_ALIAS_DECL, CursorKind.TYPEDEF_DECL):
@@ -214,6 +228,48 @@ def _process_enum_cursor(
         visit_children(cursor.get_children(), attached, context)
 
 
+def _process_class_template_cursor(
+    cursor: Any,
+    owner: CppElement,
+    context: BuildContext,
+) -> None:
+    """Create or enrich one class-template family and recurse into its declaration."""
+
+    candidate_cpp = build_class_template_decl_cpp_facet(cursor, context=context)
+    existing = _lookup_registered_element(cursor, context, CppClassTemplate)
+    if existing is not None:
+        declaration = existing.declaration
+        child_cursors = list(cursor.get_children())
+        _merge_common_cpp_fields(declaration, candidate_cpp, context, cursor)
+        _merge_cpp_scalar(declaration, "kind", candidate_cpp.kind, context, cursor)
+        _merge_cpp_scalar(declaration, "visibility", candidate_cpp.visibility, context, cursor)
+        _merge_class_bases(declaration, candidate_cpp.bases, context, cursor)
+        _merge_template_parameters(
+            declaration.cpp.template_parameters,
+            candidate_cpp.template_parameters,
+            context,
+            cursor,
+        )
+        _visit_non_template_parameter_children(child_cursors, declaration, context)
+        return
+
+    template = CppClassTemplate(
+        name=cursor.spelling,
+        declaration=CppClassTemplateDecl(
+            name=cursor.spelling,
+            cpp=candidate_cpp,
+        ),
+    )
+    attached = _attach_node(owner, "add_class_template", template)
+    if attached is not None:
+        _register_element_for_cursor(cursor, attached, context)
+        _visit_non_template_parameter_children(
+            cursor.get_children(),
+            attached.declaration,
+            context,
+        )
+
+
 def _process_enumerator_cursor(
     cursor: Any,
     owner: CppElement,
@@ -282,6 +338,59 @@ def _process_alias_cursor(
     attached = _attach_node(owner, "add_alias", alias)
     if attached is not None:
         _register_element_for_cursor(cursor, attached, context)
+
+
+def _process_function_template_cursor(
+    cursor: Any,
+    owner: CppElement,
+    context: BuildContext,
+) -> None:
+    """Create or enrich one function-template family and recurse into its declaration."""
+
+    candidate_cpp = build_function_template_decl_cpp_facet(cursor, context=context)
+    existing = _lookup_registered_element(cursor, context, CppFunctionTemplate)
+    if existing is not None:
+        declaration = existing.declaration
+        child_cursors = list(cursor.get_children())
+        _merge_common_cpp_fields(declaration, candidate_cpp, context, cursor)
+        _merge_cpp_scalar(
+            declaration,
+            "return_type",
+            candidate_cpp.return_type,
+            context,
+            cursor,
+            values_equivalent=cpp_types_equivalent,
+        )
+        _merge_cpp_scalar(declaration, "is_noexcept", candidate_cpp.is_noexcept, context, cursor)
+        _merge_cpp_scalar(declaration, "is_const", candidate_cpp.is_const, context, cursor)
+        _merge_cpp_scalar(declaration, "is_static", candidate_cpp.is_static, context, cursor)
+        _merge_cpp_scalar(declaration, "is_virtual", candidate_cpp.is_virtual, context, cursor)
+        _merge_cpp_scalar(declaration, "is_pure_virtual", candidate_cpp.is_pure_virtual, context, cursor)
+        _merge_template_parameters(
+            declaration.cpp.template_parameters,
+            candidate_cpp.template_parameters,
+            context,
+            cursor,
+        )
+        _merge_callable_parameter_children(declaration, child_cursors, context)
+        _visit_non_template_parameter_children(child_cursors, declaration, context)
+        return
+
+    template = CppFunctionTemplate(
+        name=cursor.spelling,
+        declaration=CppFunctionTemplateDecl(
+            name=cursor.spelling,
+            cpp=candidate_cpp,
+        ),
+    )
+    attached = _attach_node(owner, "add_function_template", template)
+    if attached is not None:
+        _register_element_for_cursor(cursor, attached, context)
+        _visit_non_template_parameter_children(
+            cursor.get_children(),
+            attached.declaration,
+            context,
+        )
 
 
 def _process_method_cursor(
@@ -437,9 +546,17 @@ def _cursor_kind_matches(cursor: Any, *expected_kinds: Any) -> bool:
 _IGNORED_DECLARATION_KINDS = frozenset({
     CursorKind.CXX_BASE_SPECIFIER,
     CursorKind.CXX_ACCESS_SPEC_DECL,
+    CursorKind.TEMPLATE_NON_TYPE_PARAMETER,
+    CursorKind.TEMPLATE_TEMPLATE_PARAMETER,
+    CursorKind.TEMPLATE_TYPE_PARAMETER,
 })
 
 _CLASS_CURSOR_KINDS = frozenset({CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL})
+_TEMPLATE_PARAMETER_CURSOR_KINDS = frozenset({
+    CursorKind.TEMPLATE_NON_TYPE_PARAMETER,
+    CursorKind.TEMPLATE_TEMPLATE_PARAMETER,
+    CursorKind.TEMPLATE_TYPE_PARAMETER,
+})
 
 
 # ==================================================================================================
@@ -594,7 +711,7 @@ def _merge_cpp_scalar(
 
 
 def _merge_class_bases(
-    element: CppClass,
+    element: Any,
     new_bases: list[Any],
     context: BuildContext,
     cursor: Any,
@@ -614,6 +731,31 @@ def _merge_class_bases(
     _record_semantic_warning(
         context,
         f"Conflicting parsed 'bases' for {_describe_cursor_entity(cursor)} at "
+        f"{_format_cursor_location(cursor)}; keeping the first value.",
+    )
+
+
+def _merge_template_parameters(
+    existing_parameters: list[Any],
+    new_parameters: list[Any],
+    context: BuildContext,
+    cursor: Any,
+) -> None:
+    """Merge parsed template parameter lists conservatively across redeclarations."""
+
+    if not new_parameters:
+        return
+
+    if not existing_parameters:
+        existing_parameters.extend(new_parameters)
+        return
+
+    if existing_parameters == new_parameters:
+        return
+
+    _record_semantic_warning(
+        context,
+        f"Conflicting parsed 'template_parameters' for {_describe_cursor_entity(cursor)} at "
         f"{_format_cursor_location(cursor)}; keeping the first value.",
     )
 
@@ -685,6 +827,19 @@ def _visit_non_parameter_children(
 
     for child_cursor in child_cursors:
         if _cursor_kind_matches(child_cursor, CursorKind.PARM_DECL):
+            continue
+        visit_cursor(child_cursor, owner, context)
+
+
+def _visit_non_template_parameter_children(
+    child_cursors: Iterable[Any],
+    owner: CppElement,
+    context: BuildContext,
+) -> None:
+    """Continue walking child cursors other than template-parameter helpers."""
+
+    for child_cursor in child_cursors:
+        if _cursor_kind_matches(child_cursor, *_TEMPLATE_PARAMETER_CURSOR_KINDS):
             continue
         visit_cursor(child_cursor, owner, context)
 

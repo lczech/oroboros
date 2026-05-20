@@ -211,6 +211,7 @@ The current implemented parser slice already materializes:
 
 - namespaces
 - classes and structs
+- class and function template declarations
 - enums and enumerators
 - aliases and typedefs
 - free functions
@@ -235,15 +236,12 @@ The current parser internals are also intentionally split into:
 - `build_facets.py` for cursor-to-`.cpp` facet extraction and lower-level
   cursor data helpers
 
-Comments/docs, template declarations, operators, destructor/conversion
-functions, `VAR_DECL`, and fuller parser-side redeclaration enrichment are
-still follow-up work.
+Comments/docs, operators, destructor/conversion functions, `VAR_DECL`, and
+fuller parser-side redeclaration enrichment are still follow-up work.
 
 The next parser work should focus first on:
 
 - `VAR_DECL` support for free variables and static data members
-- real `CLASS_TEMPLATE` / `FUNCTION_TEMPLATE` parsing into the existing
-  template-family model
 - normalized comment/doc parsing on top of the preserved raw comments,
   including parameter-doc extraction
 - clang-driven synthetic selected template instantiation, so configured

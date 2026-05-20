@@ -7,7 +7,16 @@ from typing import TYPE_CHECKING, Any
 
 from clang.cindex import CursorKind
 
-from ..model import CppClassBase, CppLocationInfo, CppVisibility, SourceLocation
+from ..model import (
+    CppClassBase,
+    CppLocationInfo,
+    CppNonTypeTemplateParameter,
+    CppTemplateParameter,
+    CppTemplateTemplateParameter,
+    CppTypeTemplateParameter,
+    CppVisibility,
+    SourceLocation,
+)
 from .types import build_cpp_type
 
 if TYPE_CHECKING:
@@ -73,6 +82,24 @@ def build_class_cpp_facet(
     )
 
 
+def build_class_template_decl_cpp_facet(
+    cursor: Any,
+    *,
+    context: BuildContext | None = None,
+) -> Any:
+    from ..model import CppClassTemplateDeclCppFacet
+
+    return CppClassTemplateDeclCppFacet(
+        original_name=cursor.spelling or None,
+        location=build_location_info(cursor),
+        comment=cursor_raw_comment(cursor),
+        kind=cursor_class_kind(cursor),
+        visibility=cursor_visibility(cursor),
+        bases=build_class_bases(cursor, context=context),
+        template_parameters=build_template_parameters(cursor, context=context),
+    )
+
+
 def build_enum_cpp_facet(
     cursor: Any,
     *,
@@ -122,6 +149,30 @@ def build_function_cpp_facet(
         location=build_location_info(cursor),
         comment=cursor_raw_comment(cursor),
         is_noexcept=cursor_is_noexcept(cursor),
+    )
+
+
+def build_function_template_decl_cpp_facet(
+    cursor: Any,
+    *,
+    context: BuildContext | None = None,
+) -> Any:
+    from ..model import CppFunctionTemplateDeclCppFacet
+
+    return CppFunctionTemplateDeclCppFacet(
+        original_name=cursor.spelling or None,
+        return_type=build_cpp_type(
+            getattr(cursor, "result_type", None),
+            context=context,
+        ),
+        location=build_location_info(cursor),
+        comment=cursor_raw_comment(cursor),
+        is_noexcept=cursor_is_noexcept(cursor),
+        template_parameters=build_template_parameters(cursor, context=context),
+        is_const=cursor_bool_method(cursor, "is_const_method"),
+        is_static=cursor_bool_method(cursor, "is_static_method"),
+        is_virtual=cursor_bool_method(cursor, "is_virtual_method"),
+        is_pure_virtual=cursor_bool_method(cursor, "is_pure_virtual_method"),
     )
 
 
@@ -201,6 +252,64 @@ def build_parameter_cpp_facet(
 
 
 # ------------------------------------------------------------------------------
+#     Template Parameter Values
+# ------------------------------------------------------------------------------
+
+
+def build_template_parameters(
+    cursor: Any,
+    *,
+    context: BuildContext | None = None,
+) -> list[CppTemplateParameter]:
+    """Collect direct template parameter declarations from one template cursor."""
+
+    parameters: list[CppTemplateParameter] = []
+    for child_cursor in cursor.get_children():
+        parameter = build_template_parameter(child_cursor, context=context)
+        if parameter is not None:
+            parameters.append(parameter)
+    return parameters
+
+
+def build_template_parameter(
+    cursor: Any,
+    *,
+    context: BuildContext | None = None,
+) -> CppTemplateParameter | None:
+    """Convert one libclang template-parameter cursor into the semantic model."""
+
+    token_spellings = cursor_token_spellings(cursor)
+    is_parameter_pack = "..." in token_spellings
+
+    if getattr(cursor, "kind", None) == CursorKind.TEMPLATE_TYPE_PARAMETER:
+        keyword = "class" if "class" in token_spellings else "typename"
+        return CppTypeTemplateParameter(
+            name=cursor.spelling,
+            keyword=keyword,
+            is_parameter_pack=is_parameter_pack,
+        )
+
+    if getattr(cursor, "kind", None) == CursorKind.TEMPLATE_NON_TYPE_PARAMETER:
+        return CppNonTypeTemplateParameter(
+            name=cursor.spelling,
+            type=build_cpp_type(
+                getattr(cursor, "type", None),
+                context=context,
+            ),
+            is_parameter_pack=is_parameter_pack,
+        )
+
+    if getattr(cursor, "kind", None) == CursorKind.TEMPLATE_TEMPLATE_PARAMETER:
+        return CppTemplateTemplateParameter(
+            name=cursor.spelling,
+            parameters=build_template_parameters(cursor, context=context),
+            is_parameter_pack=is_parameter_pack,
+        )
+
+    return None
+
+
+# ------------------------------------------------------------------------------
 #     Source Locations and Provenance
 # ------------------------------------------------------------------------------
 
@@ -263,6 +372,15 @@ def cursor_kind_name(cursor: Any) -> str:
     if name is not None:
         return str(name)
     return str(kind)
+
+
+def cursor_token_spellings(cursor: Any) -> list[str]:
+    """Return the token spellings directly attached to one clang cursor."""
+
+    get_tokens = getattr(cursor, "get_tokens", None)
+    if not callable(get_tokens):
+        return []
+    return [token.spelling for token in get_tokens()]
 
 
 def cursor_alias_target_type(cursor: Any) -> Any:
@@ -384,6 +502,20 @@ def is_struct_cursor(cursor: Any) -> bool:
     """Return whether one cursor is specifically a struct declaration."""
 
     return getattr(cursor, "kind", None) == CursorKind.STRUCT_DECL
+
+
+def cursor_class_kind(cursor: Any) -> str:
+    """Return whether one class-like cursor uses `class` or `struct` syntax."""
+
+    if is_struct_cursor(cursor):
+        return "struct"
+    if getattr(cursor, "kind", None) == CursorKind.CLASS_DECL:
+        return "class"
+
+    token_spellings = cursor_token_spellings(cursor)
+    if "struct" in token_spellings:
+        return "struct"
+    return "class"
 
 
 def is_base_specifier_cursor(cursor: Any) -> bool:
