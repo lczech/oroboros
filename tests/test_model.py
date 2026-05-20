@@ -692,6 +692,203 @@ class ModelScaffoldTest(unittest.TestCase):
 
         module.validate_semantics()
 
+    def test_validate_semantics_accepts_dependent_typename_spellings_for_linked_alias_targets(self) -> None:
+        document = CppClass(name="JsonDocument")
+        value_type = document.add_alias(CppAlias(name="value_type"))
+        value_type.cpp.target = BuiltinCppType(kind="int")
+        difference_type = document.add_alias(CppAlias(name="difference_type"))
+        difference_type.cpp.target = BuiltinCppType(kind="long")
+
+        iterator = CppClassTemplate(name="JsonIterator")
+        iterator.declaration.add_alias(CppAlias(name="value_type")).cpp.target = NamedCppType(
+            name="typename JsonDocument::value_type",
+            declaration=value_type,
+        )
+        iterator.declaration.add_alias(CppAlias(name="difference_type")).cpp.target = NamedCppType(
+            name="typename JsonDocument::difference_type",
+            declaration=difference_type,
+        )
+
+        namespace = CppNamespace(name="format", classes=[document], class_templates=[iterator])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        module.validate_semantics()
+
+    def test_validate_semantics_accepts_template_argument_scope_spellings_for_linked_nested_types(self) -> None:
+        widget_range = CppClassTemplate(name="WidgetRange")
+        iterator = widget_range.declaration.add_class(CppClass(name="Iterator"))
+        self_type = iterator.add_alias(CppAlias(name="self_type"))
+        self_type.cpp.target = NamedCppType(
+            name="WidgetRange<MT, T>::Iterator",
+            declaration=iterator,
+        )
+
+        namespace = CppNamespace(name="demo", class_templates=[widget_range])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        module.validate_semantics()
+
+    def test_validate_semantics_accepts_fully_qualified_template_owner_spellings_for_linked_nested_types(self) -> None:
+        widget_range = CppClassTemplate(name="WidgetRange")
+        iterator = widget_range.declaration.add_class(CppClass(name="Iterator"))
+        self_type = iterator.add_alias(CppAlias(name="self_type"))
+        self_type.cpp.target = NamedCppType(
+            name="::demo::WidgetRange<MT, T>::Iterator",
+            declaration=iterator,
+        )
+
+        namespace = CppNamespace(name="demo", class_templates=[widget_range])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        module.validate_semantics()
+
+    def test_validate_semantics_accepts_dependent_typename_nested_class_spellings(self) -> None:
+        widget_range = CppClassTemplate(name="WidgetRange")
+        iterator = widget_range.declaration.add_class(CppClass(name="Iterator"))
+        self_type = iterator.add_alias(CppAlias(name="self_type"))
+        self_type.cpp.target = NamedCppType(
+            name="typename WidgetRange<MT, T>::Iterator",
+            declaration=iterator,
+        )
+
+        namespace = CppNamespace(name="demo", class_templates=[widget_range])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        module.validate_semantics()
+
+    def test_validate_semantics_accepts_elaborated_nested_class_spellings(self) -> None:
+        widget_range = CppClassTemplate(name="WidgetRange")
+        iterator = widget_range.declaration.add_class(CppClass(name="StackElement"))
+        self_type = iterator.add_alias(CppAlias(name="self_type"))
+        self_type.cpp.target = NamedCppType(
+            name="struct StackElement",
+            declaration=iterator,
+        )
+
+        namespace = CppNamespace(name="demo", class_templates=[widget_range])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        module.validate_semantics()
+
+    def test_validate_semantics_accepts_elaborated_class_spellings(self) -> None:
+        cls = CppClass(name="Widget")
+        namespace = CppNamespace(name="demo", classes=[cls])
+        namespace.add_alias(CppAlias(name="widget_type")).cpp.target = NamedCppType(
+            name="class Widget",
+            declaration=cls,
+        )
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        module.validate_semantics()
+
+    def test_validate_semantics_accepts_elaborated_union_spellings(self) -> None:
+        cls = CppClass(name="Storage")
+        namespace = CppNamespace(name="demo", classes=[cls])
+        namespace.add_alias(CppAlias(name="storage_type")).cpp.target = NamedCppType(
+            name="union Storage",
+            declaration=cls,
+        )
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        module.validate_semantics()
+
+    def test_validate_semantics_accepts_elaborated_enum_spellings(self) -> None:
+        enum_ = CppEnum(name="Kind")
+        namespace = CppNamespace(name="demo", enums=[enum_])
+        namespace.add_alias(CppAlias(name="kind_type")).cpp.target = NamedCppType(
+            name="enum Kind",
+            declaration=enum_,
+        )
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        module.validate_semantics()
+
+    def test_validate_semantics_accepts_dependent_template_disambiguator_spellings(self) -> None:
+        traits = CppClassTemplate(name="Traits")
+        rebind = traits.declaration.add_class(CppClass(name="Rebind"))
+        type_alias = rebind.add_alias(CppAlias(name="type"))
+        type_alias.cpp.target = BuiltinCppType(kind="int")
+
+        holder = CppClassTemplate(name="Holder")
+        holder.declaration.add_alias(CppAlias(name="value_type")).cpp.target = NamedCppType(
+            name="typename Traits<T>::template Rebind<U>::type",
+            declaration=type_alias,
+        )
+
+        namespace = CppNamespace(name="demo", class_templates=[traits, holder])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        module.validate_semantics()
+
+    def test_validate_semantics_accepts_fully_qualified_dependent_template_disambiguator_spellings(self) -> None:
+        traits = CppClassTemplate(name="Traits")
+        rebind = traits.declaration.add_class(CppClass(name="Rebind"))
+        type_alias = rebind.add_alias(CppAlias(name="type"))
+        type_alias.cpp.target = BuiltinCppType(kind="int")
+
+        holder = CppClassTemplate(name="Holder")
+        holder.declaration.add_alias(CppAlias(name="value_type")).cpp.target = NamedCppType(
+            name="typename ::demo::Traits<T>::template Rebind<U>::type",
+            declaration=type_alias,
+        )
+
+        namespace = CppNamespace(name="demo", class_templates=[traits, holder])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        module.validate_semantics()
+
+    def test_validate_semantics_rejects_linked_named_types_with_wrong_terminal_name(self) -> None:
+        document = CppClass(name="JsonDocument")
+        value_type = document.add_alias(CppAlias(name="value_type"))
+        value_type.cpp.target = BuiltinCppType(kind="int")
+
+        namespace = CppNamespace(name="format")
+        namespace.add_alias(CppAlias(name="bad_alias")).cpp.target = NamedCppType(
+            name="typename JsonDocument::difference_type",
+            declaration=value_type,
+        )
+        namespace.add_class(document)
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_linked_nested_types_with_wrong_terminal_name(self) -> None:
+        widget_range = CppClassTemplate(name="WidgetRange")
+        iterator = widget_range.declaration.add_class(CppClass(name="Iterator"))
+        self_type = iterator.add_alias(CppAlias(name="self_type"))
+        self_type.cpp.target = NamedCppType(
+            name="WidgetRange<MT, T>::ConstIterator",
+            declaration=iterator,
+        )
+
+        namespace = CppNamespace(name="demo", class_templates=[widget_range])
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_accepts_wrong_owner_when_terminal_name_matches_link(self) -> None:
+        first_range = CppClassTemplate(name="WidgetRange")
+        first_iterator = first_range.declaration.add_class(CppClass(name="Iterator"))
+        second_range = CppClassTemplate(name="OtherRange")
+        second_range.declaration.add_class(CppClass(name="Iterator"))
+
+        alias_holder = CppClass(name="AliasHolder")
+        alias_holder.add_alias(CppAlias(name="iter_type")).cpp.target = NamedCppType(
+            name="OtherRange<MT, T>::Iterator",
+            declaration=first_iterator,
+        )
+
+        namespace = CppNamespace(
+            name="demo",
+            class_templates=[first_range, second_range],
+            classes=[alias_holder],
+        )
+        module = CppModule(name="bindings", namespaces=[namespace])
+
+        module.validate_semantics()
+
     def test_validate_semantics_rejects_alias_names_with_invalid_characters(self) -> None:
         namespace = CppNamespace(name="demo")
         namespace.add_alias(CppAlias(name="Index-Alias")).cpp.target = NamedCppType(name="std::size_t")
@@ -938,6 +1135,69 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertEqual(
             function_template.instances[0].cpp.template_arguments[0].type.name,
             "double",
+        )
+
+    def test_enabled_observed_template_instance_materialization_respects_override_precedence(self) -> None:
+        module_template = CppClassTemplate(name="ModuleVector")
+        module_template.declaration.cpp.template_parameters.append(
+            CppTypeTemplateParameter(name="T")
+        )
+        module_template.declaration.cpp.observed_instances.append(
+            CppObservedTemplateInstance(
+                arguments=[CppTypeTemplateArgument(type=NamedCppType(name="int"))],
+            )
+        )
+        namespace_template = CppClassTemplate(name="NamespaceVector")
+        namespace_template.declaration.cpp.template_parameters.append(
+            CppTypeTemplateParameter(name="T")
+        )
+        namespace_template.declaration.cpp.observed_instances.append(
+            CppObservedTemplateInstance(
+                arguments=[CppTypeTemplateArgument(type=NamedCppType(name="double"))],
+            )
+        )
+        direct_template = CppClassTemplate(name="DirectVector")
+        direct_template.declaration.cpp.template_parameters.append(
+            CppTypeTemplateParameter(name="T")
+        )
+        direct_template.declaration.cpp.observed_instances.append(
+            CppObservedTemplateInstance(
+                arguments=[CppTypeTemplateArgument(type=NamedCppType(name="char"))],
+            )
+        )
+        owner = CppClass(
+            name="Owner",
+            class_templates=[direct_template],
+        )
+        namespace = CppNamespace(
+            name="demo",
+            class_templates=[module_template, namespace_template],
+            classes=[owner],
+        )
+        module = CppModule(name="bindings", namespaces=[namespace])
+        module.defaults.class_template.materialize_observed_instances = True
+        namespace.defaults.class_template.materialize_observed_instances = False
+        owner.defaults.class_template.materialize_observed_instances = True
+        direct_template.bind.materialize_observed_instances = False
+
+        created_instances = add_enabled_observed_template_instances(module)
+
+        self.assertEqual(created_instances, [])
+        self.assertEqual(module_template.instances, [])
+        self.assertEqual(namespace_template.instances, [])
+        self.assertEqual(direct_template.instances, [])
+
+        direct_template.bind.materialize_observed_instances = True
+
+        created_instances = add_enabled_observed_template_instances(module)
+
+        self.assertEqual(len(created_instances), 1)
+        self.assertEqual(module_template.instances, [])
+        self.assertEqual(namespace_template.instances, [])
+        self.assertEqual(len(direct_template.instances), 1)
+        self.assertEqual(
+            direct_template.instances[0].cpp.template_arguments[0].type.name,
+            "char",
         )
 
     def test_template_instance_validation_rejects_wrong_argument_kind(self) -> None:

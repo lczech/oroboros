@@ -831,19 +831,32 @@ def _named_type_matches_declaration(
 ) -> bool:
     """Check whether one named-type spelling is compatible with its declaration."""
 
-    normalized_name = cpp_type.name.removeprefix("::")
+    del reference_scope
+
+    normalized_name = _normalize_named_type_spelling_for_match(cpp_type.name)
     original_name = getattr(getattr(declaration, "cpp", None), "original_name", None)
-
-    if "::" in normalized_name:
-        return normalized_name in _compatible_qualified_type_spellings(
-            declaration,
-            reference_scope=reference_scope,
-        )
-
-    valid_names = {declaration.name}
+    valid_names = {_normalize_named_type_spelling_for_match(declaration.name)}
     if original_name is not None:
-        valid_names.add(original_name)
-    return normalized_name in valid_names
+        valid_names.add(_normalize_named_type_spelling_for_match(original_name))
+    return _terminal_type_name_segment(normalized_name) in valid_names
+
+
+def _normalize_named_type_spelling_for_match(name: str) -> str:
+    """Normalize one named-type spelling for semantic declaration matching."""
+
+    normalized = name.strip().removeprefix("::")
+    for prefix in ("typename ", "struct ", "class ", "union ", "enum "):
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix):].strip()
+            break
+    return normalized
+
+
+def _terminal_type_name_segment(name: str) -> str:
+    """Return the terminal scope segment used for light linked-type sanity checks."""
+
+    segments = name.split("::")
+    return segments[-1].strip() if segments else name.strip()
 
 
 def _reference_lookup_scope(node: CppElement) -> CppElement | None:
@@ -856,27 +869,3 @@ def _reference_lookup_scope(node: CppElement) -> CppElement | None:
         return owner.scope_parent
 
     return node.scope_parent
-
-
-def _compatible_qualified_type_spellings(
-    declaration: CppElement,
-    *,
-    reference_scope: CppElement | None,
-) -> set[str]:
-    """Return all qualified spellings that are valid from one reference scope."""
-
-    declaration_name = declaration.qualified_name
-    declaration_parts = declaration_name.split("::")
-    compatible_spellings = {declaration_name}
-
-    current_scope = reference_scope
-    while current_scope is not None:
-        scope_name = current_scope.qualified_name
-        scope_parts = scope_name.split("::") if scope_name else []
-        if declaration_parts[:len(scope_parts)] == scope_parts:
-            remainder_parts = declaration_parts[len(scope_parts):]
-            if remainder_parts:
-                compatible_spellings.add("::".join(remainder_parts))
-        current_scope = current_scope.scope_parent
-
-    return compatible_spellings

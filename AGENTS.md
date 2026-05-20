@@ -174,6 +174,12 @@ The parser should stay narrow in responsibility:
 - preserve source facts and provenance
 - avoid binding-policy and backend-emission decisions
 
+When evaluating parser fixes, prefer clang-backed identity and semantic
+information over string- or spelling-based reconstruction. Small local textual
+checks are acceptable for narrow diagnostics or provenance corners, but if a
+task would require more involved string/text/spelling parsing to recover C++
+semantics, do not implement that without confirming with the user first.
+
 The intended parse workflow is:
 
 - accept one ordered list of active project headers

@@ -57,6 +57,7 @@ class CppConstructorCppFacet:
     comment: str | None = None
     doc: CppDoc | None = None
     overload_index: int | None = None
+    template_parameters: list["CppTemplateParameter"] = field(default_factory=list)
     is_explicit: bool = False
     is_noexcept: bool = False
     visibility: CppVisibility | None = None
