@@ -4,7 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from oroboros.find_headers import HeaderFile, find_all_headers, find_included_headers
+from oroboros.headers import HeaderFile, HeaderSelection, discover_headers, find_all_headers, find_included_headers
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -100,9 +100,9 @@ class FindHeadersTest(unittest.TestCase):
 
             header_files = find_included_headers(base_dir, root_header)
 
-        self.assertEqual(
-            header_files,
-            [
+            self.assertEqual(
+                header_files,
+                [
                 HeaderFile(
                     full_path=(project_dir / "feature.hpp").resolve(),
                     relative_path=Path("demo/feature.hpp"),
@@ -111,8 +111,28 @@ class FindHeadersTest(unittest.TestCase):
                     full_path=(detail_dir / "helper.hpp").resolve(),
                     relative_path=Path("demo/detail/helper.hpp"),
                 ),
-            ],
-        )
+                ],
+            )
+
+    def test_discover_headers_builds_known_and_active_selection(self) -> None:
+        with TemporaryDirectory() as temp_dir_name:
+            base_dir = Path(temp_dir_name) / "include"
+            demo_dir = base_dir / "demo"
+            demo_dir.mkdir(parents=True)
+            (demo_dir / "api.hpp").write_text('#include "detail.hpp"\n', encoding="utf-8")
+            (demo_dir / "detail.hpp").write_text("", encoding="utf-8")
+
+            selection = discover_headers(base_dir, umbrella_header="demo/api.hpp")
+
+            self.assertIsInstance(selection, HeaderSelection)
+            self.assertEqual(
+                [header.relative_path.as_posix() for header in selection.known_headers],
+                ["demo/api.hpp", "demo/detail.hpp"],
+            )
+            self.assertEqual(
+                [header.relative_path.as_posix() for header in selection.active_headers],
+                ["demo/api.hpp", "demo/detail.hpp"],
+            )
 
 
 if __name__ == "__main__":

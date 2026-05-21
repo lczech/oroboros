@@ -16,11 +16,11 @@ relative to the configured base directory.
 Note that these are merely helpers; you can implement your own discovery logic if you need more control, and simply return a list of ``HeaderFile``.
 """
 
-from dataclasses import dataclass
 from pathlib import Path
 import re
 from typing import Iterable
 
+from .model import HeaderFile, HeaderSelection
 
 HEADER_EXTENSIONS = frozenset({".h", ".hh", ".hpp", ".hxx", ".h++"})
 INCLUDE_RE = re.compile(
@@ -34,15 +34,6 @@ INCLUDE_RE = re.compile(
     """,
     re.VERBOSE,
 )
-
-
-@dataclass(frozen=True, slots=True)
-class HeaderFile:
-    """Represent one header file relative to a configured base directory."""
-
-    full_path: Path
-    relative_path: Path
-    active: bool = True
 
 
 def _normalize_path(path: Path) -> Path:
@@ -150,3 +141,18 @@ def find_included_headers(base_dir: str | Path, header_file: str | Path) -> list
 
     _visit(root_header)
     return discovered_headers
+
+
+def discover_headers(
+    base_dir: str | Path,
+    *,
+    umbrella_header: str | Path | None = None,
+) -> HeaderSelection:
+    """Build one header selection from a base directory and optional umbrella header."""
+
+    header_files = (
+        find_all_headers(base_dir)
+        if umbrella_header is None
+        else find_included_headers(base_dir, umbrella_header)
+    )
+    return HeaderSelection(header_files=header_files)

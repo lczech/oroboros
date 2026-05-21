@@ -55,6 +55,8 @@ class BuildContext:
 
     # Active project headers whose declarations should be materialized.
     active_headers: set[Path]
+    # All known project headers, including inactive ones, when provided by the caller.
+    known_project_headers: set[Path]
     # Parser configuration used while building and resolving the module.
     config: ParserConfig
     # Internal clang-USR registry for already materialized semantic elements.
@@ -76,15 +78,23 @@ def build_module_from_clang(
     translation_unit: Any,
     headers: Sequence[Path],
     config: ParserConfig,
+    *,
+    known_project_headers: Sequence[Path] | None = None,
 ) -> BuildResult:
     """Build one semantic module from a parsed clang translation unit."""
 
     module = CppModule(name="module")
     normalized_headers = [header.resolve() for header in headers]
+    normalized_known_project_headers = (
+        {header.resolve() for header in known_project_headers}
+        if known_project_headers is not None
+        else set(normalized_headers)
+    )
     module.cpp.header_files.extend(normalized_headers)
 
     context = BuildContext(
         active_headers={header.resolve() for header in normalized_headers},
+        known_project_headers=normalized_known_project_headers,
         config=config,
     )
     root_cursor = translation_unit.cursor

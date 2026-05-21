@@ -648,9 +648,9 @@ def _record_named_type_declaration_link(
     declaration_location = cursor_source_location(declaration_cursor)
     if declaration_location is not None:
         declaration_file = declaration_location.file.resolve()
-        if declaration_file not in context.active_headers and _looks_like_known_project_header(
-            declaration_file,
-            context,
+        if (
+            declaration_file not in context.active_headers
+            and declaration_file in context.known_project_headers
         ):
             _record_inactive_project_type_reference_warning(
                 cpp_type,
@@ -672,23 +672,6 @@ def _record_named_type_declaration_link(
             declaration_usr=declaration_usr,
         )
     )
-
-
-def _looks_like_known_project_header(
-    candidate_header: Any,
-    context: BuildContext,
-) -> bool:
-    """Return whether one non-active header still looks like a project header."""
-
-    for active_header in context.active_headers:
-        active_parent = active_header.parent
-        if candidate_header == active_parent:
-            return True
-        if candidate_header.is_relative_to(active_parent):
-            return True
-    return False
-
-
 def _record_inactive_project_type_reference_warning(
     cpp_type: NamedCppType,
     *,

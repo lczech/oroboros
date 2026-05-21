@@ -16,16 +16,21 @@ already shaped to support the later stages.
 
 The intended user workflow is:
 
-1. choose the active header list
-2. parse those headers into a semantic model
-3. customize the model
-4. translate missing Python-facing values
-5. emit nanobind or pybind11 code
+1. discover the known project headers
+2. optionally select an active subset
+3. parse that header selection into a semantic model
+4. customize the model
+5. translate missing Python-facing values
+6. emit nanobind or pybind11 code
 
 In code, that should eventually feel roughly like:
 
 ```python
-result = parse_headers(active_headers, config)
+selection = discover_headers("/path/to/include", umbrella_header="cosmos/cosmos.hpp")
+# Optionally:
+# selection = select_active_headers(selection, "/path/to/activated_headers.hpp")
+
+result = parse_header_selection(selection, config)
 module = result.module
 
 # Customize the semantic model.
@@ -36,6 +41,13 @@ module["cosmos"]["beings"]["Mortal"].method["name"][0].py.name = "name"
 # translate(module)
 # emit(module, emitter_config)
 ```
+
+The important layering is:
+
+- `headers/` decides which project headers are known and which are active
+- `parse/` turns the active subset into one semantic model while still knowing
+  the broader project-header inventory for inactive-header warnings
+- later stages customize, translate, and emit from the semantic model
 
 ## Facets and their roles
 

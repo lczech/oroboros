@@ -5,19 +5,40 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Sequence
 
+from ..headers import HeaderSelection
 from .config import ParserConfig
 from .build_model import build_module_from_clang
 from .clang_driver import parse_with_clang
 from .result import ParseResult
 
 
-def parse_headers(
+def parse_header_selection(
+    selection: HeaderSelection,
+    config: ParserConfig,
+) -> ParseResult:
+    """Parse one structured header selection into the semantic model."""
+
+    return _parse_active_headers(
+        selection.active_project_headers,
+        config,
+        known_project_headers=selection.known_project_headers,
+    )
+
+
+def _parse_active_headers(
     headers: Sequence[Path],
     config: ParserConfig,
+    *,
+    known_project_headers: Sequence[Path] | None = None,
 ) -> ParseResult:
     """Parse one ordered active-header list into the semantic model."""
 
     normalized_headers = [Path(header).resolve() for header in headers]
+    normalized_known_project_headers = (
+        None
+        if known_project_headers is None
+        else [Path(header).resolve() for header in known_project_headers]
+    )
 
     if not normalized_headers:
         return ParseResult()
@@ -27,6 +48,7 @@ def parse_headers(
         driver_result.translation_unit,
         normalized_headers,
         config,
+        known_project_headers=normalized_known_project_headers,
     )
 
     if config.validate_model:

@@ -56,6 +56,8 @@ As this is a lot of functionality, we will build the Oroboros code incrementally
 - Add short comments for each function and class to state their purpose.
 - Add short (one or two line) comments for code blocks, explaining their intend (e.g., what does the loop do?).
 - Avoid hard-coding Genesis-specific behavior in the parser core; put policy in configuration instead.
+- Do not edit files under `vault/`. Treat that directory as user-owned notes and
+  references unless the user explicitly asks for changes there.
 
 ## Development environment
 
@@ -75,8 +77,11 @@ As this is a lot of functionality, we will build the Oroboros code incrementally
 - Keep the backend emitter split clean so pybind11 can be added later.
 - Use Python-only configuration APIs.
 - Keep header dependency order and header activation as separate inputs.
-- The parse stage should take one ordered list of active headers to build right now.
-  The broader "all known headers" inventory and activation-header workflow live one layer above parsing.
+- Keep header discovery and activation selection in a separate `headers/`
+  layer above parsing.
+- The public parse entrypoint should consume one structured
+  `HeaderSelection`, which carries both the known project-header inventory and
+  the active subset to build right now.
 - Parsing should build one synthetic translation unit that includes those active headers in the configured order.
   Clang will still see transitive includes normally, but Oroboros should only materialize declarations whose source file belongs to the active project-header set.
 - Use one semantic tree of C++ declaration objects rather than a flat list or a raw AST.
@@ -252,9 +257,16 @@ For templates specifically, the current parser/model boundary is:
 
 The current parser internals are also intentionally split into:
 
+- `headers/model.py` for the structured `HeaderSelection` input passed from
+  discovery/activation workflow into parsing
+- `headers/find_headers.py` for header discovery helpers such as recursive base-
+  dir scanning and umbrella-header include closure
+- `headers/select_headers.py` for activation-header parsing, update helpers, and
+  selection shaping on top of discovered headers
 - `clang_driver.py` for libclang invocation and translation-unit creation
 - `build_model.py` for the public semantic-model build entrypoint and shared
-  parser-local build state such as the active-header set and USR map
+  parser-local build state such as the active-header set, known-project-header
+  set, and USR map
 - `clang_walk.py` for cursor traversal, dispatch, namespace reopening, skipped
   kind tracking, and USR-based node reuse
 - `cursor_data.py` for low-level libclang cursor helpers
@@ -272,6 +284,8 @@ The next parser work should focus first on:
 - `VAR_DECL` support for free variables and static data members
 - normalized comment/doc parsing on top of the preserved raw comments,
   including parameter-doc extraction
+- destructor and conversion-function coverage
+- parsed operator coverage
 
 ### Naming
 

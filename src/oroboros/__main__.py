@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from typing import Sequence
 
-from .find_headers import HeaderFile, find_all_headers, find_included_headers
+from .headers import HeaderFile, find_all_headers, find_included_headers
 
 
 def _format_header_file(header_file: HeaderFile) -> str:

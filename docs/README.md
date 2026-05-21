@@ -13,5 +13,11 @@ Current notes:
 - [Parse Pipeline](./parse-pipeline.md)
 - [Customization Workflow](./customization-workflow.md)
 
+The header workflow is now intentionally layered above parsing:
+
+- discover known project headers
+- optionally apply activation selection
+- parse one `HeaderSelection`
+
 Once the public API and the parse/translate/emit pipeline have settled more,
 this folder can either grow into a proper documentation site or feed into one.

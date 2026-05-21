@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from oroboros.headers import HeaderFile, HeaderSelection
 from oroboros.model import (
     ArrayCppType,
     BuiltinCppType,
@@ -22,10 +23,75 @@ from oroboros.model import (
     PointerCppType,
     TemplateInstanceCppType,
 )
-from oroboros.parse import ParserConfig, parse_headers
+from oroboros.parse import ParserConfig, parse_header_selection
 
 
 class ParseIntegrationTest(unittest.TestCase):
+    def test_parse_headers_warns_and_avoids_materializing_known_inactive_project_declarations(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            inactive_header = temp_path / "detail.hpp"
+            active_header = temp_path / "api.hpp"
+            inactive_header.write_text(
+                """
+namespace demo {
+
+struct Helper {
+    int value {};
+};
+
+}
+"""
+            )
+            active_header.write_text(
+                """
+#include "detail.hpp"
+
+namespace demo {
+
+struct Widget {
+    Helper helper {};
+};
+
+Helper make_helper(Helper value);
+
+}
+"""
+            )
+
+            result = parse_header_selection(
+                HeaderSelection(
+                    header_files=[
+                        HeaderFile(full_path=active_header, relative_path=Path("api.hpp")),
+                        HeaderFile(full_path=inactive_header, relative_path=Path("detail.hpp"), active=False),
+                    ]
+                ),
+                ParserConfig(
+                    auto_detect_toolchain=False,
+                    cxx_standard="c++20",
+                    validate_model=True,
+                ),
+            )
+
+        namespace = result.module.namespaces[0]
+        widget = namespace.classes[0]
+        make_helper = namespace.functions[0]
+
+        self.assertEqual([cls.name for cls in namespace.classes], ["Widget"])
+        self.assertIsInstance(widget.fields[0].cpp.type, NamedCppType)
+        self.assertEqual(widget.fields[0].cpp.type.name, "Helper")
+        self.assertIsNone(widget.fields[0].cpp.type.declaration)
+        self.assertIsInstance(make_helper.cpp.return_type, NamedCppType)
+        self.assertEqual(make_helper.cpp.return_type.name, "Helper")
+        self.assertIsNone(make_helper.cpp.return_type.declaration)
+        self.assertIsInstance(make_helper.parameters[0].cpp.type, NamedCppType)
+        self.assertEqual(make_helper.parameters[0].cpp.type.name, "Helper")
+        self.assertIsNone(make_helper.parameters[0].cpp.type.declaration)
+        self.assertTrue(
+            any("inactive" in warning.lower() for warning in result.warnings),
+            msg=f"Expected an inactive-header warning, got: {result.warnings}",
+        )
+
     def test_parse_headers_materializes_real_template_declarations(self) -> None:
         source = """
 namespace demo {
@@ -1461,6 +1527,7 @@ def _parse_headers_from_sources(
     *,
     header_order: list[str] | None = None,
     parser_config: ParserConfig | None = None,
+    known_project_header_names: list[str] | None = None,
 ):
     """Parse one small temporary header set with the real libclang pipeline."""
 
@@ -1473,8 +1540,32 @@ def _parse_headers_from_sources(
             header.write_text(sources[name])
             headers.append(header)
 
-        return parse_headers(
-            headers,
+        known_project_headers = None
+        if known_project_header_names is not None:
+            known_project_headers = [temp_path / name for name in known_project_header_names]
+
+        header_files = [
+            HeaderFile(
+                full_path=header,
+                relative_path=header.relative_to(temp_path),
+                active=True,
+            )
+            for header in headers
+        ]
+        if known_project_headers is not None:
+            known_header_paths = {header.resolve() for header in known_project_headers}
+            header_files.extend(
+                HeaderFile(
+                    full_path=header.resolve(),
+                    relative_path=header.resolve().relative_to(temp_path),
+                    active=False,
+                )
+                for header in known_project_headers
+                if header.resolve() not in {active_header.full_path.resolve() for active_header in header_files}
+            )
+
+        return parse_header_selection(
+            HeaderSelection(header_files=header_files),
             parser_config
             or ParserConfig(
                 auto_detect_toolchain=False,

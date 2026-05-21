@@ -19,7 +19,7 @@ import sys
 from typing import TextIO
 import warnings
 
-from .find_headers import HeaderFile
+from .model import HeaderFile, HeaderSelection
 
 
 INCLUDE_RE = re.compile(
@@ -101,6 +101,17 @@ def parse_activation_header(
         for header_file in header_files
     ]
     return selected_headers
+
+
+def select_active_headers(
+    selection: HeaderSelection,
+    activation_header: str | Path,
+) -> HeaderSelection:
+    """Apply one activation header to a known project-header selection."""
+
+    return HeaderSelection(
+        header_files=parse_activation_header(selection.known_headers, activation_header),
+    )
 
 
 def _render_activation_header(

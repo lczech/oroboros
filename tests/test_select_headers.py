@@ -6,8 +6,8 @@ from tempfile import TemporaryDirectory
 import unittest
 import warnings
 
-from oroboros.find_headers import HeaderFile
-from oroboros.select_headers import (
+from oroboros.headers import HeaderFile, HeaderSelection, select_active_headers
+from oroboros.headers.select_headers import (
     parse_activation_header,
     print_update_report,
     update_activation_header,
@@ -75,7 +75,32 @@ class SelectHeadersTest(unittest.TestCase):
 
         self.assertEqual(len(caught_warnings), 1)
         self.assertIn("demo/b.hpp", str(caught_warnings[0].message))
-        self.assertFalse(selected_headers[1].active)
+
+    def test_select_active_headers_returns_structured_selection(self) -> None:
+        with TemporaryDirectory() as temp_dir_name:
+            temp_dir = Path(temp_dir_name)
+            activation_header = temp_dir / "active.hpp"
+            activation_header.write_text(
+                '#include <demo/a.hpp>\n// #include <demo/b.hpp>\n',
+                encoding="utf-8",
+            )
+            selection = HeaderSelection(
+                header_files=[
+                    HeaderFile(full_path=temp_dir / "a.hpp", relative_path=Path("demo/a.hpp")),
+                    HeaderFile(full_path=temp_dir / "b.hpp", relative_path=Path("demo/b.hpp")),
+                ]
+            )
+
+            selected = select_active_headers(selection, activation_header)
+
+        self.assertEqual(
+            [(header.relative_path.as_posix(), header.active) for header in selected.known_headers],
+            [("demo/a.hpp", True), ("demo/b.hpp", False)],
+        )
+        self.assertEqual(
+            [header.relative_path.as_posix() for header in selected.active_headers],
+            ["demo/a.hpp"],
+        )
 
     def test_write_activation_header_supports_sections(self) -> None:
         with TemporaryDirectory() as temp_dir_name:

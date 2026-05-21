@@ -5,7 +5,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 import unittest
 
-from oroboros.parse import ParserConfig, parse_headers
+from oroboros.headers import HeaderFile, HeaderSelection
+from oroboros.parse import ParserConfig, parse_header_selection
 from oroboros.parse.build_model import BuildResult
 from oroboros.parse.clang_driver import build_clang_arguments, build_synthetic_include_source
 from oroboros.parse.toolchain import (
@@ -191,14 +192,14 @@ some trailer
             with self.assertRaisesRegex(RuntimeError, "First compiler message: probe failed"):
                 detect_compiler_toolchain("clang++")
 
-    def test_parse_headers_returns_empty_validated_module_for_empty_header_list(self) -> None:
-        result = parse_headers([], ParserConfig())
+    def test_parse_header_selection_returns_empty_validated_module_for_empty_header_list(self) -> None:
+        result = parse_header_selection(HeaderSelection(header_files=[]), ParserConfig())
 
         self.assertEqual(result.headers, [])
         self.assertEqual(result.module.namespaces, [])
         self.assertEqual(result.module.cpp.header_files, [])
 
-    def test_parse_headers_wires_driver_and_builder_results(self) -> None:
+    def test_parse_header_selection_wires_driver_and_builder_results(self) -> None:
         translation_unit = object()
         diagnostics = [SimpleNamespace(severity="warning")]
         driver_result = SimpleNamespace(translation_unit=translation_unit, diagnostics=diagnostics)
@@ -216,13 +217,24 @@ some trailer
             patch("oroboros.parse.api.parse_with_clang", return_value=driver_result) as parse_tu,
             patch("oroboros.parse.api.build_module_from_clang", return_value=build_result) as build_module,
         ):
-            result = parse_headers([Path("/tmp/project/demo.hpp")], ParserConfig())
+            result = parse_header_selection(
+                HeaderSelection(
+                    header_files=[
+                        HeaderFile(
+                            full_path=Path("/tmp/project/demo.hpp"),
+                            relative_path=Path("demo.hpp"),
+                        )
+                    ]
+                ),
+                ParserConfig(),
+            )
 
         parse_tu.assert_called_once()
         build_module.assert_called_once_with(
             translation_unit,
             [Path("/tmp/project/demo.hpp").resolve()],
             unittest.mock.ANY,
+            known_project_headers=[Path("/tmp/project/demo.hpp").resolve()],
         )
         self.assertIs(result.module, built_module)
         self.assertEqual(result.diagnostics, diagnostics)
@@ -232,3 +244,40 @@ some trailer
             ["Skipped unsupported libclang cursor kinds: TYPEDEF_DECL (2)"],
         )
         self.assertEqual(result.headers, [Path("/tmp/project/demo.hpp").resolve()])
+
+    def test_parse_header_selection_passes_explicit_known_project_headers_to_builder(self) -> None:
+        translation_unit = object()
+        diagnostics = [SimpleNamespace(severity="warning")]
+        driver_result = SimpleNamespace(translation_unit=translation_unit, diagnostics=diagnostics)
+        built_module = SimpleNamespace(
+            validate_tree=lambda: None,
+            validate_semantics=lambda: None,
+        )
+        build_result = BuildResult(
+            module=built_module,
+            semantic_warnings=[],
+            skipped_kind_counts={},
+        )
+        active_header = Path("/tmp/project/api.hpp")
+        inactive_header = Path("/tmp/project/detail.hpp")
+
+        with (
+            patch("oroboros.parse.api.parse_with_clang", return_value=driver_result),
+            patch("oroboros.parse.api.build_module_from_clang", return_value=build_result) as build_module,
+        ):
+            parse_header_selection(
+                HeaderSelection(
+                    header_files=[
+                        HeaderFile(full_path=active_header, relative_path=Path("api.hpp")),
+                        HeaderFile(full_path=inactive_header, relative_path=Path("detail.hpp"), active=False),
+                    ]
+                ),
+                ParserConfig(),
+            )
+
+        build_module.assert_called_once_with(
+            translation_unit,
+            [active_header.resolve()],
+            unittest.mock.ANY,
+            known_project_headers=[active_header.resolve(), inactive_header.resolve()],
+        )

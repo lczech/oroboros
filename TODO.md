@@ -183,6 +183,10 @@ prioritized engineering work here.
   In particular, check whether the `build_*_cpp_facet()` helpers still buy
   enough readability over direct construction, and whether `clang_walk.py`
   can be shortened further without adding too much abstraction.
+- Keep the new `headers/` layer cleanly separated from parsing.
+  `HeaderSelection` should remain the public handoff object between header
+  discovery/activation workflow and the parse stage, rather than letting
+  parser APIs grow ad-hoc parallel header-list parameters again.
 - Extend the existing parser configuration layer around libclang invocation.
   The current `ParserConfig` already covers include directories, defines,
   extra compiler arguments, language standard, resource directory, system

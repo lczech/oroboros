@@ -1,6 +1,6 @@
 """Public parse-stage package exports."""
 
-from .api import parse_headers
+from .api import parse_header_selection
 from .config import ParserConfig
 from .inspect import format_diagnostics, format_parse_result, summarize_parse_result
 from .result import ParseResult, ParserDiagnostic
@@ -14,6 +14,6 @@ __all__ = [
     "detect_compiler_toolchain",
     "format_diagnostics",
     "format_parse_result",
-    "parse_headers",
+    "parse_header_selection",
     "summarize_parse_result",
 ]
