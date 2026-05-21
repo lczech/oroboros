@@ -1,7 +1,7 @@
-"""Public header discovery and selection exports."""
+"""Public exports for header inventory, discovery, and activation selection."""
 
 from .find_headers import discover_headers, find_all_headers, find_included_headers
-from .model import HeaderFile, HeaderSelection
+from .selection import HeaderFile, HeaderSelection
 from .select_headers import (
     ActivationHeaderUpdateResult,
     parse_activation_header,

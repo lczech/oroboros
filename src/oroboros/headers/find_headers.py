@@ -1,26 +1,98 @@
 from __future__ import annotations
 
-"""Find project header files for later parsing and binding generation.
+"""Discover project header inventories for later selection and parsing.
 
-This module currently provides two discovery helpers:
+This module provides filesystem- and include-driven helpers that collect
+project headers as ``HeaderFile`` records. ``discover_headers()`` wraps those
+helpers and returns one ``HeaderSelection`` with every discovered header active
+by default.
 
-- ``find_all_headers()`` recursively scans a base directory and returns all
-  project header files below it.
-- ``find_included_headers()`` starts from one header file and follows
-  ``#include`` directives recursively, returning project headers in the order
-  they are encountered.
-
-Both functions return ``HeaderFile`` objects with an absolute path and a path
-relative to the configured base directory.
-
-Note that these are merely helpers; you can implement your own discovery logic if you need more control, and simply return a list of ``HeaderFile``.
+These are convenience helpers, not the only supported workflow. Callers may
+build ``HeaderFile`` or ``HeaderSelection`` inputs by other means when they
+need more control.
 """
 
-from pathlib import Path
 import re
+from pathlib import Path
 from typing import Iterable
+from .selection import HeaderFile, HeaderSelection
 
-from .model import HeaderFile, HeaderSelection
+
+# ==================================================================================================
+#     Public Functions
+# ==================================================================================================
+
+
+def find_all_headers(directory: str | Path) -> list[HeaderFile]:
+    """Recursively collect all header files from a base directory."""
+
+    base_dir = _normalize_path(Path(directory))
+    header_files = [
+        _to_header_file(path, base_dir)
+        for path in sorted(base_dir.rglob("*"))
+        if _is_header_file(path)
+    ]
+    return header_files
+
+
+def find_included_headers(base_dir: str | Path, header_file: str | Path) -> list[HeaderFile]:
+    """Collect included project headers in preorder, starting from one header file."""
+
+    resolved_base_dir = _normalize_path(Path(base_dir))
+    root_header_path = Path(header_file)
+    if not root_header_path.is_absolute():
+        root_header_path = resolved_base_dir / root_header_path
+    root_header = _normalize_path(root_header_path)
+
+    discovered_headers: list[HeaderFile] = []
+    visited_paths: set[Path] = set()
+
+    def _visit(path: Path) -> None:
+        resolved_path = _normalize_path(path)
+
+        if _is_within_directory(resolved_path, resolved_base_dir):
+            if resolved_path in visited_paths:
+                return
+
+            visited_paths.add(resolved_path)
+            discovered_headers.append(
+                _to_header_file(resolved_path, resolved_base_dir)
+            )
+
+        for include_path in _iter_include_paths(resolved_path):
+            resolved_include_path = _resolve_include_path(
+                include_path=include_path,
+                including_file=resolved_path,
+                base_dir=resolved_base_dir,
+            )
+            if resolved_include_path is None:
+                continue
+
+            _visit(resolved_include_path)
+
+    _visit(root_header)
+    return discovered_headers
+
+
+def discover_headers(
+    base_dir: str | Path,
+    *,
+    umbrella_header: str | Path | None = None,
+) -> HeaderSelection:
+    """Build one header selection from a base directory and optional umbrella header."""
+
+    header_files = (
+        find_all_headers(base_dir)
+        if umbrella_header is None
+        else find_included_headers(base_dir, umbrella_header)
+    )
+    return HeaderSelection(header_files=header_files)
+
+
+# ==================================================================================================
+#     Internal Helpers
+# ==================================================================================================
+
 
 HEADER_EXTENSIONS = frozenset({".h", ".hh", ".hpp", ".hxx", ".h++"})
 INCLUDE_RE = re.compile(
@@ -90,69 +162,3 @@ def _resolve_include_path(include_path: str, including_file: Path, base_dir: Pat
             return resolved_path
 
     return None
-
-
-def find_all_headers(directory: str | Path) -> list[HeaderFile]:
-    """Recursively collect all header files from a base directory."""
-
-    base_dir = _normalize_path(Path(directory))
-    header_files = [
-        _to_header_file(path, base_dir)
-        for path in sorted(base_dir.rglob("*"))
-        if _is_header_file(path)
-    ]
-    return header_files
-
-
-def find_included_headers(base_dir: str | Path, header_file: str | Path) -> list[HeaderFile]:
-    """Collect included project headers in preorder, starting from one header file."""
-
-    resolved_base_dir = _normalize_path(Path(base_dir))
-    root_header_path = Path(header_file)
-    if not root_header_path.is_absolute():
-        root_header_path = resolved_base_dir / root_header_path
-    root_header = _normalize_path(root_header_path)
-
-    discovered_headers: list[HeaderFile] = []
-    visited_paths: set[Path] = set()
-
-    def _visit(path: Path) -> None:
-        resolved_path = _normalize_path(path)
-
-        if _is_within_directory(resolved_path, resolved_base_dir):
-            if resolved_path in visited_paths:
-                return
-
-            visited_paths.add(resolved_path)
-            discovered_headers.append(
-                _to_header_file(resolved_path, resolved_base_dir)
-            )
-
-        for include_path in _iter_include_paths(resolved_path):
-            resolved_include_path = _resolve_include_path(
-                include_path=include_path,
-                including_file=resolved_path,
-                base_dir=resolved_base_dir,
-            )
-            if resolved_include_path is None:
-                continue
-
-            _visit(resolved_include_path)
-
-    _visit(root_header)
-    return discovered_headers
-
-
-def discover_headers(
-    base_dir: str | Path,
-    *,
-    umbrella_header: str | Path | None = None,
-) -> HeaderSelection:
-    """Build one header selection from a base directory and optional umbrella header."""
-
-    header_files = (
-        find_all_headers(base_dir)
-        if umbrella_header is None
-        else find_included_headers(base_dir, umbrella_header)
-    )
-    return HeaderSelection(header_files=header_files)

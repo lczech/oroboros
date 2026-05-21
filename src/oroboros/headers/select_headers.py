@@ -1,45 +1,26 @@
 from __future__ import annotations
 
-"""Select active headers from a discovered project header list.
+"""Apply and maintain activation choices on top of a header inventory.
 
-This module takes the header inventory found by ``find_headers`` and applies a
-user-maintained activation header on top of it. The activation header is a
-normal-looking C++ header file whose ``#include`` lines can be commented or
-uncommented to disable or enable individual project headers.
-
-It also provides helpers to write or update such activation headers. This lets
-users grow bindings incrementally: newly discovered headers can be added to the
-activation file automatically, while existing user choices are preserved.
+This module interprets one user-maintained activation header whose
+``#include`` lines enable or disable project headers. It can apply that file to
+an existing ``HeaderSelection`` and can also write or update activation-header
+files while preserving existing user choices where possible.
 """
 
 from dataclasses import dataclass, replace
 from pathlib import Path
-import re
-import sys
 from typing import TextIO
 import warnings
+import re
+import sys
 
-from .model import HeaderFile, HeaderSelection
-
-
-INCLUDE_RE = re.compile(
-    r"""
-    ^\s*
-    (?P<comment>//\s*)?
-    \#\s*include
-    \s*
-    (?P<open><|")
-    (?P<path>[^>"]+)
-    (?P<close>>|")
-    (?:\s*//.*)?
-    \s*$
-    """,
-    re.VERBOSE,
-)
+from .selection import HeaderFile, HeaderSelection
 
 
-def _normalize_header_path(path: str) -> str:
-    return path.replace("\\", "/").strip()
+# ==================================================================================================
+#     Public Functions
+# ==================================================================================================
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,102 +33,6 @@ class ActivationHeaderUpdateResult:
     removed_headers: list[Path]
     created_file: bool
     updated_file: bool
-
-
-def _read_activation_map(activation_header: str | Path) -> dict[str, bool]:
-    activation_path = Path(activation_header)
-    activation_map: dict[str, bool] = {}
-
-    for line in activation_path.read_text(encoding="utf-8").splitlines():
-        match = INCLUDE_RE.match(line)
-        if match is None:
-            continue
-
-        open_delimiter = match.group("open")
-        close_delimiter = match.group("close")
-        if (open_delimiter, close_delimiter) not in {("<", ">"), ('"', '"')}:
-            continue
-
-        include_path = _normalize_header_path(match.group("path"))
-        activation_map[include_path] = match.group("comment") is None
-
-    return activation_map
-
-
-def parse_activation_header(
-    header_files: list[HeaderFile],
-    activation_header: str | Path,
-) -> list[HeaderFile]:
-    """Apply active and inactive selections from an activation header file."""
-
-    activation_map = _read_activation_map(activation_header)
-
-    missing_headers = [
-        header_file.relative_path.as_posix()
-        for header_file in header_files
-        if header_file.relative_path.as_posix() not in activation_map
-    ]
-    if missing_headers:
-        warnings.warn(
-            "Headers missing from activation header: " + ", ".join(missing_headers),
-            stacklevel=2,
-        )
-
-    selected_headers = [
-        replace(
-            header_file,
-            active=activation_map.get(header_file.relative_path.as_posix(), False),
-        )
-        for header_file in header_files
-    ]
-    return selected_headers
-
-
-def select_active_headers(
-    selection: HeaderSelection,
-    activation_header: str | Path,
-) -> HeaderSelection:
-    """Apply one activation header to a known project-header selection."""
-
-    return HeaderSelection(
-        header_files=parse_activation_header(selection.known_headers, activation_header),
-    )
-
-
-def _render_activation_header(
-    header_files: list[HeaderFile],
-    *,
-    with_sections: bool = False,
-) -> str:
-    """Render one activation header file without writing it yet."""
-
-    lines = ["#pragma once", ""]
-    current_directory: str | None = None
-
-    for header_file in header_files:
-        header_directory = header_file.relative_path.parent.as_posix()
-
-        if with_sections and header_directory != current_directory:
-            if len(lines) > 2:
-                lines.append("")
-
-            section_name = header_directory if header_directory != "." else "(root)"
-            lines.extend(
-                [
-                    "// ---------------------------------------------------------------------",
-                    f"//   {section_name}",
-                    "// ---------------------------------------------------------------------",
-                    "",
-                ]
-            )
-            current_directory = header_directory
-
-        include_line = f'#include <{header_file.relative_path.as_posix()}>'
-        if not header_file.active:
-            include_line = f"// {include_line}"
-        lines.append(include_line)
-
-    return "\n".join(lines) + "\n"
 
 
 def write_activation_header(
@@ -252,3 +137,124 @@ def print_update_report(
 
     if not update_result.added_headers and not update_result.removed_headers:
         print("No header list changes.", file=output_stream)
+
+
+# ==================================================================================================
+#     Internal Helpers
+# ==================================================================================================
+
+
+INCLUDE_RE = re.compile(
+    r"""
+    ^\s*
+    (?P<comment>//\s*)?
+    \#\s*include
+    \s*
+    (?P<open><|")
+    (?P<path>[^>"]+)
+    (?P<close>>|")
+    (?:\s*//.*)?
+    \s*$
+    """,
+    re.VERBOSE,
+)
+
+
+def _normalize_header_path(path: str) -> str:
+    return path.replace("\\", "/").strip()
+
+
+def _read_activation_map(activation_header: str | Path) -> dict[str, bool]:
+    activation_path = Path(activation_header)
+    activation_map: dict[str, bool] = {}
+
+    for line in activation_path.read_text(encoding="utf-8").splitlines():
+        match = INCLUDE_RE.match(line)
+        if match is None:
+            continue
+
+        open_delimiter = match.group("open")
+        close_delimiter = match.group("close")
+        if (open_delimiter, close_delimiter) not in {("<", ">"), ('"', '"')}:
+            continue
+
+        include_path = _normalize_header_path(match.group("path"))
+        activation_map[include_path] = match.group("comment") is None
+
+    return activation_map
+
+
+def parse_activation_header(
+    header_files: list[HeaderFile],
+    activation_header: str | Path,
+) -> list[HeaderFile]:
+    """Apply active and inactive selections from an activation header file."""
+
+    activation_map = _read_activation_map(activation_header)
+
+    missing_headers = [
+        header_file.relative_path.as_posix()
+        for header_file in header_files
+        if header_file.relative_path.as_posix() not in activation_map
+    ]
+    if missing_headers:
+        warnings.warn(
+            "Headers missing from activation header: " + ", ".join(missing_headers),
+            stacklevel=2,
+        )
+
+    selected_headers = [
+        replace(
+            header_file,
+            active=activation_map.get(header_file.relative_path.as_posix(), False),
+        )
+        for header_file in header_files
+    ]
+    return selected_headers
+
+
+def select_active_headers(
+    selection: HeaderSelection,
+    activation_header: str | Path,
+) -> HeaderSelection:
+    """Apply one activation header to a known project-header selection."""
+
+    return HeaderSelection(
+        header_files=parse_activation_header(selection.known_headers, activation_header),
+    )
+
+
+def _render_activation_header(
+    header_files: list[HeaderFile],
+    *,
+    with_sections: bool = False,
+) -> str:
+    """Render one activation header file without writing it yet."""
+
+    lines = ["#pragma once", ""]
+    current_directory: str | None = None
+
+    for header_file in header_files:
+        header_directory = header_file.relative_path.parent.as_posix()
+
+        if with_sections and header_directory != current_directory:
+            if len(lines) > 2:
+                lines.append("")
+
+            section_name = header_directory if header_directory != "." else "(root)"
+            lines.extend(
+                [
+                    "// ---------------------------------------------------------------------",
+                    f"//   {section_name}",
+                    "// ---------------------------------------------------------------------",
+                    "",
+                ]
+            )
+            current_directory = header_directory
+
+        include_line = f'#include <{header_file.relative_path.as_posix()}>'
+        if not header_file.active:
+            include_line = f"// {include_line}"
+        lines.append(include_line)
+
+    return "\n".join(lines) + "\n"

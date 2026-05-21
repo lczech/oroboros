@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Structured header discovery and selection inputs used above parsing."""
+"""Structured header records passed from discovery and selection into parsing."""
 
 from dataclasses import dataclass
 from pathlib import Path
