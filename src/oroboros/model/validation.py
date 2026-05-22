@@ -22,7 +22,7 @@ from .type import NamedCppType
 def validate_tree(root: CppElement) -> None:
     """Validate owner links and direct-child containment across one subtree."""
 
-    root_path = root._describe_element()
+    root_path = _root_access_path(root)
     errors: list[str] = []
     visited: dict[int, str] = {id(root): root_path}
 
@@ -94,10 +94,35 @@ class ModelSemanticValidationError(ValueError):
     """Report one or more semantic consistency problems in the model."""
 
 
+def _root_access_path(root: CppElement) -> str:
+    """Return one copy-pasteable root expression for validator error paths."""
+
+    root_names = {
+        "CppAlias": "alias",
+        "CppClass": "class_",
+        "CppClassTemplate": "class_template",
+        "CppClassTemplateDeclaration": "class_template_declaration",
+        "CppClassTemplateInstance": "class_template_instance",
+        "CppConstructor": "constructor",
+        "CppEnum": "enum_",
+        "CppEnumerator": "enumerator",
+        "CppField": "field",
+        "CppFunction": "function",
+        "CppFunctionTemplate": "function_template",
+        "CppFunctionTemplateDeclaration": "function_template_declaration",
+        "CppFunctionTemplateInstance": "function_template_instance",
+        "CppMethod": "method",
+        "CppModule": "module",
+        "CppNamespace": "namespace",
+        "CppParameter": "parameter",
+    }
+    return root_names.get(type(root).__name__, "root")
+
+
 def validate_semantics(root: CppElement) -> None:
     """Validate semantic cross-links and type usage across one subtree."""
 
-    root_path = root._describe_element()
+    root_path = _root_access_path(root)
     errors: list[str] = []
 
     _validate_semantic_subtree(root, root_path, errors)

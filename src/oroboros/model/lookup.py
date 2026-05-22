@@ -260,7 +260,13 @@ def _iter_direct_child_elements(
 ) -> list[tuple[str, CppElement]]:
     """Collect direct child element references declared on one element."""
 
-    return _collect_direct_child_elements(element, path, errors=errors, skip_owner=True)
+    return _collect_direct_child_elements(
+        element,
+        path,
+        errors=errors,
+        skip_owner=True,
+        path_owner=element,
+    )
 
 
 def _collect_direct_child_elements(
@@ -269,6 +275,7 @@ def _collect_direct_child_elements(
     *,
     errors: list[str] | None,
     skip_owner: bool,
+    path_owner: CppElement | None,
 ) -> list[tuple[str, CppElement]]:
     """Collect direct child elements reachable from one dataclass-backed value."""
 
@@ -298,6 +305,8 @@ def _collect_direct_child_elements(
                 if isinstance(item, CppElement):
                     item_path = _child_element_path(
                         parent_path=path,
+                        parent_value=value,
+                        path_owner=path_owner,
                         field_name=field_name,
                         siblings=element_items,
                         index=index,
@@ -316,9 +325,10 @@ def _collect_direct_child_elements(
             children.extend(
                 _collect_direct_child_elements(
                     field_value,
-                    field_path,
+                    path,
                     errors=errors,
                     skip_owner=False,
+                    path_owner=path_owner,
                 )
             )
 
@@ -328,6 +338,8 @@ def _collect_direct_child_elements(
 def _child_element_path(
     *,
     parent_path: str,
+    parent_value: object,
+    path_owner: CppElement | None,
     field_name: str,
     siblings: list[CppElement],
     index: int,
@@ -335,15 +347,112 @@ def _child_element_path(
 ) -> str:
     """Render one stable user-facing path for a child element inside one list field."""
 
+    raw_collection_path = _raw_child_collection_path(
+        parent_path=parent_path,
+        parent_value=parent_value,
+        field_name=field_name,
+    )
     name = getattr(item, "name", None)
     if not name:
-        return f"{parent_path}.{field_name}[{index}]"
+        return f"{raw_collection_path}[{index}]"
+
+    semantic_collection_path = _semantic_child_collection_path(
+        parent_path=parent_path,
+        path_owner=path_owner,
+        field_name=field_name,
+    )
+    if semantic_collection_path is None:
+        return f"{raw_collection_path}[{index}]"
+
+    if _child_view_returns_many(field_name):
+        overload_index = _same_name_sibling_index(siblings, name, item)
+        return f'{semantic_collection_path}["{name}"][{overload_index}]'
 
     duplicate_count = sum(1 for sibling in siblings if sibling.name == name)
-    if duplicate_count <= 1:
-        return f'{parent_path}.{field_name}["{name}"]'
+    if duplicate_count == 1:
+        return f'{semantic_collection_path}["{name}"]'
 
-    return f'{parent_path}.{field_name}["{name}"][{index}]'
+    return f"{raw_collection_path}[{index}]"
+
+
+def _semantic_child_collection_path(
+    *,
+    parent_path: str,
+    path_owner: CppElement | None,
+    field_name: str,
+) -> str | None:
+    """Return one semantic-access path for a direct child collection when available."""
+
+    if path_owner is None:
+        return None
+
+    accessor_name = _named_child_accessor(field_name)
+    if accessor_name is None or not hasattr(path_owner, accessor_name):
+        return None
+
+    return f"{parent_path}.{accessor_name}"
+
+
+def _raw_child_collection_path(
+    *,
+    parent_path: str,
+    parent_value: object,
+    field_name: str,
+) -> str:
+    """Return one structural path to the underlying owned child collection."""
+
+    if getattr(parent_value, "_is_child_container", False):
+        return f"{parent_path}.declarations.{field_name}"
+    return f"{parent_path}.{field_name}"
+
+
+def _named_child_accessor(field_name: str) -> str | None:
+    """Map one direct child-collection field to its public name-indexed accessor."""
+
+    accessors = {
+        "aliases": "alias",
+        "class_templates": "class_template",
+        "classes": "class_",
+        "constructors": "constructor",
+        "enumerators": "enumerator",
+        "enums": "enum",
+        "fields": "field",
+        "function_templates": "function_template",
+        "functions": "function",
+        "methods": "method",
+        "namespaces": "namespace",
+        "parameters": "parameter",
+    }
+    return accessors.get(field_name)
+
+
+def _child_view_returns_many(field_name: str) -> bool:
+    """Return whether the named child accessor yields overload groups as lists."""
+
+    return field_name in {
+        "constructors",
+        "function_templates",
+        "functions",
+        "methods",
+    }
+
+
+def _same_name_sibling_index(
+    siblings: list[CppElement],
+    name: str,
+    item: CppElement,
+) -> int:
+    """Return one element's zero-based index within its same-name sibling group."""
+
+    same_name_index = 0
+    for sibling in siblings:
+        if sibling.name != name:
+            continue
+        if sibling is item:
+            return same_name_index
+        same_name_index += 1
+
+    return 0
 
 
 def _normalize_qualified_name(qualified_name: str) -> str:

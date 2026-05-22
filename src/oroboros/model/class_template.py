@@ -95,7 +95,9 @@ class CppClassTemplateInstance(CppElement):
     """Represent one selected class template instantiation as a binding target."""
 
     # Selected template arguments for this concrete class template instance.
-    cpp: CppClassTemplateInstanceCppFacet = dataclass_field(default_factory=CppClassTemplateInstanceCppFacet)
+    cpp: CppClassTemplateInstanceCppFacet = dataclass_field(
+        default_factory=CppClassTemplateInstanceCppFacet
+    )
     # Binding settings attached directly to this selected instance.
     bind: CppClassBindFacet = dataclass_field(default_factory=CppClassBindFacet)
     # Python-facing choices attached directly to this selected instance.

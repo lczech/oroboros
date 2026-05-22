@@ -581,9 +581,10 @@ class ModelScaffoldTest(unittest.TestCase):
         with self.assertRaises(ModelSemanticValidationError) as context:
             module.validate_semantics()
 
-        self.assertIn('namespaces["demo"]', str(context.exception))
-        self.assertIn('functions["take_widget"]', str(context.exception))
-        self.assertIn('parameters["value"]', str(context.exception))
+        self.assertIn('module.namespace["demo"]', str(context.exception))
+        self.assertIn('function["take_widget"][0]', str(context.exception))
+        self.assertIn('parameter["value"]', str(context.exception))
+        self.assertNotIn(".declarations.", str(context.exception))
 
     def test_validate_semantics_rejects_non_class_base_declarations(self) -> None:
         enum_ = CppEnum(name="Kind")

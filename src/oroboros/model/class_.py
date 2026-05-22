@@ -116,13 +116,27 @@ class CppFieldPyFacet:
 class CppClassDefaults:
     """Store descendant defaults for one class scope."""
 
-    class_: CppClassBindFacet = dataclass_field(default_factory=CppClassBindFacet)
-    class_template: "CppTemplateBindFacet" = dataclass_field(default_factory=lambda: _make_template_bind_facet())
-    method: "CppMethodBindFacet" = dataclass_field(default_factory=lambda: _make_method_bind_facet())
-    constructor: "CppConstructorBindFacet" = dataclass_field(default_factory=lambda: _make_constructor_bind_facet())
-    field: CppFieldBindFacet = dataclass_field(default_factory=CppFieldBindFacet)
-    function_template: "CppTemplateBindFacet" = dataclass_field(default_factory=lambda: _make_template_bind_facet())
-    enum: "CppEnumBindFacet" = dataclass_field(default_factory=lambda: _make_enum_bind_facet())
+    class_: CppClassBindFacet = dataclass_field(
+        default_factory=CppClassBindFacet
+    )
+    class_template: "CppTemplateBindFacet" = dataclass_field(
+        default_factory=lambda: _make_template_bind_facet()
+    )
+    method: "CppMethodBindFacet" = dataclass_field(
+        default_factory=lambda: _make_method_bind_facet()
+    )
+    constructor: "CppConstructorBindFacet" = dataclass_field(
+        default_factory=lambda: _make_constructor_bind_facet()
+    )
+    field: CppFieldBindFacet = dataclass_field(
+        default_factory=CppFieldBindFacet
+    )
+    function_template: "CppTemplateBindFacet" = dataclass_field(
+        default_factory=lambda: _make_template_bind_facet()
+    )
+    enum: "CppEnumBindFacet" = dataclass_field(
+        default_factory=lambda: _make_enum_bind_facet()
+    )
 
 
 def _make_method_bind_facet() -> "CppMethodBindFacet":
