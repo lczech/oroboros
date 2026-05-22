@@ -120,4 +120,4 @@ class CppEnum(CppElement):
     def enumerator(self):
         """Return a name-indexed view over this enum's enumerators."""
 
-        return make_named_child_view(self, "enumerators")
+        return make_named_child_view(self, self, "enumerators")

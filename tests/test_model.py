@@ -10,6 +10,7 @@ from oroboros.model import (
     CppClass,
     CppClassBase,
     CppClassBindFacet,
+    CppClassDeclarations,
     CppClassDefaults,
     CppClassTemplate,
     CppClassTemplateDecl,
@@ -50,6 +51,7 @@ from oroboros.model import (
     CppTypeTemplateArgument,
     CppTypeTemplateParameter,
     CppFunctionTemplateInstance,
+    CppScopeDeclarations,
     ModelLookupError,
     ModelSemanticValidationError,
     CppVisibility,
@@ -69,21 +71,119 @@ from oroboros.model import (
 )
 
 
+def make_class(*, declarations: CppClassDeclarations | None = None, **kwargs) -> CppClass:
+    """Build one class while allowing direct declaration-list keyword arguments in tests."""
+
+    declaration_kwargs = {}
+    for key in (
+        "classes",
+        "constructors",
+        "methods",
+        "fields",
+        "aliases",
+        "enums",
+        "class_templates",
+        "function_templates",
+    ):
+        if key in kwargs:
+            declaration_kwargs[key] = kwargs.pop(key)
+
+    declaration_container = declarations if declarations is not None else CppClassDeclarations()
+    for key, value in declaration_kwargs.items():
+        setattr(declaration_container, key, list(value))
+
+    return CppClass(declarations=declaration_container, **kwargs)
+
+
+def make_class_template_decl(
+    *,
+    declarations: CppClassDeclarations | None = None,
+    **kwargs,
+) -> CppClassTemplateDecl:
+    """Build one class-template declaration with direct declaration-list keyword arguments."""
+
+    declaration_kwargs = {}
+    for key in (
+        "classes",
+        "constructors",
+        "methods",
+        "fields",
+        "aliases",
+        "enums",
+        "class_templates",
+        "function_templates",
+    ):
+        if key in kwargs:
+            declaration_kwargs[key] = kwargs.pop(key)
+
+    declaration_container = declarations if declarations is not None else CppClassDeclarations()
+    for key, value in declaration_kwargs.items():
+        setattr(declaration_container, key, list(value))
+
+    return CppClassTemplateDecl(declarations=declaration_container, **kwargs)
+
+
+def make_namespace(*, declarations: CppScopeDeclarations | None = None, **kwargs) -> CppNamespace:
+    """Build one namespace while allowing direct declaration-list keyword arguments in tests."""
+
+    declaration_kwargs = {}
+    for key in (
+        "namespaces",
+        "classes",
+        "class_templates",
+        "functions",
+        "function_templates",
+        "enums",
+        "aliases",
+    ):
+        if key in kwargs:
+            declaration_kwargs[key] = kwargs.pop(key)
+
+    declaration_container = declarations if declarations is not None else CppScopeDeclarations()
+    for key, value in declaration_kwargs.items():
+        setattr(declaration_container, key, list(value))
+
+    return CppNamespace(declarations=declaration_container, **kwargs)
+
+
+def make_module(*, declarations: CppScopeDeclarations | None = None, **kwargs) -> CppModule:
+    """Build one module while allowing direct declaration-list keyword arguments in tests."""
+
+    declaration_kwargs = {}
+    for key in (
+        "namespaces",
+        "classes",
+        "class_templates",
+        "functions",
+        "function_templates",
+        "enums",
+        "aliases",
+    ):
+        if key in kwargs:
+            declaration_kwargs[key] = kwargs.pop(key)
+
+    declaration_container = declarations if declarations is not None else CppScopeDeclarations()
+    for key, value in declaration_kwargs.items():
+        setattr(declaration_container, key, list(value))
+
+    return CppModule(declarations=declaration_container, **kwargs)
+
+
 class ModelScaffoldTest(unittest.TestCase):
     def test_model_nodes_adopt_children_and_compute_qualified_names(self) -> None:
         parameter = CppParameter(name="value")
         constructor = CppConstructor(name="Widget", parameters=[CppParameter(name="seed")])
         method = CppMethod(name="size", parameters=[parameter])
         enum_ = CppEnum(name="Kind", enumerators=[CppEnumerator(name="primary")])
-        cls = CppClass(
+        cls = make_class(
             name="Widget",
             constructors=[constructor],
             methods=[method],
             enums=[enum_],
         )
         cls.add_alias(CppAlias(name="SizeType")).cpp.target = NamedCppType(name="std::size_t")
-        namespace = CppNamespace(name="demo", classes=[cls])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", classes=[cls])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         self.assertIs(namespace.owner, module)
         self.assertIs(cls.owner, namespace)
@@ -96,23 +196,23 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertEqual(cls.qualified_name, "demo::Widget")
         self.assertEqual(method.qualified_name, "demo::Widget::size")
         self.assertEqual(parameter.qualified_name, "demo::Widget::size::value")
-        self.assertEqual(cls.aliases[0].qualified_name, "demo::Widget::SizeType")
+        self.assertEqual(cls.declarations.aliases[0].qualified_name, "demo::Widget::SizeType")
 
     def test_aliases_preserve_target_type_and_can_be_found_in_scope_tree(self) -> None:
-        namespace = CppNamespace(name="demo")
+        namespace = make_namespace(name="demo")
         namespace.add_alias(CppAlias(name="Index")).cpp.target = NamedCppType(name="std::size_t")
-        namespace.aliases[0].cpp.kind = "using"
+        namespace.declarations.aliases[0].cpp.kind = "using"
 
-        self.assertEqual(namespace.aliases[0].qualified_name, "demo::Index")
-        self.assertEqual(namespace.aliases[0].cpp.target.render(), "std::size_t")
-        self.assertEqual(namespace.aliases[0].cpp.kind, "using")
+        self.assertEqual(namespace.declarations.aliases[0].qualified_name, "demo::Index")
+        self.assertEqual(namespace.declarations.aliases[0].cpp.target.render(), "std::size_t")
+        self.assertEqual(namespace.declarations.aliases[0].cpp.kind, "using")
 
     def test_find_aliases_discovers_class_aliases_across_subtrees(self) -> None:
-        cls = CppClass(name="Widget")
-        namespace = CppNamespace(name="demo", classes=[cls])
+        cls = make_class(name="Widget")
+        namespace = make_namespace(name="demo", classes=[cls])
         namespace.add_alias(CppAlias(name="WidgetAlias")).cpp.target = NamedCppType(name="demo::Widget")
         namespace.add_alias(CppAlias(name="SizeType")).cpp.target = NamedCppType(name="std::size_t")
-        nested = CppNamespace(name="detail")
+        nested = make_namespace(name="detail")
         nested.add_alias(CppAlias(name="WidgetHandle")).cpp.target = NamedCppType(name="demo::Widget")
         namespace.add_namespace(nested)
 
@@ -124,8 +224,8 @@ class ModelScaffoldTest(unittest.TestCase):
         )
 
     def test_find_aliases_matches_class_targets_via_declaration_links_with_qualifiers(self) -> None:
-        cls = CppClass(name="Widget")
-        namespace = CppNamespace(name="demo", classes=[cls])
+        cls = make_class(name="Widget")
+        namespace = make_namespace(name="demo", classes=[cls])
         namespace.add_alias(CppAlias(name="WidgetAlias")).cpp.target = NamedCppType(
             name="Widget",
             declaration=cls,
@@ -137,7 +237,7 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertEqual([alias.name for alias in aliases], ["WidgetAlias"])
 
     def test_find_aliases_matches_type_targets_via_canonical_structure(self) -> None:
-        namespace = CppNamespace(name="demo")
+        namespace = make_namespace(name="demo")
         namespace.add_alias(CppAlias(name="Index")).cpp.target = NamedCppType(
             name="uint64_t",
             canonical=BuiltinCppType(kind="unsigned_long"),
@@ -148,8 +248,8 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertEqual([alias.name for alias in aliases], ["Index"])
 
     def test_find_aliases_follows_alias_chains_to_the_underlying_class(self) -> None:
-        widget = CppClass(name="Widget")
-        namespace = CppNamespace(name="demo", classes=[widget])
+        widget = make_class(name="Widget")
+        namespace = make_namespace(name="demo", classes=[widget])
         first = namespace.add_alias(CppAlias(name="A"))
         first.cpp.target = NamedCppType(name="Widget", declaration=widget)
         second = namespace.add_alias(CppAlias(name="B"))
@@ -168,9 +268,9 @@ class ModelScaffoldTest(unittest.TestCase):
 
     def test_lookup_helpers_find_elements_by_name_and_qualified_name(self) -> None:
         method = CppMethod(name="foo")
-        cls = CppClass(name="Widget", methods=[method])
-        namespace = CppNamespace(name="demo", classes=[cls])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        cls = make_class(name="Widget", methods=[method])
+        namespace = make_namespace(name="demo", classes=[cls])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         self.assertIs(
             module.find_one_by_qualified_name("::demo::Widget", types=CppClass),
@@ -190,7 +290,7 @@ class ModelScaffoldTest(unittest.TestCase):
         method_b = CppMethod(name="foo")
         field = CppField(name="size")
         enum_ = CppEnum(name="Kind", enumerators=[CppEnumerator(name="primary")])
-        cls = CppClass(
+        cls = make_class(
             name="Widget",
             methods=[method_a, method_b],
             fields=[field],
@@ -198,8 +298,8 @@ class ModelScaffoldTest(unittest.TestCase):
         )
         function_a = CppFunction(name="make_widget")
         function_b = CppFunction(name="make_widget")
-        namespace = CppNamespace(name="demo", classes=[cls], functions=[function_a, function_b])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", classes=[cls], functions=[function_a, function_b])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         self.assertIs(module.namespace["demo"], namespace)
         self.assertIs(namespace.class_["Widget"], cls)
@@ -210,9 +310,9 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertEqual(cls.method["foo"], [method_a, method_b])
 
     def test_named_child_views_raise_on_missing_or_ambiguous_unique_names(self) -> None:
-        namespace_a = CppNamespace(name="demo")
-        namespace_b = CppNamespace(name="demo")
-        module = CppModule(name="bindings", namespaces=[namespace_a, namespace_b])
+        namespace_a = make_namespace(name="demo")
+        namespace_b = make_namespace(name="demo")
+        module = make_module(name="bindings", namespaces=[namespace_a, namespace_b])
 
         with self.assertRaises(ModelLookupError):
             _ = module.namespace["demo"]
@@ -222,10 +322,10 @@ class ModelScaffoldTest(unittest.TestCase):
 
     def test_generic_navigation_supports_chained_direct_child_lookup(self) -> None:
         method = CppMethod(name="size")
-        cls = CppClass(name="Widget", methods=[method])
-        inner = CppNamespace(name="inner", classes=[cls])
-        outer = CppNamespace(name="outer", namespaces=[inner])
-        module = CppModule(name="bindings", namespaces=[outer])
+        cls = make_class(name="Widget", methods=[method])
+        inner = make_namespace(name="inner", classes=[cls])
+        outer = make_namespace(name="outer", namespaces=[inner])
+        module = make_module(name="bindings", namespaces=[outer])
 
         self.assertIs(module["outer"], outer)
         self.assertIs(module["outer"]["inner"], inner)
@@ -235,14 +335,14 @@ class ModelScaffoldTest(unittest.TestCase):
     def test_generic_navigation_returns_lists_for_overloadable_direct_children(self) -> None:
         method_a = CppMethod(name="size")
         method_b = CppMethod(name="size")
-        cls = CppClass(name="Widget", methods=[method_a, method_b])
+        cls = make_class(name="Widget", methods=[method_a, method_b])
 
         self.assertEqual(cls["size"], [method_a, method_b])
 
     def test_generic_navigation_returns_mixed_callable_groups_for_functions_and_templates(self) -> None:
         function = CppFunction(name="make_widget")
         function_template = CppFunctionTemplate(name="make_widget")
-        namespace = CppNamespace(
+        namespace = make_namespace(
             name="demo",
             functions=[function],
             function_templates=[function_template],
@@ -252,9 +352,9 @@ class ModelScaffoldTest(unittest.TestCase):
 
     def test_element_names_and_generic_find_helpers_improve_discovery(self) -> None:
         method = CppMethod(name="size")
-        cls = CppClass(name="Widget", methods=[method])
-        namespace = CppNamespace(name="demo", classes=[cls])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        cls = make_class(name="Widget", methods=[method])
+        namespace = make_namespace(name="demo", classes=[cls])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         self.assertEqual(module.element_names, ["demo"])
         self.assertEqual(namespace.element_names, ["Widget"])
@@ -263,12 +363,12 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertEqual(module.find_all("size"), [method])
 
     def test_lookup_helpers_raise_on_missing_or_ambiguous_matches(self) -> None:
-        cls = CppClass(
+        cls = make_class(
             name="Widget",
             methods=[CppMethod(name="foo"), CppMethod(name="foo")],
         )
-        namespace = CppNamespace(name="demo", classes=[cls])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", classes=[cls])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         self.assertEqual(
             len(module.find_all_by_qualified_name("demo::Widget::foo", types=CppMethod)),
@@ -291,15 +391,15 @@ class ModelScaffoldTest(unittest.TestCase):
         function = CppFunction(name="make_widget", parameters=[CppParameter(name="seed")])
         enum_ = CppEnum(name="Kind", enumerators=[CppEnumerator(name="primary")])
         field = CppField(name="size")
-        cls = CppClass(
+        cls = make_class(
             name="Widget",
             constructors=[constructor],
             methods=[method],
             fields=[field],
             enums=[enum_],
         )
-        namespace = CppNamespace(name="demo", classes=[cls], functions=[function])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", classes=[cls], functions=[function])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         self.assertIsNotNone(module.py)
         self.assertIsNotNone(namespace.py)
@@ -402,49 +502,49 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertIsInstance(constructor.bind, CppFunctionBindFacet)
 
     def test_add_helpers_attach_children_and_return_them(self) -> None:
-        module = CppModule(name="bindings")
-        namespace = module.add_namespace(CppNamespace(name="demo"))
-        cls = namespace.add_class(CppClass(name="Widget"))
+        module = make_module(name="bindings")
+        namespace = module.add_namespace(make_namespace(name="demo"))
+        cls = namespace.add_class(make_class(name="Widget"))
         constructor = cls.add_constructor(CppConstructor(name="Widget"))
         method = cls.add_method(CppMethod(name="size"))
         parameter = method.add_parameter(CppParameter(name="value"))
         enum_ = cls.add_enum(CppEnum(name="Kind"))
         enumerator = enum_.add_enumerator(CppEnumerator(name="primary"))
 
-        self.assertIs(module.namespaces[0], namespace)
+        self.assertIs(module.declarations.namespaces[0], namespace)
         self.assertIs(namespace.owner, module)
-        self.assertIs(namespace.classes[0], cls)
+        self.assertIs(namespace.declarations.classes[0], cls)
         self.assertIs(cls.owner, namespace)
-        self.assertIs(cls.constructors[0], constructor)
+        self.assertIs(cls.declarations.constructors[0], constructor)
         self.assertIs(constructor.owner, cls)
-        self.assertIs(cls.methods[0], method)
+        self.assertIs(cls.declarations.methods[0], method)
         self.assertIs(method.owner, cls)
         self.assertIs(method.parameters[0], parameter)
         self.assertIs(parameter.owner, method)
-        self.assertIs(cls.enums[0], enum_)
+        self.assertIs(cls.declarations.enums[0], enum_)
         self.assertIs(enum_.owner, cls)
         self.assertIs(enum_.enumerators[0], enumerator)
         self.assertIs(enumerator.owner, enum_)
 
     def test_validate_tree_accepts_consistent_child_owner_links(self) -> None:
-        module = CppModule(name="bindings")
-        namespace = module.add_namespace(CppNamespace(name="demo"))
-        cls = namespace.add_class(CppClass(name="Widget"))
+        module = make_module(name="bindings")
+        namespace = module.add_namespace(make_namespace(name="demo"))
+        cls = namespace.add_class(make_class(name="Widget"))
         method = cls.add_method(CppMethod(name="size"))
         method.add_parameter(CppParameter(name="value"))
 
         module.validate_tree()
 
     def test_validate_tree_rejects_direct_list_mutation_without_owner_update(self) -> None:
-        module = CppModule(name="bindings")
-        namespace = module.add_namespace(CppNamespace(name="demo"))
-        namespace.classes.append(CppClass(name="Widget"))
+        module = make_module(name="bindings")
+        namespace = module.add_namespace(make_namespace(name="demo"))
+        namespace.declarations.classes.append(make_class(name="Widget"))
 
         with self.assertRaises(ModelValidationError):
             module.validate_tree()
 
     def test_validate_semantics_accepts_consistent_declaration_linked_named_types(self) -> None:
-        cls = CppClass(name="Widget")
+        cls = make_class(name="Widget")
         method = CppMethod(
             name="set_widget",
             parameters=[
@@ -457,13 +557,13 @@ class ModelScaffoldTest(unittest.TestCase):
             ],
         )
         cls.add_method(method)
-        namespace = CppNamespace(name="demo", classes=[cls])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", classes=[cls])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         module.validate_semantics()
 
     def test_validate_semantics_rejects_named_type_name_mismatch(self) -> None:
-        cls = CppClass(name="Widget")
+        cls = make_class(name="Widget")
         function = CppFunction(
             name="take_widget",
             parameters=[
@@ -475,8 +575,8 @@ class ModelScaffoldTest(unittest.TestCase):
                 )
             ],
         )
-        namespace = CppNamespace(name="demo", classes=[cls], functions=[function])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", classes=[cls], functions=[function])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError) as context:
             module.validate_semantics()
@@ -487,35 +587,35 @@ class ModelScaffoldTest(unittest.TestCase):
 
     def test_validate_semantics_rejects_non_class_base_declarations(self) -> None:
         enum_ = CppEnum(name="Kind")
-        cls = CppClass(name="Widget")
+        cls = make_class(name="Widget")
         cls.cpp.bases.append(
             CppClassBase(
                 type=NamedCppType(name="Kind", declaration=enum_),
             )
         )
-        namespace = CppNamespace(name="demo", classes=[cls], enums=[enum_])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", classes=[cls], enums=[enum_])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
 
     def test_validate_semantics_rejects_parameters_owned_by_non_function_like_scopes(self) -> None:
-        namespace = CppNamespace(name="demo")
+        namespace = make_namespace(name="demo")
         parameter = CppParameter(name="value")
-        namespace.functions.append(parameter)
+        namespace.declarations.functions.append(parameter)
         parameter.owner = namespace
-        module = CppModule(name="bindings", namespaces=[namespace])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
 
     def test_validate_semantics_rejects_constructor_name_mismatches(self) -> None:
-        cls = CppClass(
+        cls = make_class(
             name="Widget",
             constructors=[CppConstructor(name="OtherWidget")],
         )
-        namespace = CppNamespace(name="demo", classes=[cls])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", classes=[cls])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
@@ -528,47 +628,47 @@ class ModelScaffoldTest(unittest.TestCase):
         static_virtual.cpp.is_static = True
         static_virtual.cpp.is_virtual = True
 
-        cls = CppClass(
+        cls = make_class(
             name="Widget",
             methods=[pure_virtual_only, static_virtual],
         )
-        namespace = CppNamespace(name="demo", classes=[cls])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", classes=[cls])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
 
     def test_validate_semantics_rejects_cpp_original_name_mismatches(self) -> None:
-        cls = CppClass(name="Widget")
+        cls = make_class(name="Widget")
         cls.cpp.original_name = "OriginalWidget"
-        namespace = CppNamespace(name="demo", classes=[cls])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", classes=[cls])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
 
     def test_validate_semantics_rejects_duplicate_non_overload_child_names(self) -> None:
-        namespace = CppNamespace(
+        namespace = make_namespace(
             name="demo",
-            classes=[CppClass(name="Widget"), CppClass(name="Widget")],
+            classes=[make_class(name="Widget"), make_class(name="Widget")],
         )
-        module = CppModule(name="bindings", namespaces=[namespace])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
 
     def test_validate_semantics_rejects_duplicate_alias_names_in_one_scope(self) -> None:
-        namespace = CppNamespace(name="demo")
+        namespace = make_namespace(name="demo")
         namespace.add_alias(CppAlias(name="Index")).cpp.target = NamedCppType(name="std::size_t")
         namespace.add_alias(CppAlias(name="Index")).cpp.target = BuiltinCppType(kind="unsigned_long")
-        module = CppModule(name="bindings", namespaces=[namespace])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
 
     def test_validate_semantics_rejects_aliases_without_target_types(self) -> None:
-        namespace = CppNamespace(name="demo", aliases=[CppAlias(name="Index")])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", aliases=[CppAlias(name="Index")])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
@@ -576,8 +676,8 @@ class ModelScaffoldTest(unittest.TestCase):
     def test_validate_semantics_rejects_template_family_name_mismatches(self) -> None:
         function_template = CppFunctionTemplate(name="make_value")
         function_template.declaration.name = "other_value"
-        namespace = CppNamespace(name="demo", function_templates=[function_template])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", function_templates=[function_template])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
@@ -592,8 +692,8 @@ class ModelScaffoldTest(unittest.TestCase):
             [CppTypeTemplateArgument(type=NamedCppType(name="int"))],
         )
         instance.cpp.template_arguments = [CppNonTypeTemplateArgument(value="4")]
-        namespace = CppNamespace(name="demo", function_templates=[function_template])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", function_templates=[function_template])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
@@ -611,11 +711,11 @@ class ModelScaffoldTest(unittest.TestCase):
                 )
             ],
         )
-        namespace = CppNamespace(
+        namespace = make_namespace(
             name="demo",
             functions=[target_function, using_function],
         )
-        module = CppModule(name="bindings", namespaces=[namespace])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
@@ -630,8 +730,8 @@ class ModelScaffoldTest(unittest.TestCase):
             ],
             definition=SourceLocation(file=Path("api/widget.hpp"), line=20, column=1),
         )
-        namespace = CppNamespace(name="demo", functions=[function])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", functions=[function])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
@@ -641,9 +741,9 @@ class ModelScaffoldTest(unittest.TestCase):
         first.cpp.overload_index = 0
         second = CppMethod(name="foo")
         second.cpp.overload_index = 2
-        cls = CppClass(name="Widget", methods=[first, second])
-        namespace = CppNamespace(name="demo", classes=[cls])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        cls = make_class(name="Widget", methods=[first, second])
+        namespace = make_namespace(name="demo", classes=[cls])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
@@ -658,27 +758,27 @@ class ModelScaffoldTest(unittest.TestCase):
                 arguments=[CppNonTypeTemplateArgument(value="4")],
             )
         )
-        namespace = CppNamespace(name="demo", function_templates=[function_template])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", function_templates=[function_template])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
 
     def test_validate_semantics_rejects_free_functions_owned_by_class_like_scopes(self) -> None:
-        cls = CppClass(name="Widget")
+        cls = make_class(name="Widget")
         stray_function = CppFunction(name="helper")
-        cls.classes.append(stray_function)
+        cls.declarations.classes.append(stray_function)
         stray_function.owner = cls
-        namespace = CppNamespace(name="demo", classes=[cls])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", classes=[cls])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
 
     def test_validate_semantics_rejects_implausible_cpp_identifier_names(self) -> None:
         function = CppFunction(name="bad-name")
-        namespace = CppNamespace(name="demo", functions=[function])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", functions=[function])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
@@ -686,14 +786,14 @@ class ModelScaffoldTest(unittest.TestCase):
     def test_validate_semantics_accepts_operator_names(self) -> None:
         method = CppMethod(name="operator+")
         method.cpp.operator = CppOperator(kind="punctuation", symbol="+")
-        cls = CppClass(name="Widget", methods=[method])
-        namespace = CppNamespace(name="demo", classes=[cls])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        cls = make_class(name="Widget", methods=[method])
+        namespace = make_namespace(name="demo", classes=[cls])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         module.validate_semantics()
 
     def test_validate_semantics_accepts_dependent_typename_spellings_for_linked_alias_targets(self) -> None:
-        document = CppClass(name="JsonDocument")
+        document = make_class(name="JsonDocument")
         value_type = document.add_alias(CppAlias(name="value_type"))
         value_type.cpp.target = BuiltinCppType(kind="int")
         difference_type = document.add_alias(CppAlias(name="difference_type"))
@@ -709,103 +809,103 @@ class ModelScaffoldTest(unittest.TestCase):
             declaration=difference_type,
         )
 
-        namespace = CppNamespace(name="format", classes=[document], class_templates=[iterator])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="format", classes=[document], class_templates=[iterator])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         module.validate_semantics()
 
     def test_validate_semantics_accepts_template_argument_scope_spellings_for_linked_nested_types(self) -> None:
         widget_range = CppClassTemplate(name="WidgetRange")
-        iterator = widget_range.declaration.add_class(CppClass(name="Iterator"))
+        iterator = widget_range.declaration.add_class(make_class(name="Iterator"))
         self_type = iterator.add_alias(CppAlias(name="self_type"))
         self_type.cpp.target = NamedCppType(
             name="WidgetRange<MT, T>::Iterator",
             declaration=iterator,
         )
 
-        namespace = CppNamespace(name="demo", class_templates=[widget_range])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", class_templates=[widget_range])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         module.validate_semantics()
 
     def test_validate_semantics_accepts_fully_qualified_template_owner_spellings_for_linked_nested_types(self) -> None:
         widget_range = CppClassTemplate(name="WidgetRange")
-        iterator = widget_range.declaration.add_class(CppClass(name="Iterator"))
+        iterator = widget_range.declaration.add_class(make_class(name="Iterator"))
         self_type = iterator.add_alias(CppAlias(name="self_type"))
         self_type.cpp.target = NamedCppType(
             name="::demo::WidgetRange<MT, T>::Iterator",
             declaration=iterator,
         )
 
-        namespace = CppNamespace(name="demo", class_templates=[widget_range])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", class_templates=[widget_range])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         module.validate_semantics()
 
     def test_validate_semantics_accepts_dependent_typename_nested_class_spellings(self) -> None:
         widget_range = CppClassTemplate(name="WidgetRange")
-        iterator = widget_range.declaration.add_class(CppClass(name="Iterator"))
+        iterator = widget_range.declaration.add_class(make_class(name="Iterator"))
         self_type = iterator.add_alias(CppAlias(name="self_type"))
         self_type.cpp.target = NamedCppType(
             name="typename WidgetRange<MT, T>::Iterator",
             declaration=iterator,
         )
 
-        namespace = CppNamespace(name="demo", class_templates=[widget_range])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", class_templates=[widget_range])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         module.validate_semantics()
 
     def test_validate_semantics_accepts_elaborated_nested_class_spellings(self) -> None:
         widget_range = CppClassTemplate(name="WidgetRange")
-        iterator = widget_range.declaration.add_class(CppClass(name="StackElement"))
+        iterator = widget_range.declaration.add_class(make_class(name="StackElement"))
         self_type = iterator.add_alias(CppAlias(name="self_type"))
         self_type.cpp.target = NamedCppType(
             name="struct StackElement",
             declaration=iterator,
         )
 
-        namespace = CppNamespace(name="demo", class_templates=[widget_range])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", class_templates=[widget_range])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         module.validate_semantics()
 
     def test_validate_semantics_accepts_elaborated_class_spellings(self) -> None:
-        cls = CppClass(name="Widget")
-        namespace = CppNamespace(name="demo", classes=[cls])
+        cls = make_class(name="Widget")
+        namespace = make_namespace(name="demo", classes=[cls])
         namespace.add_alias(CppAlias(name="widget_type")).cpp.target = NamedCppType(
             name="class Widget",
             declaration=cls,
         )
-        module = CppModule(name="bindings", namespaces=[namespace])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         module.validate_semantics()
 
     def test_validate_semantics_accepts_elaborated_union_spellings(self) -> None:
-        cls = CppClass(name="Storage")
-        namespace = CppNamespace(name="demo", classes=[cls])
+        cls = make_class(name="Storage")
+        namespace = make_namespace(name="demo", classes=[cls])
         namespace.add_alias(CppAlias(name="storage_type")).cpp.target = NamedCppType(
             name="union Storage",
             declaration=cls,
         )
-        module = CppModule(name="bindings", namespaces=[namespace])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         module.validate_semantics()
 
     def test_validate_semantics_accepts_elaborated_enum_spellings(self) -> None:
         enum_ = CppEnum(name="Kind")
-        namespace = CppNamespace(name="demo", enums=[enum_])
+        namespace = make_namespace(name="demo", enums=[enum_])
         namespace.add_alias(CppAlias(name="kind_type")).cpp.target = NamedCppType(
             name="enum Kind",
             declaration=enum_,
         )
-        module = CppModule(name="bindings", namespaces=[namespace])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         module.validate_semantics()
 
     def test_validate_semantics_accepts_dependent_template_disambiguator_spellings(self) -> None:
         traits = CppClassTemplate(name="Traits")
-        rebind = traits.declaration.add_class(CppClass(name="Rebind"))
+        rebind = traits.declaration.add_class(make_class(name="Rebind"))
         type_alias = rebind.add_alias(CppAlias(name="type"))
         type_alias.cpp.target = BuiltinCppType(kind="int")
 
@@ -815,14 +915,14 @@ class ModelScaffoldTest(unittest.TestCase):
             declaration=type_alias,
         )
 
-        namespace = CppNamespace(name="demo", class_templates=[traits, holder])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", class_templates=[traits, holder])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         module.validate_semantics()
 
     def test_validate_semantics_accepts_fully_qualified_dependent_template_disambiguator_spellings(self) -> None:
         traits = CppClassTemplate(name="Traits")
-        rebind = traits.declaration.add_class(CppClass(name="Rebind"))
+        rebind = traits.declaration.add_class(make_class(name="Rebind"))
         type_alias = rebind.add_alias(CppAlias(name="type"))
         type_alias.cpp.target = BuiltinCppType(kind="int")
 
@@ -832,67 +932,67 @@ class ModelScaffoldTest(unittest.TestCase):
             declaration=type_alias,
         )
 
-        namespace = CppNamespace(name="demo", class_templates=[traits, holder])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", class_templates=[traits, holder])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         module.validate_semantics()
 
     def test_validate_semantics_rejects_linked_named_types_with_wrong_terminal_name(self) -> None:
-        document = CppClass(name="JsonDocument")
+        document = make_class(name="JsonDocument")
         value_type = document.add_alias(CppAlias(name="value_type"))
         value_type.cpp.target = BuiltinCppType(kind="int")
 
-        namespace = CppNamespace(name="format")
+        namespace = make_namespace(name="format")
         namespace.add_alias(CppAlias(name="bad_alias")).cpp.target = NamedCppType(
             name="typename JsonDocument::difference_type",
             declaration=value_type,
         )
         namespace.add_class(document)
-        module = CppModule(name="bindings", namespaces=[namespace])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
 
     def test_validate_semantics_rejects_linked_nested_types_with_wrong_terminal_name(self) -> None:
         widget_range = CppClassTemplate(name="WidgetRange")
-        iterator = widget_range.declaration.add_class(CppClass(name="Iterator"))
+        iterator = widget_range.declaration.add_class(make_class(name="Iterator"))
         self_type = iterator.add_alias(CppAlias(name="self_type"))
         self_type.cpp.target = NamedCppType(
             name="WidgetRange<MT, T>::ConstIterator",
             declaration=iterator,
         )
 
-        namespace = CppNamespace(name="demo", class_templates=[widget_range])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", class_templates=[widget_range])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
 
     def test_validate_semantics_accepts_wrong_owner_when_terminal_name_matches_link(self) -> None:
         first_range = CppClassTemplate(name="WidgetRange")
-        first_iterator = first_range.declaration.add_class(CppClass(name="Iterator"))
+        first_iterator = first_range.declaration.add_class(make_class(name="Iterator"))
         second_range = CppClassTemplate(name="OtherRange")
-        second_range.declaration.add_class(CppClass(name="Iterator"))
+        second_range.declaration.add_class(make_class(name="Iterator"))
 
-        alias_holder = CppClass(name="AliasHolder")
+        alias_holder = make_class(name="AliasHolder")
         alias_holder.add_alias(CppAlias(name="iter_type")).cpp.target = NamedCppType(
             name="OtherRange<MT, T>::Iterator",
             declaration=first_iterator,
         )
 
-        namespace = CppNamespace(
+        namespace = make_namespace(
             name="demo",
             class_templates=[first_range, second_range],
             classes=[alias_holder],
         )
-        module = CppModule(name="bindings", namespaces=[namespace])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         module.validate_semantics()
 
     def test_validate_semantics_rejects_alias_names_with_invalid_characters(self) -> None:
-        namespace = CppNamespace(name="demo")
+        namespace = make_namespace(name="demo")
         namespace.add_alias(CppAlias(name="Index-Alias")).cpp.target = NamedCppType(name="std::size_t")
-        module = CppModule(name="bindings", namespaces=[namespace])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
@@ -901,15 +1001,15 @@ class ModelScaffoldTest(unittest.TestCase):
         enumerator = CppEnumerator(name="primary")
         enumerator.cpp.value_spelling = "   "
         enum_ = CppEnum(name="Kind", enumerators=[enumerator])
-        namespace = CppNamespace(name="demo", enums=[enum_])
-        module = CppModule(name="bindings", namespaces=[namespace])
+        namespace = make_namespace(name="demo", enums=[enum_])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
 
     def test_class_cpp_facet_uses_cpp_class_base_objects(self) -> None:
         base = CppClassBase(type=NamedCppType(name="Base"), visibility=CppVisibility.PUBLIC)
-        cls = CppClass(name="Derived")
+        cls = make_class(name="Derived")
         cls.cpp.bases.append(base)
         cls.cpp.visibility = CppVisibility.PRIVATE
 
@@ -918,8 +1018,8 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertEqual(cls.cpp.visibility, CppVisibility.PRIVATE)
 
     def test_active_flag_lives_in_bind_facets(self) -> None:
-        namespace = CppNamespace(name="demo")
-        cls = CppClass(name="Widget")
+        namespace = make_namespace(name="demo")
+        cls = make_class(name="Widget")
         function = CppFunction(name="make_widget")
         method = CppMethod(name="size")
         field = CppField(name="size")
@@ -951,12 +1051,12 @@ class ModelScaffoldTest(unittest.TestCase):
         function_template.declaration.cpp.template_parameters.append(
             CppNonTypeTemplateParameter(name="N")
         )
-        namespace = CppNamespace(
+        namespace = make_namespace(
             name="demo",
             class_templates=[class_template],
             function_templates=[function_template],
         )
-        module = CppModule(name="bindings", namespaces=[namespace])
+        module = make_module(name="bindings", namespaces=[namespace])
 
         class_instance = add_class_template_instance(
             class_template,
@@ -984,7 +1084,7 @@ class ModelScaffoldTest(unittest.TestCase):
             module.find_one_by_qualified_name("demo::make_value", types=CppFunctionTemplate),
             function_template,
         )
-        self.assertIs(module.namespaces[0], namespace)
+        self.assertIs(module.declarations.namespaces[0], namespace)
 
     def test_observed_template_instances_materialize_recursively_in_subtrees(self) -> None:
         inner_function_template = CppFunctionTemplate(name="make_inner")
@@ -998,7 +1098,7 @@ class ModelScaffoldTest(unittest.TestCase):
         )
         class_template = CppClassTemplate(
             name="Vector",
-            declaration=CppClassTemplateDecl(
+            declaration=make_class_template_decl(
                 name="Vector",
                 function_templates=[inner_function_template],
             ),
@@ -1011,7 +1111,7 @@ class ModelScaffoldTest(unittest.TestCase):
                 arguments=[CppTypeTemplateArgument(type=NamedCppType(name="int"))],
             )
         )
-        namespace = CppNamespace(
+        namespace = make_namespace(
             name="demo",
             class_templates=[class_template],
         )
@@ -1081,7 +1181,7 @@ class ModelScaffoldTest(unittest.TestCase):
                 arguments=[CppTypeTemplateArgument(type=NamedCppType(name="int"))],
             )
         )
-        namespace = CppNamespace(
+        namespace = make_namespace(
             name="demo",
             function_templates=[function_template],
         )
@@ -1113,12 +1213,12 @@ class ModelScaffoldTest(unittest.TestCase):
                 arguments=[CppTypeTemplateArgument(type=NamedCppType(name="double"))],
             )
         )
-        namespace = CppNamespace(
+        namespace = make_namespace(
             name="demo",
             class_templates=[class_template],
             function_templates=[function_template],
         )
-        module = CppModule(name="bindings", namespaces=[namespace])
+        module = make_module(name="bindings", namespaces=[namespace])
         module.defaults.class_template.materialize_observed_instances = True
         module.defaults.function_template.materialize_observed_instances = False
         function_template.bind.materialize_observed_instances = True
@@ -1165,16 +1265,16 @@ class ModelScaffoldTest(unittest.TestCase):
                 arguments=[CppTypeTemplateArgument(type=NamedCppType(name="char"))],
             )
         )
-        owner = CppClass(
+        owner = make_class(
             name="Owner",
             class_templates=[direct_template],
         )
-        namespace = CppNamespace(
+        namespace = make_namespace(
             name="demo",
             class_templates=[module_template, namespace_template],
             classes=[owner],
         )
-        module = CppModule(name="bindings", namespaces=[namespace])
+        module = make_module(name="bindings", namespaces=[namespace])
         module.defaults.class_template.materialize_observed_instances = True
         namespace.defaults.class_template.materialize_observed_instances = False
         owner.defaults.class_template.materialize_observed_instances = True
@@ -1357,7 +1457,7 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertEqual(py_doc.notes, ["This is only an example."])
 
     def test_named_cpp_type_renders_const_qualified_names(self) -> None:
-        cls = CppClass(name="Widget")
+        cls = make_class(name="Widget")
         cpp_type = NamedCppType(name="std::string", is_const=True, declaration=cls)
 
         self.assertEqual(cpp_type.render(), "const std::string")
@@ -1423,7 +1523,7 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertEqual(cpp_type.render(), "void (*)(int)")
 
     def test_alias_linked_named_cpp_types_still_compare_equivalent_to_their_target(self) -> None:
-        widget = CppClass(name="Widget")
+        widget = make_class(name="Widget")
         alias = CppAlias(name="WidgetAlias")
         alias.cpp.target = NamedCppType(name="Widget", declaration=widget)
         alias_type = NamedCppType(

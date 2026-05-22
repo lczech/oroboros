@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Lookup helpers for finding semantic model elements inside one subtree."""
 
-from dataclasses import fields as dataclass_fields
+from dataclasses import fields as dataclass_fields, is_dataclass
 from typing import Generic, Iterator, TypeVar
 
 from .element import CppElement
@@ -165,13 +165,14 @@ def direct_child_names(scope: CppElement) -> list[str]:
 
 def make_named_child_view(
     owner: CppElement,
+    container: object,
     field_name: str,
     *,
     return_many: bool = False,
 ) -> NamedChildView[CppElement]:
     """Create one name-indexed view over one owned child collection."""
 
-    return NamedChildView(owner, field_name, return_many=return_many)
+    return NamedChildView(owner, container, field_name, return_many=return_many)
 
 
 class NamedChildView(Generic[ElementT]):
@@ -180,11 +181,13 @@ class NamedChildView(Generic[ElementT]):
     def __init__(
         self,
         owner: CppElement,
+        container: object,
         field_name: str,
         *,
         return_many: bool = False,
     ) -> None:
         self._owner = owner
+        self._container = container
         self._field_name = field_name
         self._return_many = return_many
 
@@ -221,7 +224,10 @@ class NamedChildView(Generic[ElementT]):
     def _items(self) -> list[ElementT]:
         """Return the underlying owned child list."""
 
-        return list(getattr(self._owner, self._field_name, []))
+        value = getattr(self._container, self._field_name, None)
+        if isinstance(value, list):
+            return list(value)
+        return []
 
     def _matches_for_name(self, name: str) -> list[ElementT]:
         """Return all child elements whose semantic name matches exactly."""
@@ -254,25 +260,41 @@ def _iter_direct_child_nodes(
 ) -> list[tuple[str, CppElement]]:
     """Collect direct child element references declared on one node."""
 
+    return _collect_direct_child_nodes(node, path, errors=errors, skip_owner=True)
+
+
+def _collect_direct_child_nodes(
+    value: object,
+    path: str,
+    *,
+    errors: list[str] | None,
+    skip_owner: bool,
+) -> list[tuple[str, CppElement]]:
+    """Collect direct child elements reachable from one dataclass-backed value."""
+
     children: list[tuple[str, CppElement]] = []
 
-    for dataclass_field in dataclass_fields(node):
+    if not is_dataclass(value) or isinstance(value, type):
+        return children
+
+    for dataclass_field in dataclass_fields(value):
         field_name = dataclass_field.name
-        if field_name == "owner":
+        if skip_owner and field_name == "owner":
             continue
 
-        value = getattr(node, field_name)
-        if isinstance(value, CppElement):
-            children.append((f"{path}.{field_name}", value))
+        field_value = getattr(value, field_name)
+        field_path = f"{path}.{field_name}"
+        if isinstance(field_value, CppElement):
+            children.append((field_path, field_value))
             continue
 
-        if isinstance(value, list):
+        if isinstance(field_value, list):
             element_items = [
                 item
-                for item in value
+                for item in field_value
                 if isinstance(item, CppElement)
             ]
-            for index, item in enumerate(value):
+            for index, item in enumerate(field_value):
                 if isinstance(item, CppElement):
                     item_path = _child_element_path(
                         parent_path=path,
@@ -283,11 +305,22 @@ def _iter_direct_child_nodes(
                     )
                     children.append((item_path, item))
                     continue
-                item_path = f"{path}.{field_name}[{index}]"
+                item_path = f"{field_path}[{index}]"
                 if errors is not None:
                     errors.append(
                         f"{item_path} contains {type(item).__name__}, expected a CppElement."
                     )
+            continue
+
+        if is_dataclass(field_value) and getattr(field_value, "_is_child_container", False):
+            children.extend(
+                _collect_direct_child_nodes(
+                    field_value,
+                    field_path,
+                    errors=errors,
+                    skip_owner=False,
+                )
+            )
 
     return children
 

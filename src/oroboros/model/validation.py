@@ -316,7 +316,7 @@ def _validate_duplicate_child_names(
     ]
 
     for field_name in duplicate_checked_fields:
-        children = getattr(node, field_name, None)
+        children = _direct_declaration_collection(node, field_name)
         if children is None:
             continue
         _validate_unique_names(children, f"{path}.{field_name}", errors)
@@ -619,28 +619,41 @@ def _validate_overload_indices(
     """Validate overload-index uniqueness and contiguity inside sibling groups."""
 
     _validate_overload_index_collection(
-        getattr(node, "functions", None),
+        _direct_declaration_collection(node, "functions"),
         f"{path}.functions",
         errors,
     )
     _validate_overload_index_collection(
-        getattr(node, "methods", None),
+        _direct_declaration_collection(node, "methods"),
         f"{path}.methods",
         errors,
     )
     _validate_overload_index_collection(
-        getattr(node, "constructors", None),
+        _direct_declaration_collection(node, "constructors"),
         f"{path}.constructors",
         errors,
     )
 
-    function_templates = getattr(node, "function_templates", None)
+    function_templates = _direct_declaration_collection(node, "function_templates")
     if function_templates is not None:
         _validate_overload_index_collection(
             [template.declaration for template in function_templates if getattr(template, "declaration", None) is not None],
             f"{path}.function_templates",
             errors,
         )
+
+
+def _direct_declaration_collection(
+    node: CppElement,
+    field_name: str,
+) -> list[Any] | None:
+    """Return one direct declaration collection from a node when it exists."""
+
+    declarations = getattr(node, "declarations", None)
+    if declarations is not None:
+        return getattr(declarations, field_name, None)
+
+    return getattr(node, field_name, None)
 
 
 def _validate_overload_index_collection(

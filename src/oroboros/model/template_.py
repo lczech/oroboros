@@ -478,7 +478,7 @@ def _iter_class_templates(
     if isinstance(scope, CppClassTemplate):
         templates.append(scope)
     else:
-        templates.extend(getattr(scope, "class_templates", []))
+        templates.extend(getattr(getattr(scope, "declarations", None), "class_templates", []))
 
     if not recurse:
         return templates
@@ -500,7 +500,7 @@ def _iter_function_templates(
     if isinstance(scope, CppFunctionTemplate):
         templates.append(scope)
     else:
-        templates.extend(getattr(scope, "function_templates", []))
+        templates.extend(getattr(getattr(scope, "declarations", None), "function_templates", []))
 
     if not recurse:
         return templates
@@ -517,9 +517,10 @@ def _iter_nested_template_scopes(scope: TemplateScope) -> list[CppElement]:
     if isinstance(scope, CppClassTemplate):
         return [scope.declaration]
 
-    nested_scopes = list(getattr(scope, "namespaces", [])) + list(getattr(scope, "classes", []))
+    declarations = getattr(scope, "declarations", None)
+    nested_scopes = list(getattr(declarations, "namespaces", [])) + list(getattr(declarations, "classes", []))
     nested_scopes.extend(
-        template.declaration for template in getattr(scope, "class_templates", [])
+        template.declaration for template in getattr(declarations, "class_templates", [])
     )
     return nested_scopes
 

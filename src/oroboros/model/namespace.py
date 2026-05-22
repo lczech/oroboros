@@ -96,6 +96,33 @@ def _make_enum_bind_facet() -> "CppEnumBindFacet":
 
 
 # ==================================================================================================
+#     Declarations
+# ==================================================================================================
+
+
+@dataclass(slots=True)
+class CppScopeDeclarations:
+    """Store direct declarations owned by one module-like or namespace-like scope."""
+
+    _is_child_container = True
+
+    # Nested namespaces declared directly inside this scope.
+    namespaces: list["CppNamespace"] = field(default_factory=list)
+    # Non-template classes declared directly inside this scope.
+    classes: list["CppClass"] = field(default_factory=list)
+    # Class template families declared directly inside this scope.
+    class_templates: list["CppClassTemplate"] = field(default_factory=list)
+    # Free functions declared directly inside this scope.
+    functions: list["CppFunction"] = field(default_factory=list)
+    # Function template families declared directly inside this scope.
+    function_templates: list["CppFunctionTemplate"] = field(default_factory=list)
+    # Enums declared directly inside this scope.
+    enums: list["CppEnum"] = field(default_factory=list)
+    # Aliases declared directly inside this scope.
+    aliases: list["CppAlias"] = field(default_factory=list)
+
+
+# ==================================================================================================
 #     Elements
 # ==================================================================================================
 
@@ -112,105 +139,96 @@ class CppNamespace(CppElement):
     py: CppNamespacePyFacet = field(default_factory=CppNamespacePyFacet)
     # Inherited defaults applied to declarations inside this namespace.
     defaults: CppNamespaceDefaults = field(default_factory=CppNamespaceDefaults)
-    # Nested namespaces declared inside this namespace.
-    namespaces: list["CppNamespace"] = field(default_factory=list)
-    # Top-level classes declared directly inside this namespace.
-    classes: list["CppClass"] = field(default_factory=list)
-    # Class template families declared directly inside this namespace.
-    class_templates: list["CppClassTemplate"] = field(default_factory=list)
-    # Free functions declared directly inside this namespace.
-    functions: list["CppFunction"] = field(default_factory=list)
-    # Function template families declared directly inside this namespace.
-    function_templates: list["CppFunctionTemplate"] = field(default_factory=list)
-    # Enums declared directly inside this namespace.
-    enums: list["CppEnum"] = field(default_factory=list)
-    # Aliases declared directly inside this namespace.
-    aliases: list["CppAlias"] = field(default_factory=list)
+    # Direct declarations owned by this namespace scope.
+    declarations: CppScopeDeclarations = field(default_factory=CppScopeDeclarations)
 
     def __post_init__(self) -> None:
         """Adopt all typed child declaration collections."""
 
-        self._adopt_children(self.namespaces)
-        self._adopt_children(self.classes)
-        self._adopt_children(self.class_templates)
-        self._adopt_children(self.functions)
-        self._adopt_children(self.function_templates)
-        self._adopt_children(self.enums)
-        self._adopt_children(self.aliases)
+        for declaration_list in (
+            self.declarations.namespaces,
+            self.declarations.classes,
+            self.declarations.class_templates,
+            self.declarations.functions,
+            self.declarations.function_templates,
+            self.declarations.enums,
+            self.declarations.aliases,
+        ):
+            self._adopt_children(declaration_list)
 
     def add_namespace(self, namespace: "CppNamespace") -> "CppNamespace":
         """Attach one nested namespace to this namespace."""
 
-        return self._append_child(self.namespaces, namespace)
+        return self._append_child(self.declarations.namespaces, namespace)
 
     def add_class(self, class_: "CppClass") -> "CppClass":
         """Attach one class declared directly in this namespace."""
 
-        return self._append_child(self.classes, class_)
+        return self._append_child(self.declarations.classes, class_)
 
     def add_class_template(self, template: "CppClassTemplate") -> "CppClassTemplate":
         """Attach one class template family declared directly in this namespace."""
 
-        return self._append_child(self.class_templates, template)
+        return self._append_child(self.declarations.class_templates, template)
 
     def add_function(self, function: "CppFunction") -> "CppFunction":
         """Attach one free function declared directly in this namespace."""
 
-        return self._append_child(self.functions, function)
+        return self._append_child(self.declarations.functions, function)
 
     def add_function_template(self, template: "CppFunctionTemplate") -> "CppFunctionTemplate":
         """Attach one function template family declared directly in this namespace."""
 
-        return self._append_child(self.function_templates, template)
+        return self._append_child(self.declarations.function_templates, template)
 
     def add_enum(self, enum: "CppEnum") -> "CppEnum":
         """Attach one enum declared directly in this namespace."""
 
-        return self._append_child(self.enums, enum)
+        return self._append_child(self.declarations.enums, enum)
 
     def add_alias(self, alias: "CppAlias") -> "CppAlias":
         """Attach one alias declared directly in this namespace."""
 
-        return self._append_child(self.aliases, alias)
+        return self._append_child(self.declarations.aliases, alias)
 
     @property
     def namespace(self):
         """Return a name-indexed view over nested namespaces."""
 
-        return make_named_child_view(self, "namespaces")
+        return make_named_child_view(self, self.declarations, "namespaces")
 
     @property
     def class_(self):
         """Return a name-indexed view over classes declared in this namespace."""
 
-        return make_named_child_view(self, "classes")
+        return make_named_child_view(self, self.declarations, "classes")
 
     @property
     def class_template(self):
         """Return a name-indexed view over class templates declared in this namespace."""
 
-        return make_named_child_view(self, "class_templates")
+        return make_named_child_view(self, self.declarations, "class_templates")
 
     @property
     def function(self):
         """Return a name-indexed view over free functions declared in this namespace."""
 
-        return make_named_child_view(self, "functions", return_many=True)
+        return make_named_child_view(self, self.declarations, "functions", return_many=True)
 
     @property
     def function_template(self):
         """Return a name-indexed view over function templates declared in this namespace."""
 
-        return make_named_child_view(self, "function_templates", return_many=True)
+        return make_named_child_view(self, self.declarations, "function_templates", return_many=True)
 
     @property
     def enum(self):
         """Return a name-indexed view over enums declared in this namespace."""
 
-        return make_named_child_view(self, "enums")
+        return make_named_child_view(self, self.declarations, "enums")
 
     @property
     def alias(self):
         """Return a name-indexed view over aliases declared in this namespace."""
 
-        return make_named_child_view(self, "aliases")
+        return make_named_child_view(self, self.declarations, "aliases")

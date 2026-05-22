@@ -158,13 +158,15 @@ def _make_enum_bind_facet() -> "CppEnumBindFacet":
 
 
 # ==================================================================================================
-#     Elements
+#     Declarations
 # ==================================================================================================
 
 
 @dataclass(slots=True)
-class CppClassMembers(CppElement):
-    """Share class member collections between concrete and template declarations."""
+class CppClassDeclarations:
+    """Store direct declarations owned by one class-like scope."""
+
+    _is_child_container = True
 
     # Nested non-template classes declared inside this class scope.
     classes: list["CppClass"] = dataclass_field(default_factory=list)
@@ -183,105 +185,121 @@ class CppClassMembers(CppElement):
     # Nested function template families declared inside this class scope.
     function_templates: list["CppFunctionTemplate"] = dataclass_field(default_factory=list)
 
+
+# ==================================================================================================
+#     Elements
+# ==================================================================================================
+
+
+@dataclass(slots=True)
+class CppClassMembers(CppElement):
+    """Share class-like declaration storage and helpers between class scopes."""
+
+    # Direct declarations owned by this class-like scope.
+    declarations: CppClassDeclarations = dataclass_field(default_factory=CppClassDeclarations)
+
     def __post_init__(self) -> None:
         """Adopt all typed child declaration collections."""
 
-        self._adopt_children(self.classes)
-        self._adopt_children(self.constructors)
-        self._adopt_children(self.methods)
-        self._adopt_children(self.fields)
-        self._adopt_children(self.aliases)
-        self._adopt_children(self.enums)
-        self._adopt_children(self.class_templates)
-        self._adopt_children(self.function_templates)
+        for declaration_list in (
+            self.declarations.classes,
+            self.declarations.constructors,
+            self.declarations.methods,
+            self.declarations.fields,
+            self.declarations.aliases,
+            self.declarations.enums,
+            self.declarations.class_templates,
+            self.declarations.function_templates,
+        ):
+            self._adopt_children(declaration_list)
 
     def add_class(self, class_: "CppClass") -> "CppClass":
         """Attach one nested class to this class scope."""
 
-        return self._append_child(self.classes, class_)
+        return self._append_child(self.declarations.classes, class_)
 
     def add_constructor(self, constructor: "CppConstructor") -> "CppConstructor":
         """Attach one constructor to this class scope."""
 
-        return self._append_child(self.constructors, constructor)
+        return self._append_child(self.declarations.constructors, constructor)
 
     def add_method(self, method: "CppMethod") -> "CppMethod":
         """Attach one method to this class scope."""
 
-        return self._append_child(self.methods, method)
+        return self._append_child(self.declarations.methods, method)
 
     def add_field(self, field: "CppField") -> "CppField":
         """Attach one field to this class scope."""
 
-        return self._append_child(self.fields, field)
+        return self._append_child(self.declarations.fields, field)
 
     def add_alias(self, alias: "CppAlias") -> "CppAlias":
         """Attach one alias to this class scope."""
 
-        return self._append_child(self.aliases, alias)
+        return self._append_child(self.declarations.aliases, alias)
 
     def add_enum(self, enum: "CppEnum") -> "CppEnum":
         """Attach one nested enum to this class scope."""
 
-        return self._append_child(self.enums, enum)
+        return self._append_child(self.declarations.enums, enum)
 
     def add_class_template(self, template: "CppClassTemplate") -> "CppClassTemplate":
         """Attach one nested class template family to this class scope."""
 
-        return self._append_child(self.class_templates, template)
+        return self._append_child(self.declarations.class_templates, template)
 
     def add_function_template(self, template: "CppFunctionTemplate") -> "CppFunctionTemplate":
         """Attach one nested function template family to this class scope."""
 
-        return self._append_child(self.function_templates, template)
+        return self._append_child(self.declarations.function_templates, template)
 
     @property
     def class_(self):
         """Return a name-indexed view over nested classes."""
 
-        return make_named_child_view(self, "classes")
+        return make_named_child_view(self, self.declarations, "classes")
 
     @property
     def constructor(self):
         """Return a name-indexed view over constructors declared in this class."""
 
-        return make_named_child_view(self, "constructors", return_many=True)
+        return make_named_child_view(self, self.declarations, "constructors", return_many=True)
 
     @property
     def method(self):
         """Return a name-indexed view over methods declared in this class."""
 
-        return make_named_child_view(self, "methods", return_many=True)
+        return make_named_child_view(self, self.declarations, "methods", return_many=True)
 
     @property
     def field(self):
         """Return a name-indexed view over fields declared in this class."""
 
-        return make_named_child_view(self, "fields")
+        return make_named_child_view(self, self.declarations, "fields")
 
     @property
     def alias(self):
         """Return a name-indexed view over aliases declared in this class."""
 
-        return make_named_child_view(self, "aliases")
+        return make_named_child_view(self, self.declarations, "aliases")
 
     @property
     def enum(self):
         """Return a name-indexed view over nested enums declared in this class."""
 
-        return make_named_child_view(self, "enums")
+        return make_named_child_view(self, self.declarations, "enums")
 
     @property
     def class_template(self):
         """Return a name-indexed view over nested class templates."""
 
-        return make_named_child_view(self, "class_templates")
+        return make_named_child_view(self, self.declarations, "class_templates")
 
     @property
     def function_template(self):
         """Return a name-indexed view over nested function templates."""
 
-        return make_named_child_view(self, "function_templates", return_many=True)
+        return make_named_child_view(self, self.declarations, "function_templates", return_many=True)
 
 
 @dataclass(slots=True)

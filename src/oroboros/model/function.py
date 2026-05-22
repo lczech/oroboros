@@ -131,4 +131,4 @@ class CppFunction(CppElement):
     def parameter(self):
         """Return a name-indexed view over this function's parameters."""
 
-        return make_named_child_view(self, "parameters")
+        return make_named_child_view(self, self, "parameters")

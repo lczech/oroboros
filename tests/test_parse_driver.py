@@ -196,7 +196,7 @@ some trailer
         result = parse_header_selection(HeaderSelection(header_files=[]), ParserConfig())
 
         self.assertEqual(result.headers, [])
-        self.assertEqual(result.module.namespaces, [])
+        self.assertEqual(result.module.declarations.namespaces, [])
         self.assertEqual(result.module.cpp.header_files, [])
 
     def test_parse_header_selection_wires_driver_and_builder_results(self) -> None:

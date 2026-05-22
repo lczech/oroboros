@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from .comment import CppDoc, PyDoc
 from .element import CppElement
 from .lookup import make_named_child_view
+from .namespace import CppScopeDeclarations
 
 if TYPE_CHECKING:
     from .alias import CppAlias
@@ -117,20 +118,8 @@ class CppModule(CppElement):
     py: CppModulePyFacet = field(default_factory=CppModulePyFacet)
     # Inherited defaults applied to top-level declarations.
     defaults: CppModuleDefaults = field(default_factory=CppModuleDefaults)
-    # Top-level namespaces parsed into this semantic module.
-    namespaces: list["CppNamespace"] = field(default_factory=list)
-    # Top-level non-template classes parsed into this semantic module.
-    classes: list["CppClass"] = field(default_factory=list)
-    # Top-level class template families parsed into this semantic module.
-    class_templates: list["CppClassTemplate"] = field(default_factory=list)
-    # Top-level free functions parsed into this semantic module.
-    functions: list["CppFunction"] = field(default_factory=list)
-    # Top-level function template families parsed into this semantic module.
-    function_templates: list["CppFunctionTemplate"] = field(default_factory=list)
-    # Top-level enums parsed into this semantic module.
-    enums: list["CppEnum"] = field(default_factory=list)
-    # Top-level aliases declared in this semantic module.
-    aliases: list["CppAlias"] = field(default_factory=list)
+    # Direct top-level declarations owned by this semantic module root.
+    declarations: CppScopeDeclarations = field(default_factory=CppScopeDeclarations)
 
     @property
     def scope_name(self) -> str | None:
@@ -141,87 +130,90 @@ class CppModule(CppElement):
     def __post_init__(self) -> None:
         """Adopt all typed top-level declaration collections."""
 
-        self._adopt_children(self.namespaces)
-        self._adopt_children(self.classes)
-        self._adopt_children(self.class_templates)
-        self._adopt_children(self.functions)
-        self._adopt_children(self.function_templates)
-        self._adopt_children(self.enums)
-        self._adopt_children(self.aliases)
+        for declaration_list in (
+            self.declarations.namespaces,
+            self.declarations.classes,
+            self.declarations.class_templates,
+            self.declarations.functions,
+            self.declarations.function_templates,
+            self.declarations.enums,
+            self.declarations.aliases,
+        ):
+            self._adopt_children(declaration_list)
 
     def add_namespace(self, namespace: "CppNamespace") -> "CppNamespace":
         """Attach one top-level namespace to this semantic module."""
 
-        return self._append_child(self.namespaces, namespace)
+        return self._append_child(self.declarations.namespaces, namespace)
 
     def add_class(self, class_: "CppClass") -> "CppClass":
         """Attach one top-level class to this semantic module."""
 
-        return self._append_child(self.classes, class_)
+        return self._append_child(self.declarations.classes, class_)
 
     def add_class_template(self, template: "CppClassTemplate") -> "CppClassTemplate":
         """Attach one top-level class template family to this semantic module."""
 
-        return self._append_child(self.class_templates, template)
+        return self._append_child(self.declarations.class_templates, template)
 
     def add_function(self, function: "CppFunction") -> "CppFunction":
         """Attach one top-level free function to this semantic module."""
 
-        return self._append_child(self.functions, function)
+        return self._append_child(self.declarations.functions, function)
 
     def add_function_template(self, template: "CppFunctionTemplate") -> "CppFunctionTemplate":
         """Attach one top-level function template family to this semantic module."""
 
-        return self._append_child(self.function_templates, template)
+        return self._append_child(self.declarations.function_templates, template)
 
     def add_enum(self, enum: "CppEnum") -> "CppEnum":
         """Attach one top-level enum to this semantic module."""
 
-        return self._append_child(self.enums, enum)
+        return self._append_child(self.declarations.enums, enum)
 
     def add_alias(self, alias: "CppAlias") -> "CppAlias":
         """Attach one top-level alias to this semantic module."""
 
-        return self._append_child(self.aliases, alias)
+        return self._append_child(self.declarations.aliases, alias)
 
     @property
     def namespace(self):
         """Return a name-indexed view over top-level namespaces."""
 
-        return make_named_child_view(self, "namespaces")
+        return make_named_child_view(self, self.declarations, "namespaces")
 
     @property
     def class_(self):
         """Return a name-indexed view over top-level classes."""
 
-        return make_named_child_view(self, "classes")
+        return make_named_child_view(self, self.declarations, "classes")
 
     @property
     def class_template(self):
         """Return a name-indexed view over top-level class templates."""
 
-        return make_named_child_view(self, "class_templates")
+        return make_named_child_view(self, self.declarations, "class_templates")
 
     @property
     def function(self):
         """Return a name-indexed view over top-level free functions."""
 
-        return make_named_child_view(self, "functions", return_many=True)
+        return make_named_child_view(self, self.declarations, "functions", return_many=True)
 
     @property
     def function_template(self):
         """Return a name-indexed view over top-level function templates."""
 
-        return make_named_child_view(self, "function_templates", return_many=True)
+        return make_named_child_view(self, self.declarations, "function_templates", return_many=True)
 
     @property
     def enum(self):
         """Return a name-indexed view over top-level enums."""
 
-        return make_named_child_view(self, "enums")
+        return make_named_child_view(self, self.declarations, "enums")
 
     @property
     def alias(self):
         """Return a name-indexed view over top-level aliases."""
 
-        return make_named_child_view(self, "aliases")
+        return make_named_child_view(self, self.declarations, "aliases")

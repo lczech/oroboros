@@ -104,7 +104,7 @@ class CppMethod(CppElement):
     def parameter(self):
         """Return a name-indexed view over this method's parameters."""
 
-        return make_named_child_view(self, "parameters")
+        return make_named_child_view(self, self, "parameters")
 
 
 @dataclass(slots=True)
@@ -130,4 +130,4 @@ class CppConstructor(CppElement):
     def parameter(self):
         """Return a name-indexed view over this constructor's parameters."""
 
-        return make_named_child_view(self, "parameters")
+        return make_named_child_view(self, self, "parameters")

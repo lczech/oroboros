@@ -77,12 +77,12 @@ class ParseBuildTest(unittest.TestCase):
 
         self.assertEqual(module.cpp.header_files, [active_header.resolve()])
         self.assertEqual(build_result.skipped_kind_counts, {})
-        self.assertEqual([namespace.name for namespace in module.namespaces], ["demo"])
-        self.assertIsInstance(module.namespaces[0].classes[0], CppClass)
-        self.assertEqual(module.namespaces[0].classes[0].name, "Widget")
-        self.assertIsInstance(module.namespaces[0].classes[0].methods[0], CppMethod)
-        self.assertEqual(module.namespaces[0].classes[0].methods[0].name, "size")
-        self.assertEqual(module.namespaces[0].classes[0].methods[0].parameters[0].name, "value")
+        self.assertEqual([namespace.name for namespace in module.declarations.namespaces], ["demo"])
+        self.assertIsInstance(module.declarations.namespaces[0].declarations.classes[0], CppClass)
+        self.assertEqual(module.declarations.namespaces[0].declarations.classes[0].name, "Widget")
+        self.assertIsInstance(module.declarations.namespaces[0].declarations.classes[0].declarations.methods[0], CppMethod)
+        self.assertEqual(module.declarations.namespaces[0].declarations.classes[0].declarations.methods[0].name, "size")
+        self.assertEqual(module.declarations.namespaces[0].declarations.classes[0].declarations.methods[0].parameters[0].name, "value")
 
     def test_build_module_from_clang_reuses_existing_nodes_by_usr(self) -> None:
         active_header = Path("/tmp/project/demo.hpp")
@@ -127,10 +127,10 @@ class ParseBuildTest(unittest.TestCase):
         build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
         module = build_result.module
 
-        self.assertEqual(len(module.functions), 1)
-        self.assertEqual(module.functions[0].name, "make_widget")
-        self.assertEqual(len(module.functions[0].parameters), 1)
-        self.assertEqual(module.functions[0].parameters[0].name, "value")
+        self.assertEqual(len(module.declarations.functions), 1)
+        self.assertEqual(module.declarations.functions[0].name, "make_widget")
+        self.assertEqual(len(module.declarations.functions[0].parameters), 1)
+        self.assertEqual(module.declarations.functions[0].parameters[0].name, "value")
 
     def test_build_module_from_clang_populates_types_bases_and_flags(self) -> None:
         active_header = Path("/tmp/project/demo.hpp")
@@ -234,14 +234,14 @@ class ParseBuildTest(unittest.TestCase):
         build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
         module = build_result.module
 
-        cls = module.namespaces[0].classes[0]
+        cls = module.declarations.namespaces[0].declarations.classes[0]
         self.assertEqual(cls.cpp.visibility, None)
         self.assertEqual(len(cls.cpp.bases), 1)
         self.assertIsInstance(cls.cpp.bases[0].type, NamedCppType)
         self.assertEqual(cls.cpp.bases[0].type.name, "Mortal")
         self.assertEqual(cls.cpp.bases[0].visibility, CppVisibility.PUBLIC)
 
-        method = cls.methods[0]
+        method = cls.declarations.methods[0]
         self.assertIsInstance(method.cpp.return_type, BuiltinCppType)
         self.assertEqual(method.cpp.return_type.kind, "int")
         self.assertTrue(method.cpp.is_const)
@@ -253,18 +253,18 @@ class ParseBuildTest(unittest.TestCase):
         self.assertTrue(method.parameters[0].cpp.type.referred.is_const)
         self.assertEqual(method.parameters[0].cpp.type.referred.name, "std::string")
 
-        field = cls.fields[0]
+        field = cls.declarations.fields[0]
         self.assertIsInstance(field.cpp.type, TemplateInstanceCppType)
         self.assertEqual(field.cpp.type.template_name, "std::vector")
         self.assertEqual(field.cpp.visibility, CppVisibility.PRIVATE)
 
-        enum_ = cls.enums[0]
+        enum_ = cls.declarations.enums[0]
         self.assertTrue(enum_.cpp.is_scoped)
         self.assertIsInstance(enum_.cpp.underlying_type, BuiltinCppType)
         self.assertEqual(enum_.cpp.underlying_type.kind, "unsigned_int")
         self.assertEqual(enum_.enumerators[0].cpp.value_spelling, "1")
 
-        function = module.namespaces[0].functions[0]
+        function = module.declarations.namespaces[0].declarations.functions[0]
         self.assertTrue(function.cpp.is_noexcept)
         self.assertIsInstance(function.cpp.return_type, BuiltinCppType)
         self.assertEqual(function.cpp.return_type.kind, "bool")
@@ -348,11 +348,11 @@ class ParseBuildTest(unittest.TestCase):
         )
 
         build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
-        namespace = build_result.module.namespaces[0]
-        widget = namespace.classes[0]
-        function = namespace.functions[0]
-        holder = namespace.classes[1]
-        method = holder.methods[0]
+        namespace = build_result.module.declarations.namespaces[0]
+        widget = namespace.declarations.classes[0]
+        function = namespace.declarations.functions[0]
+        holder = namespace.declarations.classes[1]
+        method = holder.declarations.methods[0]
 
         self.assertIsInstance(function.cpp.return_type, NamedCppType)
         self.assertIs(function.cpp.return_type.declaration, widget)
@@ -398,7 +398,7 @@ class ParseBuildTest(unittest.TestCase):
         )
 
         build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
-        parameter_type = build_result.module.functions[0].parameters[0].cpp.type
+        parameter_type = build_result.module.declarations.functions[0].parameters[0].cpp.type
 
         self.assertIsInstance(parameter_type, NamedCppType)
         self.assertIsNone(parameter_type.declaration)
@@ -550,15 +550,15 @@ class ParseBuildTest(unittest.TestCase):
         )
 
         build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
-        namespace = build_result.module.namespaces[0]
+        namespace = build_result.module.declarations.namespaces[0]
 
-        self.assertEqual([alias.name for alias in namespace.aliases], ["Alias", "WidgetAlias"])
-        self.assertIsInstance(namespace.aliases[0], CppAlias)
-        self.assertEqual(namespace.aliases[0].qualified_name, "demo::Alias")
-        self.assertEqual(namespace.aliases[0].cpp.kind, "using")
-        self.assertIsInstance(namespace.aliases[0].cpp.target, NamedCppType)
-        self.assertIs(namespace.aliases[0].cpp.target.declaration, namespace.classes[0])
-        self.assertEqual(namespace.aliases[1].cpp.kind, "typedef")
+        self.assertEqual([alias.name for alias in namespace.declarations.aliases], ["Alias", "WidgetAlias"])
+        self.assertIsInstance(namespace.declarations.aliases[0], CppAlias)
+        self.assertEqual(namespace.declarations.aliases[0].qualified_name, "demo::Alias")
+        self.assertEqual(namespace.declarations.aliases[0].cpp.kind, "using")
+        self.assertIsInstance(namespace.declarations.aliases[0].cpp.target, NamedCppType)
+        self.assertIs(namespace.declarations.aliases[0].cpp.target.declaration, namespace.declarations.classes[0])
+        self.assertEqual(namespace.declarations.aliases[1].cpp.kind, "typedef")
 
     def test_build_module_from_clang_merges_reopened_namespace_provenance(self) -> None:
         active_header = Path("/tmp/project/demo.hpp")
@@ -604,14 +604,14 @@ class ParseBuildTest(unittest.TestCase):
         )
 
         build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
-        namespace = build_result.module.namespaces[0]
+        namespace = build_result.module.declarations.namespaces[0]
 
         self.assertEqual(namespace.name, "demo")
         self.assertEqual(len(namespace.cpp.location.declarations), 2)
         self.assertIsNotNone(namespace.cpp.comment)
         self.assertIn("Namespace docs.", namespace.cpp.comment)
-        self.assertEqual(len(namespace.classes), 1)
-        self.assertEqual(len(namespace.functions), 1)
+        self.assertEqual(len(namespace.declarations.classes), 1)
+        self.assertEqual(len(namespace.declarations.functions), 1)
 
     def test_build_module_from_clang_links_nested_template_argument_types_to_declarations(self) -> None:
         active_header = Path("/tmp/project/demo.hpp")
@@ -671,7 +671,7 @@ class ParseBuildTest(unittest.TestCase):
         )
 
         build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
-        parameter_type = build_result.module.namespaces[0].functions[0].parameters[0].cpp.type
+        parameter_type = build_result.module.declarations.namespaces[0].declarations.functions[0].parameters[0].cpp.type
 
         self.assertIsInstance(parameter_type, TemplateInstanceCppType)
         self.assertIsInstance(parameter_type.arguments[0], CppTypeTemplateArgument)
@@ -680,7 +680,7 @@ class ParseBuildTest(unittest.TestCase):
         self.assertIsInstance(parameter_type.arguments[0].type.arguments[1].type, NamedCppType)
         self.assertIs(
             parameter_type.arguments[0].type.arguments[1].type.declaration,
-            build_result.module.namespaces[0].classes[0],
+            build_result.module.declarations.namespaces[0].declarations.classes[0],
         )
 
     def test_build_module_from_clang_warns_on_unexpected_repeated_non_redeclarable_declarations(self) -> None:
@@ -761,18 +761,18 @@ class ParseBuildTest(unittest.TestCase):
         )
 
         build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
-        namespace = build_result.module.namespaces[0]
-        widget = namespace.classes[0]
+        namespace = build_result.module.declarations.namespaces[0]
+        widget = namespace.declarations.classes[0]
 
-        self.assertEqual(len(namespace.aliases), 1)
-        self.assertEqual(namespace.aliases[0].name, "Index")
-        self.assertIsInstance(namespace.aliases[0].cpp.target, BuiltinCppType)
-        self.assertEqual(namespace.aliases[0].cpp.target.kind, "unsigned_long")
-        self.assertEqual(len(widget.fields), 1)
-        self.assertIsInstance(widget.fields[0].cpp.type, BuiltinCppType)
-        self.assertEqual(widget.fields[0].cpp.type.kind, "int")
-        self.assertEqual(len(widget.enums[0].enumerators), 1)
-        self.assertEqual(widget.enums[0].enumerators[0].cpp.value_spelling, "1")
+        self.assertEqual(len(namespace.declarations.aliases), 1)
+        self.assertEqual(namespace.declarations.aliases[0].name, "Index")
+        self.assertIsInstance(namespace.declarations.aliases[0].cpp.target, BuiltinCppType)
+        self.assertEqual(namespace.declarations.aliases[0].cpp.target.kind, "unsigned_long")
+        self.assertEqual(len(widget.declarations.fields), 1)
+        self.assertIsInstance(widget.declarations.fields[0].cpp.type, BuiltinCppType)
+        self.assertEqual(widget.declarations.fields[0].cpp.type.kind, "int")
+        self.assertEqual(len(widget.declarations.enums[0].enumerators), 1)
+        self.assertEqual(widget.declarations.enums[0].enumerators[0].cpp.value_spelling, "1")
         self.assertTrue(
             any("repeated alias declaration" in warning for warning in build_result.warnings)
         )
@@ -841,9 +841,9 @@ class ParseBuildTest(unittest.TestCase):
 
         build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
 
-        self.assertEqual(len(build_result.module.functions), 1)
+        self.assertEqual(len(build_result.module.declarations.functions), 1)
         self.assertEqual(
-            build_result.module.functions[0].cpp.comment,
+            build_result.module.declarations.functions[0].cpp.comment,
             "/// Create one widget from the current demo factory state.",
         )
         self.assertTrue(

@@ -6,6 +6,7 @@ from .class_ import (
     CppClassBase,
     CppClassBindFacet,
     CppClassCppFacet,
+    CppClassDeclarations,
     CppClassMembers,
     CppClassDefaults,
     CppClassPyFacet,
@@ -61,6 +62,7 @@ from .namespace import (
     CppNamespaceBindFacet,
     CppNamespaceCppFacet,
     CppNamespaceDefaults,
+    CppScopeDeclarations,
     CppNamespacePyFacet,
 )
 from .operator_ import CppOperator, CppOperatorBind
@@ -117,6 +119,7 @@ __all__ = [
     "CppClassBase",
     "CppClassBindFacet",
     "CppClassCppFacet",
+    "CppClassDeclarations",
     "CppClassMembers",
     "CppClassDefaults",
     "CppClassPyFacet",
@@ -167,6 +170,7 @@ __all__ = [
     "CppNamespaceBindFacet",
     "CppNamespaceCppFacet",
     "CppNamespaceDefaults",
+    "CppScopeDeclarations",
     "CppNamespacePyFacet",
     "CppOperator",
     "CppOperatorBind",

@@ -37,7 +37,8 @@ def ensure_namespace(
         return existing
 
     namespace_name = cursor.spelling
-    existing_namespaces = getattr(owner, "namespaces", None)
+    existing_declarations = getattr(owner, "declarations", None)
+    existing_namespaces = getattr(existing_declarations, "namespaces", None)
     if namespace_name and existing_namespaces is not None:
         for namespace in existing_namespaces:
             if namespace.name == namespace_name:

@@ -3,6 +3,7 @@ from __future__ import annotations
 """Backbone objects shared by semantic declaration nodes."""
 
 from dataclasses import dataclass, field
+import json
 from typing import Iterable, TypeVar
 
 
@@ -187,7 +188,10 @@ class CppElement:
     def _describe_node(self) -> str:
         """Return a short user-facing label for this semantic node."""
 
-        return f"{type(self).__name__}({self.name!r})"
+        label = _element_label(type(self).__name__)
+        if not self.name:
+            return label
+        return f"{label}[{json.dumps(self.name)}]"
 
     def _describe_owner(self) -> str:
         """Return a short user-facing label for the current owner."""
@@ -195,3 +199,28 @@ class CppElement:
         if self.owner is None:
             return "None"
         return self.owner._describe_node()
+
+
+def _element_label(type_name: str) -> str:
+    """Map one semantic element class name to a short user-facing label."""
+
+    labels = {
+        "CppAlias": "alias",
+        "CppClass": "class",
+        "CppClassTemplate": "class_template",
+        "CppClassTemplateDecl": "class_template_decl",
+        "CppClassTemplateInstance": "class_template_instance",
+        "CppConstructor": "constructor",
+        "CppEnum": "enum",
+        "CppEnumerator": "enumerator",
+        "CppField": "field",
+        "CppFunction": "function",
+        "CppFunctionTemplate": "function_template",
+        "CppFunctionTemplateDecl": "function_template_decl",
+        "CppFunctionTemplateInstance": "function_template_instance",
+        "CppMethod": "method",
+        "CppModule": "module",
+        "CppNamespace": "namespace",
+        "CppParameter": "parameter",
+    }
+    return labels.get(type_name, type_name)

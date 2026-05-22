@@ -73,14 +73,14 @@ Helper make_helper(Helper value);
                 ),
             )
 
-        namespace = result.module.namespaces[0]
-        widget = namespace.classes[0]
-        make_helper = namespace.functions[0]
+        namespace = result.module.declarations.namespaces[0]
+        widget = namespace.declarations.classes[0]
+        make_helper = namespace.declarations.functions[0]
 
-        self.assertEqual([cls.name for cls in namespace.classes], ["Widget"])
-        self.assertIsInstance(widget.fields[0].cpp.type, NamedCppType)
-        self.assertEqual(widget.fields[0].cpp.type.name, "Helper")
-        self.assertIsNone(widget.fields[0].cpp.type.declaration)
+        self.assertEqual([cls.name for cls in namespace.declarations.classes], ["Widget"])
+        self.assertIsInstance(widget.declarations.fields[0].cpp.type, NamedCppType)
+        self.assertEqual(widget.declarations.fields[0].cpp.type.name, "Helper")
+        self.assertIsNone(widget.declarations.fields[0].cpp.type.declaration)
         self.assertIsInstance(make_helper.cpp.return_type, NamedCppType)
         self.assertEqual(make_helper.cpp.return_type.name, "Helper")
         self.assertIsNone(make_helper.cpp.return_type.declaration)
@@ -111,9 +111,9 @@ T make_value(T value) {
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        namespace = result.module.namespaces[0]
-        class_template = namespace.class_templates[0]
-        function_template = namespace.function_templates[0]
+        namespace = result.module.declarations.namespaces[0]
+        class_template = namespace.declarations.class_templates[0]
+        function_template = namespace.declarations.function_templates[0]
 
         self.assertIsInstance(class_template, CppClassTemplate)
         self.assertEqual(class_template.name, "Box")
@@ -131,8 +131,8 @@ T make_value(T value) {
         self.assertEqual(len(class_template.declaration.cpp.template_parameters[2].parameters), 1)
         self.assertIsInstance(class_template.declaration.cpp.template_parameters[2].parameters[0], CppTypeTemplateParameter)
         self.assertEqual(class_template.declaration.cpp.template_parameters[2].parameters[0].name, "")
-        self.assertEqual(len(class_template.declaration.fields), 1)
-        self.assertEqual(class_template.declaration.fields[0].name, "value")
+        self.assertEqual(len(class_template.declaration.declarations.fields), 1)
+        self.assertEqual(class_template.declaration.declarations.fields[0].name, "value")
 
         self.assertIsInstance(function_template, CppFunctionTemplate)
         self.assertEqual(function_template.name, "make_value")
@@ -187,18 +187,18 @@ types::Reliquary<types::RelicInfo> bless_reliquary(types::RelicInfo relic);
             ),
         )
 
-        root_namespace = result.module.namespaces[0]
-        types_namespace = root_namespace.namespaces[0]
-        functions_namespace = root_namespace.namespaces[1]
+        root_namespace = result.module.declarations.namespaces[0]
+        types_namespace = root_namespace.declarations.namespaces[0]
+        functions_namespace = root_namespace.declarations.namespaces[1]
 
-        class_template = types_namespace.class_templates[0]
+        class_template = types_namespace.declarations.class_templates[0]
         self.assertIsInstance(class_template, CppClassTemplate)
         self.assertEqual(class_template.name, "Reliquary")
         self.assertEqual(len(class_template.declaration.cpp.template_parameters), 1)
         self.assertIsInstance(class_template.declaration.cpp.template_parameters[0], CppTypeTemplateParameter)
         self.assertEqual(class_template.declaration.cpp.template_parameters[0].name, "T")
-        self.assertEqual(len(class_template.declaration.fields), 1)
-        self.assertEqual(class_template.declaration.fields[0].name, "value")
+        self.assertEqual(len(class_template.declaration.declarations.fields), 1)
+        self.assertEqual(class_template.declaration.declarations.fields[0].name, "value")
 
         relic_quartet = types_namespace.alias["RelicQuartet"]
         self.assertIsInstance(relic_quartet, CppAlias)
@@ -220,7 +220,7 @@ types::Reliquary<types::RelicInfo> bless_reliquary(types::RelicInfo relic);
         self.assertEqual(reliquary_shelf.cpp.target.arguments[0].type.name, "RelicQuartet")
         self.assertIs(reliquary_shelf.cpp.target.arguments[0].type.declaration, relic_quartet)
 
-        function_template = functions_namespace.function_templates[0]
+        function_template = functions_namespace.declarations.function_templates[0]
         self.assertIsInstance(function_template, CppFunctionTemplate)
         self.assertEqual(function_template.name, "echo_prophecy")
         self.assertEqual(len(function_template.declaration.cpp.template_parameters), 1)
@@ -231,7 +231,7 @@ types::Reliquary<types::RelicInfo> bless_reliquary(types::RelicInfo relic);
         self.assertIsInstance(function_template.declaration.cpp.return_type, NamedCppType)
         self.assertEqual(function_template.declaration.cpp.return_type.name, "T")
 
-        bless_reliquary = functions_namespace.functions[0]
+        bless_reliquary = functions_namespace.declarations.functions[0]
         self.assertEqual(bless_reliquary.name, "bless_reliquary")
         self.assertIsInstance(bless_reliquary.cpp.return_type, TemplateInstanceCppType)
         self.assertEqual(bless_reliquary.cpp.return_type.template_name, "types::Reliquary")
@@ -264,8 +264,8 @@ Box<RelicInfo> make_box();
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        namespace = result.module.namespaces[0]
-        box_template = namespace.class_templates[0]
+        namespace = result.module.declarations.namespaces[0]
+        box_template = namespace.declarations.class_templates[0]
         observed_instances = box_template.declaration.cpp.observed_instances
 
         self.assertEqual(len(observed_instances), 1)
@@ -291,8 +291,8 @@ using IntBox = Box<int>;
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        namespace = result.module.namespaces[0]
-        box_template = namespace.class_templates[0]
+        namespace = result.module.declarations.namespaces[0]
+        box_template = namespace.declarations.class_templates[0]
         observed_instances = box_template.declaration.cpp.observed_instances
 
         self.assertEqual(len(observed_instances), 1)
@@ -322,8 +322,8 @@ using ExplicitIntBox = Box<int, double>;
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        namespace = result.module.namespaces[0]
-        box_template = namespace.class_templates[0]
+        namespace = result.module.declarations.namespaces[0]
+        box_template = namespace.declarations.class_templates[0]
         observed_instances = box_template.declaration.cpp.observed_instances
 
         self.assertEqual(len(observed_instances), 1)
@@ -350,8 +350,8 @@ void take_box(Box<int> const& box);
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        namespace = result.module.namespaces[0]
-        box_template = namespace.class_templates[0]
+        namespace = result.module.declarations.namespaces[0]
+        box_template = namespace.declarations.class_templates[0]
         observed_instances = box_template.declaration.cpp.observed_instances
 
         self.assertEqual(len(observed_instances), 1)
@@ -376,8 +376,8 @@ Box<int>* make_box_ptr();
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        namespace = result.module.namespaces[0]
-        box_template = namespace.class_templates[0]
+        namespace = result.module.declarations.namespaces[0]
+        box_template = namespace.declarations.class_templates[0]
         observed_instances = box_template.declaration.cpp.observed_instances
 
         self.assertEqual(len(observed_instances), 1)
@@ -407,9 +407,9 @@ using NestedHolder = Holder<Box<int>>;
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        namespace = result.module.namespaces[0]
-        box_template = namespace.class_templates[0]
-        holder_template = namespace.class_templates[1]
+        namespace = result.module.declarations.namespaces[0]
+        box_template = namespace.declarations.class_templates[0]
+        holder_template = namespace.declarations.class_templates[1]
 
         self.assertEqual(len(box_template.declaration.cpp.observed_instances), 1)
         self.assertEqual(len(holder_template.declaration.cpp.observed_instances), 1)
@@ -439,8 +439,8 @@ using IntBoxAlias = IntBox;
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        namespace = result.module.namespaces[0]
-        box_template = namespace.class_templates[0]
+        namespace = result.module.declarations.namespaces[0]
+        box_template = namespace.declarations.class_templates[0]
         int_box = namespace.alias["IntBox"]
         int_box_alias = namespace.alias["IntBoxAlias"]
 
@@ -475,8 +475,8 @@ struct Holder {
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        namespace = result.module.namespaces[0]
-        widget = namespace.classes[0]
+        namespace = result.module.declarations.namespaces[0]
+        widget = namespace.declarations.classes[0]
         widget_handle = namespace.alias["WidgetHandle"]
         widget_alias = namespace.alias["WidgetAlias"]
         holder = namespace.class_["Holder"]
@@ -503,9 +503,9 @@ struct Holder {
         self.assertIsInstance(holder.alias["PublicHandle"].cpp.target, NamedCppType)
         self.assertEqual(holder.alias["PublicHandle"].cpp.target.name, "WidgetAlias")
         self.assertIs(holder.alias["PublicHandle"].cpp.target.declaration, widget_alias)
-        self.assertIsInstance(holder.fields[0].cpp.type, NamedCppType)
-        self.assertEqual(holder.fields[0].cpp.type.name, "PublicHandle")
-        self.assertIs(holder.fields[0].cpp.type.declaration, holder.alias["PublicHandle"])
+        self.assertIsInstance(holder.declarations.fields[0].cpp.type, NamedCppType)
+        self.assertEqual(holder.declarations.fields[0].cpp.type.name, "PublicHandle")
+        self.assertIs(holder.declarations.fields[0].cpp.type.declaration, holder.alias["PublicHandle"])
 
     def test_parse_headers_materializes_basic_declarations_end_to_end(self) -> None:
         source = """
@@ -528,20 +528,20 @@ bool make_widget() noexcept { return true; }
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        namespace = result.module.namespaces[0]
-        enum_ = namespace.enums[0]
-        cls = namespace.classes[0]
-        function = namespace.functions[0]
+        namespace = result.module.declarations.namespaces[0]
+        enum_ = namespace.declarations.enums[0]
+        cls = namespace.declarations.classes[0]
+        function = namespace.declarations.functions[0]
 
         self.assertEqual(namespace.name, "demo")
         self.assertEqual(enum_.name, "Realm")
         self.assertEqual(enum_.enumerators[0].name, "earth")
         self.assertEqual(cls.name, "Widget")
-        self.assertEqual(len(cls.constructors), 1)
-        self.assertEqual(len(cls.fields), 1)
-        self.assertEqual(cls.fields[0].name, "value")
-        self.assertEqual(len(cls.methods), 1)
-        self.assertEqual(cls.methods[0].name, "size")
+        self.assertEqual(len(cls.declarations.constructors), 1)
+        self.assertEqual(len(cls.declarations.fields), 1)
+        self.assertEqual(cls.declarations.fields[0].name, "value")
+        self.assertEqual(len(cls.declarations.methods), 1)
+        self.assertEqual(cls.declarations.methods[0].name, "size")
         self.assertEqual(function.name, "make_widget")
         self.assertTrue(function.cpp.is_noexcept)
 
@@ -564,11 +564,11 @@ Widget make_widget() {
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        namespace = result.module.namespaces[0]
-        widget = namespace.classes[0]
-        holder = namespace.classes[1]
-        function = namespace.functions[0]
-        method = holder.methods[0]
+        namespace = result.module.declarations.namespaces[0]
+        widget = namespace.declarations.classes[0]
+        holder = namespace.declarations.classes[1]
+        function = namespace.declarations.functions[0]
+        method = holder.declarations.methods[0]
 
         self.assertIsInstance(function.cpp.return_type, NamedCppType)
         self.assertIs(function.cpp.return_type.declaration, widget)
@@ -600,9 +600,9 @@ void Widget::resize(int size) const {}
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        namespace = result.module.namespaces[0]
-        function = namespace.functions[0]
-        method = namespace.classes[0].methods[0]
+        namespace = result.module.declarations.namespaces[0]
+        function = namespace.declarations.functions[0]
+        method = namespace.declarations.classes[0].declarations.methods[0]
 
         self.assertEqual(len(function.parameters), 1)
         self.assertEqual(function.parameters[0].name, "value")
@@ -627,16 +627,16 @@ int make_widget() { return 1; }
             header_order=["a.hpp", "b.hpp"],
         )
 
-        self.assertEqual(len(result.module.namespaces), 1)
-        namespace = result.module.namespaces[0]
+        self.assertEqual(len(result.module.declarations.namespaces), 1)
+        namespace = result.module.declarations.namespaces[0]
         self.assertEqual(namespace.name, "demo")
         self.assertEqual(len(namespace.cpp.location.declarations), 2)
         self.assertIsNotNone(namespace.cpp.comment)
         self.assertIn("Namespace docs.", namespace.cpp.comment)
-        self.assertEqual(len(namespace.classes), 1)
-        self.assertEqual(namespace.classes[0].name, "Widget")
-        self.assertEqual(len(namespace.functions), 1)
-        self.assertEqual(namespace.functions[0].name, "make_widget")
+        self.assertEqual(len(namespace.declarations.classes), 1)
+        self.assertEqual(namespace.declarations.classes[0].name, "Widget")
+        self.assertEqual(len(namespace.declarations.functions), 1)
+        self.assertEqual(namespace.declarations.functions[0].name, "make_widget")
 
     def test_parse_headers_merge_anonymous_namespaces_by_semantic_identity(self) -> None:
         result = _parse_headers_from_sources(
@@ -655,14 +655,14 @@ int make_widget() { return 1; }
             header_order=["a.hpp", "b.hpp"],
         )
 
-        self.assertEqual(len(result.module.namespaces), 1)
-        namespace = result.module.namespaces[0]
+        self.assertEqual(len(result.module.declarations.namespaces), 1)
+        namespace = result.module.declarations.namespaces[0]
         self.assertEqual(namespace.name, "")
         self.assertEqual(len(namespace.cpp.location.declarations), 2)
-        self.assertEqual(len(namespace.classes), 1)
-        self.assertEqual(namespace.classes[0].name, "Widget")
-        self.assertEqual(len(namespace.functions), 1)
-        self.assertEqual(namespace.functions[0].name, "make_widget")
+        self.assertEqual(len(namespace.declarations.classes), 1)
+        self.assertEqual(namespace.declarations.classes[0].name, "Widget")
+        self.assertEqual(len(namespace.declarations.functions), 1)
+        self.assertEqual(namespace.declarations.functions[0].name, "make_widget")
 
     def test_parse_headers_normalizes_const_named_type_spellings_in_refs_and_pointers(self) -> None:
         source = """
@@ -682,8 +682,8 @@ void take_const_ptr_to_const(Widget const* const value) {}
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        namespace = result.module.namespaces[0]
-        functions = {function.name: function for function in namespace.functions}
+        namespace = result.module.declarations.namespaces[0]
+        functions = {function.name: function for function in namespace.declarations.functions}
 
         prefix_ref = functions["take_prefix_ref"].parameters[0].cpp.type
         postfix_ref = functions["take_postfix_ref"].parameters[0].cpp.type
@@ -745,9 +745,9 @@ Widget make_widget();
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        namespace = result.module.namespaces[0]
-        widget = namespace.classes[0]
-        function = namespace.functions[0]
+        namespace = result.module.declarations.namespaces[0]
+        widget = namespace.declarations.classes[0]
+        function = namespace.declarations.functions[0]
 
         self.assertIsNotNone(widget.cpp.comment)
         self.assertIn("Represent one widget", widget.cpp.comment)
@@ -771,14 +771,14 @@ WidgetAlias make_typedef(WidgetAlias value);
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        namespace = result.module.namespaces[0]
-        widget = namespace.classes[0]
-        make_alias = namespace.functions[0]
-        make_typedef = namespace.functions[1]
-        alias = namespace.aliases[0]
-        typedef_alias = namespace.aliases[1]
+        namespace = result.module.declarations.namespaces[0]
+        widget = namespace.declarations.classes[0]
+        make_alias = namespace.declarations.functions[0]
+        make_typedef = namespace.declarations.functions[1]
+        alias = namespace.declarations.aliases[0]
+        typedef_alias = namespace.declarations.aliases[1]
 
-        self.assertEqual([alias.name for alias in namespace.aliases], ["Alias", "WidgetAlias"])
+        self.assertEqual([alias.name for alias in namespace.declarations.aliases], ["Alias", "WidgetAlias"])
         self.assertEqual(alias.cpp.kind, "using")
         self.assertEqual(typedef_alias.cpp.kind, "typedef")
         self.assertIsInstance(alias.cpp.target, NamedCppType)
@@ -829,11 +829,11 @@ struct Holder {
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        namespace = result.module.namespaces[0]
-        widget = namespace.classes[0]
-        holder = namespace.classes[1]
-        widget_handle = namespace.aliases[0]
-        local_widget = holder.aliases[0]
+        namespace = result.module.declarations.namespaces[0]
+        widget = namespace.declarations.classes[0]
+        holder = namespace.declarations.classes[1]
+        widget_handle = namespace.declarations.aliases[0]
+        local_widget = holder.declarations.aliases[0]
 
         self.assertIsInstance(widget_handle, CppAlias)
         self.assertEqual(widget_handle.qualified_name, "demo::WidgetHandle")
@@ -871,11 +871,11 @@ struct Holder {
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        namespace = result.module.namespaces[0]
-        omen_kind = namespace.namespaces[0].enums[0]
-        holder = namespace.classes[0]
-        field_type = holder.fields[0].cpp.type
-        method = holder.methods[0]
+        namespace = result.module.declarations.namespaces[0]
+        omen_kind = namespace.declarations.namespaces[0].declarations.enums[0]
+        holder = namespace.declarations.classes[0]
+        field_type = holder.declarations.fields[0].cpp.type
+        method = holder.declarations.methods[0]
 
         self.assertIsInstance(field_type, NamedCppType)
         self.assertEqual(field_type.name, "types::OmenKind")
@@ -911,12 +911,12 @@ private:
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        widget = result.module.namespaces[0].classes[0]
-        constructor = widget.constructors[0]
-        render = widget.methods[0]
-        warmup = widget.methods[1]
-        size = widget.methods[2]
-        cache_size = widget.fields[0]
+        widget = result.module.declarations.namespaces[0].declarations.classes[0]
+        constructor = widget.declarations.constructors[0]
+        render = widget.declarations.methods[0]
+        warmup = widget.declarations.methods[1]
+        size = widget.declarations.methods[2]
+        cache_size = widget.declarations.fields[0]
 
         self.assertEqual(constructor.cpp.visibility, CppVisibility.PUBLIC)
         self.assertTrue(constructor.cpp.is_noexcept)
@@ -957,9 +957,9 @@ void take_nested(Box<Pair<int, Widget>> value) {}
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        namespace = result.module.namespaces[0]
-        functions = {function.name: function for function in namespace.functions}
-        widget = namespace.classes[0]
+        namespace = result.module.declarations.namespaces[0]
+        functions = {function.name: function for function in namespace.declarations.functions}
+        widget = namespace.declarations.classes[0]
 
         values_type = functions["take_values"].parameters[0].cpp.type
         callback_type = functions["take_callback"].parameters[0].cpp.type
@@ -1010,7 +1010,7 @@ Widget::Widget(int amount) {}
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        constructor = result.module.namespaces[0].classes[0].constructors[0]
+        constructor = result.module.declarations.namespaces[0].declarations.classes[0].declarations.constructors[0]
 
         self.assertEqual(len(constructor.parameters), 1)
         self.assertEqual(constructor.parameters[0].name, "value")
@@ -1035,8 +1035,8 @@ private:
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        class_template = result.module.namespaces[0].class_templates[0]
-        constructor = class_template.declaration.constructors[0]
+        class_template = result.module.declarations.namespaces[0].declarations.class_templates[0]
+        constructor = class_template.declaration.declarations.constructors[0]
 
         self.assertEqual(class_template.name, "MyClass")
         self.assertEqual(constructor.name, "MyClass")
@@ -1067,13 +1067,13 @@ private:
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        class_template = result.module.namespaces[0].class_templates[0]
+        class_template = result.module.declarations.namespaces[0].declarations.class_templates[0]
 
         self.assertEqual(class_template.name, "Range")
-        self.assertEqual(class_template.declaration.function_templates, [])
-        self.assertEqual(len(class_template.declaration.constructors), 1)
+        self.assertEqual(class_template.declaration.declarations.function_templates, [])
+        self.assertEqual(len(class_template.declaration.declarations.constructors), 1)
 
-        constructor = class_template.declaration.constructors[0]
+        constructor = class_template.declaration.declarations.constructors[0]
         self.assertEqual(constructor.name, "Range")
         self.assertEqual(constructor.cpp.original_name, "Range")
         self.assertEqual(len(constructor.cpp.template_parameters), 1)
@@ -1105,13 +1105,13 @@ private:
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        class_template = result.module.namespaces[0].class_templates[0]
+        class_template = result.module.declarations.namespaces[0].declarations.class_templates[0]
 
-        self.assertEqual(class_template.declaration.function_templates, [])
-        self.assertEqual(len(class_template.declaration.constructors), 2)
+        self.assertEqual(class_template.declaration.declarations.function_templates, [])
+        self.assertEqual(len(class_template.declaration.declarations.constructors), 2)
 
-        default_constructor = class_template.declaration.constructors[0]
-        templated_constructor = class_template.declaration.constructors[1]
+        default_constructor = class_template.declaration.declarations.constructors[0]
+        templated_constructor = class_template.declaration.declarations.constructors[1]
 
         self.assertEqual(default_constructor.name, "Box")
         self.assertEqual(len(default_constructor.parameters), 0)
@@ -1149,12 +1149,12 @@ Range<IteratorType>::Range(Container const& cont)
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        class_template = result.module.namespaces[0].class_templates[0]
+        class_template = result.module.declarations.namespaces[0].declarations.class_templates[0]
 
-        self.assertEqual(class_template.declaration.function_templates, [])
-        self.assertEqual(len(class_template.declaration.constructors), 1)
+        self.assertEqual(class_template.declaration.declarations.function_templates, [])
+        self.assertEqual(len(class_template.declaration.declarations.constructors), 1)
 
-        constructor = class_template.declaration.constructors[0]
+        constructor = class_template.declaration.declarations.constructors[0]
         self.assertEqual(constructor.name, "Range")
         self.assertEqual(constructor.cpp.original_name, "Range")
         self.assertEqual(len(constructor.cpp.template_parameters), 1)
@@ -1185,12 +1185,12 @@ U Box<T>::convert(U value) {
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        class_template = result.module.namespaces[0].class_templates[0]
+        class_template = result.module.declarations.namespaces[0].declarations.class_templates[0]
 
-        self.assertEqual(class_template.declaration.constructors, [])
-        self.assertEqual(len(class_template.declaration.function_templates), 1)
+        self.assertEqual(class_template.declaration.declarations.constructors, [])
+        self.assertEqual(len(class_template.declaration.declarations.function_templates), 1)
 
-        function_template = class_template.declaration.function_templates[0]
+        function_template = class_template.declaration.declarations.function_templates[0]
         self.assertEqual(function_template.name, "convert")
         self.assertEqual(function_template.declaration.name, "convert")
         self.assertEqual(len(function_template.declaration.cpp.template_parameters), 1)
@@ -1217,13 +1217,13 @@ public:
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        class_template = result.module.namespaces[0].class_templates[0]
+        class_template = result.module.declarations.namespaces[0].declarations.class_templates[0]
 
         self.assertEqual(class_template.name, "Box")
-        self.assertEqual(class_template.declaration.constructors, [])
-        self.assertEqual(len(class_template.declaration.function_templates), 1)
+        self.assertEqual(class_template.declaration.declarations.constructors, [])
+        self.assertEqual(len(class_template.declaration.declarations.function_templates), 1)
 
-        function_template = class_template.declaration.function_templates[0]
+        function_template = class_template.declaration.declarations.function_templates[0]
         self.assertEqual(function_template.name, "convert")
         self.assertEqual(function_template.declaration.name, "convert")
         self.assertEqual(len(function_template.declaration.cpp.template_parameters), 1)
@@ -1250,12 +1250,12 @@ public:
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        class_template = result.module.namespaces[0].class_templates[0]
+        class_template = result.module.declarations.namespaces[0].declarations.class_templates[0]
 
-        self.assertEqual(class_template.declaration.constructors, [])
-        self.assertEqual(len(class_template.declaration.function_templates), 1)
+        self.assertEqual(class_template.declaration.declarations.constructors, [])
+        self.assertEqual(len(class_template.declaration.declarations.function_templates), 1)
 
-        function_template = class_template.declaration.function_templates[0]
+        function_template = class_template.declaration.declarations.function_templates[0]
         self.assertEqual(function_template.name, "Boxify")
         self.assertEqual(function_template.declaration.name, "Boxify")
         self.assertEqual(len(function_template.declaration.cpp.template_parameters), 1)
@@ -1284,17 +1284,17 @@ using IntBox = Box<int>;
             header_order=["a.hpp", "b.hpp"],
         )
 
-        self.assertEqual(len(result.module.namespaces), 1)
-        namespace = result.module.namespaces[0]
+        self.assertEqual(len(result.module.declarations.namespaces), 1)
+        namespace = result.module.declarations.namespaces[0]
         self.assertEqual(namespace.name, "demo")
         self.assertEqual(len(namespace.cpp.location.declarations), 2)
-        self.assertEqual(len(namespace.class_templates), 1)
+        self.assertEqual(len(namespace.declarations.class_templates), 1)
 
-        class_template = namespace.class_templates[0]
+        class_template = namespace.declarations.class_templates[0]
         self.assertEqual(class_template.name, "Box")
         self.assertEqual(len(class_template.declaration.cpp.template_parameters), 1)
-        self.assertEqual(len(class_template.declaration.fields), 1)
-        self.assertEqual(class_template.declaration.fields[0].name, "value")
+        self.assertEqual(len(class_template.declaration.declarations.fields), 1)
+        self.assertEqual(class_template.declaration.declarations.fields[0].name, "value")
         self.assertEqual(len(class_template.declaration.cpp.observed_instances), 1)
         self.assertIsInstance(
             class_template.declaration.cpp.observed_instances[0].arguments[0].type,
@@ -1343,19 +1343,19 @@ U Box<T>::convert(U value) {
             header_order=["a.hpp", "b.hpp"],
         )
 
-        namespace = result.module.namespaces[0]
-        class_template = namespace.class_templates[0]
+        namespace = result.module.declarations.namespaces[0]
+        class_template = namespace.declarations.class_templates[0]
         declaration = class_template.declaration
 
         self.assertEqual(class_template.name, "Box")
         self.assertEqual(len(declaration.cpp.location.declarations), 1)
-        self.assertEqual(len(declaration.constructors), 1)
-        self.assertEqual(declaration.constructors[0].name, "Box")
-        self.assertEqual(len(declaration.function_templates), 1)
-        self.assertEqual(declaration.function_templates[0].name, "convert")
-        self.assertIsNotNone(declaration.function_templates[0].declaration.cpp.location.definition)
-        self.assertEqual(len(declaration.function_templates[0].declaration.parameters), 1)
-        self.assertEqual(declaration.function_templates[0].declaration.parameters[0].name, "value")
+        self.assertEqual(len(declaration.declarations.constructors), 1)
+        self.assertEqual(declaration.declarations.constructors[0].name, "Box")
+        self.assertEqual(len(declaration.declarations.function_templates), 1)
+        self.assertEqual(declaration.declarations.function_templates[0].name, "convert")
+        self.assertIsNotNone(declaration.declarations.function_templates[0].declaration.cpp.location.definition)
+        self.assertEqual(len(declaration.declarations.function_templates[0].declaration.parameters), 1)
+        self.assertEqual(declaration.declarations.function_templates[0].declaration.parameters[0].name, "value")
 
     def test_parse_headers_merges_template_provenance_and_comments_across_headers(self) -> None:
         result = _parse_headers_from_sources(
@@ -1383,15 +1383,15 @@ struct Box {
             header_order=["a.hpp", "b.hpp"],
         )
 
-        namespace = result.module.namespaces[0]
-        class_template = namespace.class_templates[0]
+        namespace = result.module.declarations.namespaces[0]
+        class_template = namespace.declarations.class_templates[0]
 
         self.assertEqual(class_template.name, "Box")
         self.assertEqual(len(class_template.declaration.cpp.location.declarations), 2)
         self.assertIsNotNone(class_template.declaration.cpp.comment)
         self.assertIn("Forward declaration docs.", class_template.declaration.cpp.comment)
-        self.assertEqual(len(class_template.declaration.fields), 1)
-        self.assertEqual(class_template.declaration.fields[0].name, "value")
+        self.assertEqual(len(class_template.declaration.declarations.fields), 1)
+        self.assertEqual(class_template.declaration.declarations.fields[0].name, "value")
 
     def test_parse_headers_keeps_mixed_overload_groups_with_templates_across_reopened_namespaces(self) -> None:
         result = _parse_headers_from_sources(
@@ -1422,12 +1422,12 @@ T parse(T value) {
             header_order=["a.hpp", "b.hpp"],
         )
 
-        namespace = result.module.namespaces[0]
+        namespace = result.module.declarations.namespaces[0]
 
-        self.assertEqual(len([function for function in namespace.functions if function.name == "parse"]), 1)
-        self.assertEqual(len([template for template in namespace.function_templates if template.name == "parse"]), 1)
-        function = namespace.functions[0]
-        function_template = namespace.function_templates[0]
+        self.assertEqual(len([function for function in namespace.declarations.functions if function.name == "parse"]), 1)
+        self.assertEqual(len([template for template in namespace.declarations.function_templates if template.name == "parse"]), 1)
+        function = namespace.declarations.functions[0]
+        function_template = namespace.declarations.function_templates[0]
         self.assertEqual(function.name, "parse")
         self.assertEqual(function_template.name, "parse")
         self.assertEqual(len(function_template.declaration.parameters), 1)
@@ -1472,9 +1472,9 @@ T parse(T value) {
             header_order=["a.hpp", "b.hpp", "c.hpp"],
         )
 
-        namespace = result.module.namespaces[0]
-        functions = [function for function in namespace.functions if function.name == "parse"]
-        templates = [template for template in namespace.function_templates if template.name == "parse"]
+        namespace = result.module.declarations.namespaces[0]
+        functions = [function for function in namespace.declarations.functions if function.name == "parse"]
+        templates = [template for template in namespace.declarations.function_templates if template.name == "parse"]
 
         self.assertEqual(len(functions), 3)
         self.assertEqual([len(function.parameters) for function in functions], [0, 1, 1])
@@ -1505,9 +1505,9 @@ struct Widget {
 
         result = _parse_headers_from_sources({"demo.hpp": source})
 
-        namespace = result.module.namespaces[0]
-        function_overloads = [function for function in namespace.functions if function.name == "parse"]
-        method_overloads = [method for method in namespace.classes[0].methods if method.name == "visit"]
+        namespace = result.module.declarations.namespaces[0]
+        function_overloads = [function for function in namespace.declarations.functions if function.name == "parse"]
+        method_overloads = [method for method in namespace.declarations.classes[0].declarations.methods if method.name == "visit"]
 
         self.assertEqual([len(function.parameters) for function in function_overloads], [0, 1, 1])
         self.assertIsInstance(function_overloads[1].parameters[0].cpp.type, BuiltinCppType)
