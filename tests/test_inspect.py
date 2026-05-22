@@ -10,6 +10,7 @@ from oroboros.model import (
     CppModule,
     CppNamespace,
     CppParameter,
+    CppVariable,
 )
 from oroboros.model.inspect import format_element, format_tree, summarize_tree
 from oroboros.parse import ParseResult, ParserDiagnostic
@@ -23,12 +24,20 @@ class ModelInspectTest(unittest.TestCase):
         function = CppFunction(name="make_widget")
         method = CppMethod(name="size")
         parameter = CppParameter(name="value")
+        member_variable = CppVariable(name="size_")
+        member_variable.cpp.kind = "member_variable"
+        static_member_variable = CppVariable(name="instance_count")
+        static_member_variable.cpp.kind = "static_member_variable"
+        scope_variable = CppVariable(name="global_count")
 
         self.assertEqual(format_element(namespace), "namespace demo")
         self.assertEqual(format_element(class_), "class Widget")
         self.assertEqual(format_element(function), "function make_widget")
         self.assertEqual(format_element(method), "method size")
         self.assertEqual(format_element(parameter), "parameter value")
+        self.assertEqual(format_element(member_variable), "member variable size_")
+        self.assertEqual(format_element(static_member_variable), "static member variable instance_count")
+        self.assertEqual(format_element(scope_variable), "variable global_count")
 
     def test_format_tree_renders_indented_subtree(self) -> None:
         module = CppModule(name="module")
@@ -58,16 +67,23 @@ class ModelInspectTest(unittest.TestCase):
         namespace = module.add_namespace(CppNamespace(name="demo"))
         class_ = namespace.add_class(CppClass(name="Widget"))
         class_.add_method(CppMethod(name="size"))
+        class_.add_variable(CppVariable(name="size_")).cpp.kind = "member_variable"
+        class_.add_static_variable(CppVariable(name="instance_count")).cpp.kind = "static_member_variable"
+        namespace.add_variable(CppVariable(name="global_count"))
         namespace.add_function(CppFunction(name="make_widget"))
 
         summary = summarize_tree(module)
 
         self.assertIn("Model summary:", summary)
-        self.assertIn("total elements: 5", summary)
+        self.assertIn("total elements: 8", summary)
         self.assertIn("namespaces: 1", summary)
         self.assertIn("classes: 1", summary)
         self.assertIn("functions: 1", summary)
         self.assertIn("methods: 1", summary)
+        self.assertIn("variables: 3", summary)
+        self.assertIn("scope variables: 1", summary)
+        self.assertIn("member variables: 1", summary)
+        self.assertIn("static member variables: 1", summary)
         self.assertIn("parameters: 0", summary)
 
 

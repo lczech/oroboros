@@ -53,8 +53,13 @@ def format_element(element: CppElement) -> str:
         return f"method {name}"
     if type_name == "CppConstructor":
         return f"constructor {name}"
-    if type_name == "CppField":
-        return f"field {name}"
+    if type_name == "CppVariable":
+        kind = getattr(getattr(element, "cpp", None), "kind", "variable")
+        if kind == "member_variable":
+            return f"member variable {name}"
+        if kind == "static_member_variable":
+            return f"static member variable {name}"
+        return f"variable {name}"
     if type_name == "CppParameter":
         return f"parameter {name}"
     if type_name == "CppModule":
@@ -85,8 +90,14 @@ def format_tree(
 def summarize_tree(root: CppElement) -> str:
     """Return a compact summary of one semantic subtree."""
 
-    counts = Counter(type(element).__name__ for element in iter_subtree_elements(root))
+    elements = list(iter_subtree_elements(root))
+    counts = Counter(type(element).__name__ for element in elements)
     total_elements = sum(counts.values())
+    variable_kinds = Counter(
+        getattr(element.cpp, "kind", "variable")
+        for element in elements
+        if type(element).__name__ == "CppVariable"
+    )
 
     lines = [
         "Model summary:",
@@ -99,7 +110,7 @@ def summarize_tree(root: CppElement) -> str:
         ("CppFunction", "functions"),
         ("CppMethod", "methods"),
         ("CppConstructor", "constructors"),
-        ("CppField", "fields"),
+        ("CppVariable", "variables"),
         ("CppEnum", "enums"),
         ("CppEnumerator", "enumerators"),
         ("CppParameter", "parameters"),
@@ -107,6 +118,13 @@ def summarize_tree(root: CppElement) -> str:
 
     for type_name, label in summary_order:
         lines.append(f"  {label}: {counts.get(type_name, 0)}")
+
+    if counts.get("CppVariable", 0):
+        lines.append(f"  scope variables: {variable_kinds.get('variable', 0)}")
+        lines.append(f"  member variables: {variable_kinds.get('member_variable', 0)}")
+        lines.append(
+            f"  static member variables: {variable_kinds.get('static_member_variable', 0)}"
+        )
 
     return "\n".join(lines)
 

@@ -16,8 +16,12 @@ from .cursor_data import (
     cursor_is_definition,
     cursor_is_noexcept,
     cursor_is_scoped_enum,
+    cursor_linkage,
     cursor_raw_comment,
     cursor_source_location,
+    cursor_storage_class,
+    cursor_tls_kind,
+    cursor_type_is_const_qualified,
     cursor_visibility,
     is_base_specifier_cursor,
     is_struct_cursor,
@@ -239,26 +243,31 @@ def build_constructor_cpp_facet(
     )
 
 
-def build_field_cpp_facet(
+def build_variable_cpp_facet(
     cursor: Any,
     *,
     context: BuildContext | None = None,
+    kind: str = "variable",
 ) -> Any:
-    """Build one parsed field facet from one clang cursor."""
+    """Build one parsed variable facet from one clang cursor."""
 
-    from ..model import CppFieldCppFacet
+    from ..model import CppVariableCppFacet
 
-    return CppFieldCppFacet(
+    return CppVariableCppFacet(
         original_name=cursor.spelling or None,
         type=build_cpp_type(
             getattr(cursor, "type", None),
             context=context,
             source_cursor=cursor,
         ),
+        is_const=cursor_type_is_const_qualified(cursor),
         location=build_location_info(cursor),
         comment=cursor_raw_comment(cursor),
-        is_static=cursor_bool_method(cursor, "is_static_field"),
         visibility=cursor_visibility(cursor),
+        kind=kind,
+        storage_class=cursor_storage_class(cursor),
+        linkage=cursor_linkage(cursor),
+        tls_kind=cursor_tls_kind(cursor),
     )
 
 

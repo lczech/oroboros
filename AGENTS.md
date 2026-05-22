@@ -10,7 +10,7 @@ Generate nanobind and pybind11 bindings from C++ headers.
 
 - Keep parser logic, policy logic, configuration, and emitter logic separate.
 - Use libclang / clang.cindex as the semantic source of truth.
-- Extract namespaces, classes, structs, enums, functions, constructors, methods, fields, base classes, and comments.
+- Extract namespaces, classes, structs, enums, functions, constructors, methods, variables, base classes, and comments.
 - Build a semantic C++ model before emitting bindings.
 - Allow full customization in the model, such as return value policies, removal and addition of functions, etc.
 - Respect the C++ header dependency order to ensure compilation will work.
@@ -93,7 +93,7 @@ As this is a lot of functionality, we will build the Oroboros code incrementally
   By default, translation should populate only missing Python-facing values and preserve user edits, unless an explicit overwrite mode is requested.
   Emission generates the final backend code from the translated model.
 - Use typed descendant defaults rather than putting every possible binding setting on every node.
-  For example, namespaces may expose `.defaults.class_`, `.defaults.function`, and `.defaults.enum`, while classes may expose `.defaults.method`, `.defaults.constructor`, `.defaults.field`, and `.defaults.enum`.
+  For example, namespaces may expose `.defaults.class_`, `.defaults.function`, `.defaults.variable`, and `.defaults.enum`, while classes may expose `.defaults.method`, `.defaults.constructor`, `.defaults.variable`, `.defaults.static_variable`, and `.defaults.enum`.
 - Store direct binding settings on the element itself via `.bind`, and store inherited child defaults in `.defaults`.
 - Resolve optional binding settings by inheritance through the declaration tree, walking upward through scopes until an explicit override is found.
 - Support activation and deactivation inside the model as part of the binding customization layer, so whole namespaces, classes, or individual members can be disabled incrementally before Python-facing translation.
@@ -128,7 +128,7 @@ This means:
 
 - the module owns top-level namespaces and top-level declarations
 - a namespace owns nested namespaces, classes, enums, and free functions
-- a class or struct owns constructors, methods, fields, nested enums, and nested classes
+- a class or struct owns constructors, methods, instance variables, static member variables, nested enums, and nested classes
 - template family nodes group explicit template instances to be bound
 
 Every node should know:
@@ -229,7 +229,7 @@ The current implemented parser slice already materializes:
 - free functions
 - methods
 - constructors
-- fields
+- variables
 - parameters
 - class base relationships
 - source locations and provenance containers
@@ -276,12 +276,11 @@ The current parser internals are also intentionally split into:
 - `merge_declarations.py` for redeclaration merging and parser warnings
 - `process_declarations.py` for concrete declaration-kind processing
 
-Comments/docs, operators, destructor/conversion functions, `VAR_DECL`, and
-fuller parser-side redeclaration enrichment are still follow-up work.
+Comments/docs, operators, destructor/conversion functions, and fuller
+parser-side redeclaration enrichment are still follow-up work.
 
 The next parser work should focus first on:
 
-- `VAR_DECL` support for free variables and static data members
 - normalized comment/doc parsing on top of the preserved raw comments,
   including parameter-doc extraction
 - destructor and conversion-function coverage
@@ -302,7 +301,7 @@ Examples:
 - `CppFunction`
 - `CppMethod`
 - `CppConstructor`
-- `CppField`
+- `CppVariable`
 - `CppClassTemplate`
 - `CppClassTemplateDecl`
 - `CppClassTemplateInstance`
@@ -383,7 +382,7 @@ More specialized type forms such as member pointers, optional-like types, and va
 `CppType` objects should be treated as embedded value data, not as semantic tree nodes. This means:
 
 - `CppType` objects do not participate in the owner/child declaration hierarchy
-- they live inside `.cpp` facets where declarations need to describe a type, such as parameter types, return types, field types, base-class types, alias targets, and template argument or parameter types
+- they live inside `.cpp` facets where declarations need to describe a type, such as parameter types, return types, variable types, base-class types, alias targets, and template argument or parameter types
 - the same semantic type may appear multiple times as separate `CppType` values at different use sites, which is acceptable and expected
 - where a named type refers to a declaration that is present in the semantic tree, the `NamedCppType` should link back to that declaration node via its optional declaration reference
 
@@ -466,7 +465,7 @@ This keeps parameters first-class and customizable without over-promoting them i
 This facet stores Python-facing exposure choices. It answers: “how should this element appear in Python?”
 
 This facet should be default-constructed during the initial parse phase, but translation should later fill it from `.cpp` and `.bind`.
-By default, translation should only fill fields that are still unset, so users may customize `.py` early without losing those edits.
+By default, translation should only fill values that are still unset, so users may customize `.py` early without losing those edits.
 
 Rule of thumb:
 
@@ -520,7 +519,7 @@ For classes:
 - copy/move exposure policy
 - backend-specific extras only when truly needed later
 
-For fields:
+For variables:
 
 - active / inactive state
 - readonly / readwrite policy
@@ -602,7 +601,8 @@ Examples:
   - `.defaults.class_`
   - `.defaults.method`
   - `.defaults.constructor`
-  - `.defaults.field`
+  - `.defaults.variable`
+  - `.defaults.static_variable`
   - `.defaults.enum`
 
 These buckets should contain the same typed binding objects that direct elements use in `.bind`.
@@ -617,7 +617,7 @@ Examples:
 - a class node also has `.defaults.constructor: ConstructorBind`
 - a namespace node may have `.defaults.function: FunctionBind`
 
-This keeps inheritance expressive without giving namespaces a giant flat set of function-only fields.
+This keeps inheritance expressive without giving namespaces a giant flat set of function-only settings.
 
 ### Direct settings versus inherited settings
 
@@ -653,7 +653,7 @@ The same general mechanism should apply to:
 - active/inactive state
 - Python naming defaults
 - holder types
-- field exposure choices
+- variable exposure choices
 - enum export choices
 - operator translation defaults
 
@@ -1005,7 +1005,7 @@ In practice, this can look like:
 
 The example library should grow in layers rather than trying to cover everything at once:
 
-- `basics`: declarations that match the current parser and core model, such as namespaces, enums, free functions, classes, constructors, methods, fields, and parameters
+- `basics`: declarations that match the current parser and core model, such as namespaces, enums, free functions, classes, constructors, methods, variables, and parameters
 - `advanced`: richer C++ shapes such as aliases, comments, templates, and more subtle declaration relationships
 - `nanobind` or backend-focused fixtures: later examples adapted from relevant backend features, such as operators, callbacks, ownership/lifetime, STL handling, and other binding-specific patterns
 

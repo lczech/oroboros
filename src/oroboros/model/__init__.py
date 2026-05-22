@@ -10,10 +10,6 @@ from .class_ import (
     CppClassMembers,
     CppClassDefaults,
     CppClassPyFacet,
-    CppField,
-    CppFieldBindFacet,
-    CppFieldCppFacet,
-    CppFieldPyFacet,
 )
 from .comment import CppDoc, PyDoc, build_py_doc_from_cpp_doc
 from .element import CppElement, ModelValidationError
@@ -109,6 +105,7 @@ from .type import (
 )
 from .validation import ModelSemanticValidationError, validate_semantics
 from .visibility import CppVisibility
+from .variable import CppVariable, CppVariableBindFacet, CppVariableCppFacet, CppVariablePyFacet
 
 __all__ = [
     "CppAlias",
@@ -143,10 +140,6 @@ __all__ = [
     "CppEnumeratorBindFacet",
     "CppEnumeratorCppFacet",
     "CppEnumeratorPyFacet",
-    "CppField",
-    "CppFieldBindFacet",
-    "CppFieldCppFacet",
-    "CppFieldPyFacet",
     "CppFunction",
     "CppFunctionBindFacet",
     "CppFunctionCppFacet",
@@ -192,6 +185,10 @@ __all__ = [
     "CppTypeTemplateParameter",
     "ArrayCppType",
     "BuiltinCppType",
+    "CppVariable",
+    "CppVariableBindFacet",
+    "CppVariableCppFacet",
+    "CppVariablePyFacet",
     "LValueReferenceCppType",
     "FunctionCppType",
     "find_all_by_name",

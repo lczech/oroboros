@@ -38,7 +38,7 @@ prioritized engineering work here.
 - Document parameter doc fields explicitly as lightweight strings derived from
   Doxygen parameter documentation, not full `CppDoc` or `PyDoc` objects.
 - Consider a shared declaration-metadata facet only if repeated fields keep
-  growing across namespaces, classes, enums, fields, and callables.
+  growing across namespaces, classes, enums, variables, and callables.
 
 ## C++ Semantic Coverage
 
@@ -49,10 +49,9 @@ prioritized engineering work here.
   into the richer documentation model and parameter-doc fields.
 - Unsupported libclang declaration kinds that should be tracked explicitly.
   The current walker materializes namespaces, classes/structs, enums,
-  aliases/typedefs, free functions, methods, constructors, fields,
+  aliases/typedefs, free functions, methods, constructors, variables,
   parameters, and template declarations. Still
   missing at the cursor-dispatch level are:
-  - `VAR_DECL` for free variables and static data members
   - `DESTRUCTOR`
   - `CONVERSION_FUNCTION`
   - `UNION_DECL`
@@ -103,11 +102,6 @@ prioritized engineering work here.
   intentionally ignored, and template parameter defaults remain intentionally
   unused for now.
 
-### Next parser/model slices
-
-- `VAR_DECL` support for free variables and static data members.
-  This is the cleanest next semantic-coverage expansion and is already backed
-  by a real clang-observed gap in the current parser.
 - Normalized comment and documentation parsing.
   Raw comments are preserved, but they still need to flow into the richer doc
   model, including parameter-doc extraction and later Python-facing doc
@@ -115,6 +109,9 @@ prioritized engineering work here.
 - Template instance selection ergonomics.
   Selected template instances should become easy to request and customize in
   the model, without depending on fake specialized declaration trees.
+- Variable metadata beyond type, docs, and visibility.
+  Follow-up candidates include storage class, linkage, `constexpr`, `constinit`,
+  and `inline` when later binding policy or diagnostics need them.
 
 ## Binding Policy Model
 
@@ -123,7 +120,7 @@ prioritized engineering work here.
 - Richer hook model than plain `list[str]`.
   Model hook kinds explicitly instead of storing raw strings only.
 - Property model.
-  Current field getter/setter knobs are not yet a real first-class property
+  Current variable getter/setter knobs are not yet a real first-class property
   decision model.
 - Iterator exposure policy.
 - More precise callable and argument policy modeling.

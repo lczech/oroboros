@@ -135,6 +135,58 @@ def cursor_visibility(cursor: Any) -> CppVisibility | None:
     return None
 
 
+def cursor_storage_class(cursor: Any) -> str | None:
+    """Return one normalized storage-class value when libclang exposes it."""
+
+    storage_class = getattr(cursor, "storage_class", None)
+    if storage_class is None:
+        return None
+
+    name = getattr(storage_class, "name", None)
+    if not name or name in {"INVALID", "NONE"}:
+        return None
+    return str(name).lower()
+
+
+def cursor_linkage(cursor: Any) -> str | None:
+    """Return one normalized linkage value when libclang exposes it."""
+
+    linkage = getattr(cursor, "linkage", None)
+    if linkage is None:
+        return None
+
+    name = getattr(linkage, "name", None)
+    if not name or name in {"INVALID"}:
+        return None
+    return str(name).lower()
+
+
+def cursor_tls_kind(cursor: Any) -> str | None:
+    """Return one normalized thread-local storage kind when libclang exposes it."""
+
+    tls_kind = getattr(cursor, "tls_kind", None)
+    if tls_kind is None:
+        return None
+
+    name = getattr(tls_kind, "name", None)
+    if not name or name == "NONE":
+        return None
+    return str(name).lower()
+
+
+def cursor_type_is_const_qualified(cursor: Any) -> bool:
+    """Return whether one cursor's declared type is top-level const-qualified."""
+
+    cpp_type = getattr(cursor, "type", None)
+    if cpp_type is None:
+        return False
+
+    is_const_qualified = getattr(cpp_type, "is_const_qualified", None)
+    if callable(is_const_qualified):
+        return bool(is_const_qualified())
+    return False
+
+
 def cursor_bool_method(cursor: Any, method_name: str) -> bool:
     """Call one optional boolean libclang cursor method safely."""
 

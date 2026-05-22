@@ -122,7 +122,8 @@ The implemented parser already materializes:
 - free functions
 - methods
 - constructors
-- fields
+- variables, including class member variables, static member variables, and
+  free variables
 - parameters
 - class base relationships
 - source locations and provenance
@@ -140,7 +141,6 @@ Still incomplete or follow-up work:
 - operators
 - destructors and conversion functions
 - richer redeclaration enrichment
-- `VAR_DECL`
 - richer use-site template-template argument inference
 
 ## Validation during parsing

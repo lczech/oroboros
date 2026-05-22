@@ -22,6 +22,7 @@ from .process_declarations import (
     process_function_template_cursor,
     process_method_cursor,
     process_parameter_cursor,
+    process_variable_cursor,
 )
 
 if TYPE_CHECKING:
@@ -136,6 +137,10 @@ def _visit_declaration_cursor(
 
     if _cursor_kind_matches(cursor, CursorKind.FIELD_DECL):
         process_field_cursor(cursor, owner, context)
+        return
+
+    if _cursor_kind_matches(cursor, CursorKind.VAR_DECL):
+        process_variable_cursor(cursor, owner, context)
         return
 
     if _cursor_kind_matches(cursor, CursorKind.PARM_DECL):

@@ -213,7 +213,7 @@ def _element_label(type_name: str) -> str:
         "CppConstructor": "constructor",
         "CppEnum": "enum",
         "CppEnumerator": "enumerator",
-        "CppField": "field",
+        "CppVariable": "variable",
         "CppFunction": "function",
         "CppFunctionTemplate": "function_template",
         "CppFunctionTemplateDeclaration": "function_template_declaration",

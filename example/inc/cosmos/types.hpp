@@ -24,7 +24,7 @@ enum OmenKind {
     omen_catastrophe = 2,
 };
 
-/** Small public struct used for enum, field, and parameter coverage. */
+/** Small public struct used for enum, member-variable, and parameter coverage. */
 struct RelicInfo {
     std::string name {"unnamed"};
     Realm realm {Realm::earth};

@@ -7,10 +7,10 @@ structure closely enough for customization and emission.
 ## Core shape
 
 - `CppModule` owns top-level namespaces and declarations.
-- `CppNamespace` owns nested namespaces, classes, functions, enums, and
-  template families.
-- `CppClass` owns constructors, methods, fields, nested enums, nested classes,
-  and nested template families.
+- `CppNamespace` owns nested namespaces, classes, functions, variables, enums,
+  and template families.
+- `CppClass` owns constructors, methods, instance variables, static member
+  variables, nested enums, nested classes, and nested template families.
 - Functions, methods, and constructors own `CppParameter` objects.
 - Enums own `CppEnumerator` objects.
 
@@ -54,8 +54,10 @@ clearer:
 module.namespace["cosmos"]
 namespace.class_["Widget"]
 namespace.function["make_widget"]
+namespace.variable["global_count"]
 class_.method["size"]
-class_.field["name_"]
+class_.variable["name_"]
+class_.static_variable["instance_count"]
 function.parameter["value"]
 enum_.enumerator["primary"]
 ```
@@ -109,7 +111,7 @@ They live inside `.cpp` facets as embedded value objects:
 
 - function return types
 - parameter types
-- field types
+- variable types
 - class base types
 - enum underlying types
 - alias targets

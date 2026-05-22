@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Class and field semantic model objects."""
+"""Class semantic model objects."""
 
 from dataclasses import dataclass, field as dataclass_field
 from typing import TYPE_CHECKING, Literal
@@ -10,6 +10,7 @@ from .element import CppElement
 from .lookup import make_named_child_view
 from .location import CppLocationInfo
 from .type import CppType
+from .variable import CppVariable, CppVariableBindFacet
 from .visibility import CppVisibility
 
 if TYPE_CHECKING:
@@ -72,42 +73,6 @@ class CppClassPyFacet:
 
 
 # ------------------------------------------------------------------------------
-#     Field Facets
-# ------------------------------------------------------------------------------
-
-
-@dataclass(slots=True)
-class CppFieldCppFacet:
-    """Store parsed C++ details for one field."""
-
-    original_name: str | None = None
-    type: CppType | None = None
-    location: CppLocationInfo = dataclass_field(default_factory=CppLocationInfo)
-    comment: str | None = None
-    doc: CppDoc | None = None
-    is_static: bool = False
-    visibility: CppVisibility | None = None
-
-
-@dataclass(slots=True)
-class CppFieldBindFacet:
-    """Store binding settings for one field or property."""
-
-    active: bool | None = None
-    read_only: bool | None = None
-    getter: str | None = None
-    setter: str | None = None
-
-
-@dataclass(slots=True)
-class CppFieldPyFacet:
-    """Store Python-facing choices for one field."""
-
-    name: str | None = None
-    doc: PyDoc | None = None
-
-
-# ------------------------------------------------------------------------------
 #     Defaults
 # ------------------------------------------------------------------------------
 
@@ -128,8 +93,11 @@ class CppClassDefaults:
     constructor: "CppConstructorBindFacet" = dataclass_field(
         default_factory=lambda: _make_constructor_bind_facet()
     )
-    field: CppFieldBindFacet = dataclass_field(
-        default_factory=CppFieldBindFacet
+    variable: CppVariableBindFacet = dataclass_field(
+        default_factory=CppVariableBindFacet
+    )
+    static_variable: CppVariableBindFacet = dataclass_field(
+        default_factory=CppVariableBindFacet
     )
     function_template: "CppTemplateBindFacet" = dataclass_field(
         default_factory=lambda: _make_template_bind_facet()
@@ -188,8 +156,10 @@ class CppClassDeclarations:
     constructors: list["CppConstructor"] = dataclass_field(default_factory=list)
     # Methods declared directly inside this class scope.
     methods: list["CppMethod"] = dataclass_field(default_factory=list)
-    # Fields declared directly inside this class scope.
-    fields: list["CppField"] = dataclass_field(default_factory=list)
+    # Non-static instance variables declared directly inside this class scope.
+    variables: list["CppVariable"] = dataclass_field(default_factory=list)
+    # Static variables declared directly inside this class scope.
+    static_variables: list["CppVariable"] = dataclass_field(default_factory=list)
     # Aliases declared directly inside this class scope.
     aliases: list["CppAlias"] = dataclass_field(default_factory=list)
     # Enums declared directly inside this class scope.
@@ -219,7 +189,8 @@ class CppClassMembers(CppElement):
             self.declarations.classes,
             self.declarations.constructors,
             self.declarations.methods,
-            self.declarations.fields,
+            self.declarations.variables,
+            self.declarations.static_variables,
             self.declarations.aliases,
             self.declarations.enums,
             self.declarations.class_templates,
@@ -242,10 +213,15 @@ class CppClassMembers(CppElement):
 
         return self._append_child(self.declarations.methods, method)
 
-    def add_field(self, field: "CppField") -> "CppField":
-        """Attach one field to this class scope."""
+    def add_variable(self, variable: "CppVariable") -> "CppVariable":
+        """Attach one instance variable to this class scope."""
 
-        return self._append_child(self.declarations.fields, field)
+        return self._append_child(self.declarations.variables, variable)
+
+    def add_static_variable(self, variable: "CppVariable") -> "CppVariable":
+        """Attach one static variable to this class scope."""
+
+        return self._append_child(self.declarations.static_variables, variable)
 
     def add_alias(self, alias: "CppAlias") -> "CppAlias":
         """Attach one alias to this class scope."""
@@ -286,10 +262,16 @@ class CppClassMembers(CppElement):
         return make_named_child_view(self, self.declarations, "methods", return_many=True)
 
     @property
-    def field(self):
-        """Return a name-indexed view over fields declared in this class."""
+    def variable(self):
+        """Return a name-indexed view over instance variables declared in this class."""
 
-        return make_named_child_view(self, self.declarations, "fields")
+        return make_named_child_view(self, self.declarations, "variables")
+
+    @property
+    def static_variable(self):
+        """Return a name-indexed view over static variables declared in this class."""
+
+        return make_named_child_view(self, self.declarations, "static_variables")
 
     @property
     def alias(self):
@@ -314,16 +296,6 @@ class CppClassMembers(CppElement):
         """Return a name-indexed view over nested function templates."""
 
         return make_named_child_view(self, self.declarations, "function_templates", return_many=True)
-
-
-@dataclass(slots=True)
-class CppField(CppElement):
-    """Represent one field owned by a class."""
-
-    cpp: CppFieldCppFacet = dataclass_field(default_factory=CppFieldCppFacet)
-    bind: CppFieldBindFacet = dataclass_field(default_factory=CppFieldBindFacet)
-    py: CppFieldPyFacet = dataclass_field(default_factory=CppFieldPyFacet)
-
 
 @dataclass(slots=True)
 class CppClass(CppClassMembers):

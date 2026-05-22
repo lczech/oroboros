@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from .function import CppFunction, CppFunctionBindFacet
     from .namespace import CppNamespace, CppNamespaceBindFacet
     from .template_ import CppClassTemplate, CppFunctionTemplate, CppTemplateBindFacet
+    from .variable import CppVariable, CppVariableBindFacet
 
 
 # ==================================================================================================
@@ -58,6 +59,7 @@ class CppModuleDefaults:
     class_template: "CppTemplateBindFacet" = field(default_factory=lambda: _make_template_bind_facet())
     function: "CppFunctionBindFacet" = field(default_factory=lambda: _make_function_bind_facet())
     function_template: "CppTemplateBindFacet" = field(default_factory=lambda: _make_template_bind_facet())
+    variable: "CppVariableBindFacet" = field(default_factory=lambda: _make_variable_bind_facet())
     enum: "CppEnumBindFacet" = field(default_factory=lambda: _make_enum_bind_facet())
 
 
@@ -101,6 +103,14 @@ def _make_enum_bind_facet() -> "CppEnumBindFacet":
     return CppEnumBindFacet()
 
 
+def _make_variable_bind_facet() -> "CppVariableBindFacet":
+    """Create one variable-bind facet without import cycles at module import time."""
+
+    from .variable import CppVariableBindFacet
+
+    return CppVariableBindFacet()
+
+
 # ==================================================================================================
 #     Elements
 # ==================================================================================================
@@ -136,6 +146,7 @@ class CppModule(CppElement):
             self.declarations.class_templates,
             self.declarations.functions,
             self.declarations.function_templates,
+            self.declarations.variables,
             self.declarations.enums,
             self.declarations.aliases,
         ):
@@ -165,6 +176,11 @@ class CppModule(CppElement):
         """Attach one top-level function template family to this semantic module."""
 
         return self._append_child(self.declarations.function_templates, template)
+
+    def add_variable(self, variable: "CppVariable") -> "CppVariable":
+        """Attach one top-level variable to this semantic module."""
+
+        return self._append_child(self.declarations.variables, variable)
 
     def add_enum(self, enum: "CppEnum") -> "CppEnum":
         """Attach one top-level enum to this semantic module."""
@@ -205,6 +221,12 @@ class CppModule(CppElement):
         """Return a name-indexed view over top-level function templates."""
 
         return make_named_child_view(self, self.declarations, "function_templates", return_many=True)
+
+    @property
+    def variable(self):
+        """Return a name-indexed view over top-level variables."""
+
+        return make_named_child_view(self, self.declarations, "variables")
 
     @property
     def enum(self):

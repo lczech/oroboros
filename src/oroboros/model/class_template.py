@@ -11,7 +11,6 @@ from .class_ import (
     CppClassDefaults,
     CppClassMembers,
     CppClassPyFacet,
-    CppFieldBindFacet,
 )
 from .element import CppElement
 from .member import CppConstructorBindFacet, CppMethodBindFacet
@@ -24,6 +23,7 @@ from .template_ import (
     _template_argument_key,
     _validate_template_arguments,
 )
+from .variable import CppVariableBindFacet
 
 if TYPE_CHECKING:
     from .enum import CppEnumBindFacet
@@ -61,8 +61,10 @@ class CppClassTemplateDefaults:
     method: CppMethodBindFacet = dataclass_field(default_factory=CppMethodBindFacet)
     # Defaults applied to constructors inside selected instances.
     constructor: CppConstructorBindFacet = dataclass_field(default_factory=CppConstructorBindFacet)
-    # Defaults applied to fields inside selected instances.
-    field: CppFieldBindFacet = dataclass_field(default_factory=CppFieldBindFacet)
+    # Defaults applied to instance variables inside selected instances.
+    variable: CppVariableBindFacet = dataclass_field(default_factory=CppVariableBindFacet)
+    # Defaults applied to static variables inside selected instances.
+    static_variable: CppVariableBindFacet = dataclass_field(default_factory=CppVariableBindFacet)
     # Defaults applied to enums inside selected instances.
     enum: "CppEnumBindFacet" = dataclass_field(default_factory=lambda: _make_enum_bind_facet())
 

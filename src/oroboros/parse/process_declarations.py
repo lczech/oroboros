@@ -16,12 +16,12 @@ from ..model import (
     CppElement,
     CppEnum,
     CppEnumerator,
-    CppField,
     CppFunction,
     CppFunctionTemplate,
     CppFunctionTemplateDeclaration,
     CppMethod,
     CppParameter,
+    CppVariable,
 )
 from ..model.type import cpp_types_equivalent
 from .build_facets import (
@@ -31,7 +31,7 @@ from .build_facets import (
     build_constructor_cpp_facet,
     build_enum_cpp_facet,
     build_enumerator_cpp_facet,
-    build_field_cpp_facet,
+    build_variable_cpp_facet,
     build_function_cpp_facet,
     build_function_template_declaration_cpp_facet,
     build_method_cpp_facet,
@@ -418,16 +418,53 @@ def process_field_cursor(
     owner: CppElement,
     context: BuildContext,
 ) -> None:
-    """Create or enrich one field declaration."""
+    """Create or enrich one instance-variable declaration."""
 
-    candidate_cpp = build_field_cpp_facet(cursor, context=context)
-    existing = lookup_registered_element(cursor, context, CppField)
+    candidate_cpp = build_variable_cpp_facet(cursor, context=context, kind="member_variable")
+    existing = lookup_registered_element(cursor, context, CppVariable)
     if existing is not None:
-        warn_unexpected_repeated_declaration(context, cursor, "field")
+        warn_unexpected_repeated_declaration(context, cursor, "variable")
         return
 
-    field = CppField(name=cursor.spelling, cpp=candidate_cpp)
-    attached = attach_element(owner, "add_field", field)
+    variable = CppVariable(name=cursor.spelling, cpp=candidate_cpp)
+    attached = attach_element(owner, "add_variable", variable)
+    if attached is not None:
+        register_element_for_cursor(cursor, attached, context)
+
+
+def process_variable_cursor(
+    cursor: Any,
+    owner: CppElement,
+    context: BuildContext,
+) -> None:
+    """Create or enrich one non-local `VAR_DECL` declaration."""
+
+    attach_method_name = _variable_attach_method_name(owner)
+    if attach_method_name is None:
+        return
+
+    candidate_cpp = build_variable_cpp_facet(
+        cursor,
+        context=context,
+        kind="static_member_variable" if attach_method_name == "add_static_variable" else "variable",
+    )
+    existing = lookup_registered_element(cursor, context, CppVariable)
+    if existing is not None:
+        merge_common_cpp_fields(existing, candidate_cpp, context, cursor)
+        merge_cpp_scalar(
+            existing,
+            "type",
+            candidate_cpp.type,
+            context,
+            cursor,
+            values_equivalent=cpp_types_equivalent,
+        )
+        merge_cpp_scalar(existing, "visibility", candidate_cpp.visibility, context, cursor)
+        merge_cpp_scalar(existing, "kind", candidate_cpp.kind, context, cursor)
+        return
+
+    variable = CppVariable(name=cursor.spelling, cpp=candidate_cpp)
+    attached = attach_element(owner, attach_method_name, variable)
     if attached is not None:
         register_element_for_cursor(cursor, attached, context)
 
@@ -516,6 +553,20 @@ def _constructor_name_for_owner(
     if owner_name:
         return owner_name
     return cursor.spelling
+
+
+def _variable_attach_method_name(owner: CppElement) -> str | None:
+    """Return how one parsed `VAR_DECL` should attach under the current owner."""
+
+    from ..model import CppClassMembers, CppModule, CppNamespace
+
+    if isinstance(owner, CppClassMembers):
+        return "add_static_variable"
+
+    if isinstance(owner, (CppModule, CppNamespace)):
+        return "add_variable"
+
+    return None
 
 
 def _looks_like_templated_constructor(

@@ -78,9 +78,9 @@ Helper make_helper(Helper value);
         make_helper = namespace.declarations.functions[0]
 
         self.assertEqual([cls.name for cls in namespace.declarations.classes], ["Widget"])
-        self.assertIsInstance(widget.declarations.fields[0].cpp.type, NamedCppType)
-        self.assertEqual(widget.declarations.fields[0].cpp.type.name, "Helper")
-        self.assertIsNone(widget.declarations.fields[0].cpp.type.declaration)
+        self.assertIsInstance(widget.declarations.variables[0].cpp.type, NamedCppType)
+        self.assertEqual(widget.declarations.variables[0].cpp.type.name, "Helper")
+        self.assertIsNone(widget.declarations.variables[0].cpp.type.declaration)
         self.assertIsInstance(make_helper.cpp.return_type, NamedCppType)
         self.assertEqual(make_helper.cpp.return_type.name, "Helper")
         self.assertIsNone(make_helper.cpp.return_type.declaration)
@@ -131,8 +131,8 @@ T make_value(T value) {
         self.assertEqual(len(class_template.declaration.cpp.template_parameters[2].parameters), 1)
         self.assertIsInstance(class_template.declaration.cpp.template_parameters[2].parameters[0], CppTypeTemplateParameter)
         self.assertEqual(class_template.declaration.cpp.template_parameters[2].parameters[0].name, "")
-        self.assertEqual(len(class_template.declaration.declarations.fields), 1)
-        self.assertEqual(class_template.declaration.declarations.fields[0].name, "value")
+        self.assertEqual(len(class_template.declaration.declarations.variables), 1)
+        self.assertEqual(class_template.declaration.declarations.variables[0].name, "value")
 
         self.assertIsInstance(function_template, CppFunctionTemplate)
         self.assertEqual(function_template.name, "make_value")
@@ -197,8 +197,8 @@ types::Reliquary<types::RelicInfo> bless_reliquary(types::RelicInfo relic);
         self.assertEqual(len(class_template.declaration.cpp.template_parameters), 1)
         self.assertIsInstance(class_template.declaration.cpp.template_parameters[0], CppTypeTemplateParameter)
         self.assertEqual(class_template.declaration.cpp.template_parameters[0].name, "T")
-        self.assertEqual(len(class_template.declaration.declarations.fields), 1)
-        self.assertEqual(class_template.declaration.declarations.fields[0].name, "value")
+        self.assertEqual(len(class_template.declaration.declarations.variables), 1)
+        self.assertEqual(class_template.declaration.declarations.variables[0].name, "value")
 
         relic_quartet = types_namespace.alias["RelicQuartet"]
         self.assertIsInstance(relic_quartet, CppAlias)
@@ -503,9 +503,9 @@ struct Holder {
         self.assertIsInstance(holder.alias["PublicHandle"].cpp.target, NamedCppType)
         self.assertEqual(holder.alias["PublicHandle"].cpp.target.name, "WidgetAlias")
         self.assertIs(holder.alias["PublicHandle"].cpp.target.declaration, widget_alias)
-        self.assertIsInstance(holder.declarations.fields[0].cpp.type, NamedCppType)
-        self.assertEqual(holder.declarations.fields[0].cpp.type.name, "PublicHandle")
-        self.assertIs(holder.declarations.fields[0].cpp.type.declaration, holder.alias["PublicHandle"])
+        self.assertIsInstance(holder.declarations.variables[0].cpp.type, NamedCppType)
+        self.assertEqual(holder.declarations.variables[0].cpp.type.name, "PublicHandle")
+        self.assertIs(holder.declarations.variables[0].cpp.type.declaration, holder.alias["PublicHandle"])
 
     def test_parse_headers_materializes_basic_declarations_end_to_end(self) -> None:
         source = """
@@ -538,8 +538,8 @@ bool make_widget() noexcept { return true; }
         self.assertEqual(enum_.enumerators[0].name, "earth")
         self.assertEqual(cls.name, "Widget")
         self.assertEqual(len(cls.declarations.constructors), 1)
-        self.assertEqual(len(cls.declarations.fields), 1)
-        self.assertEqual(cls.declarations.fields[0].name, "value")
+        self.assertEqual(len(cls.declarations.variables), 1)
+        self.assertEqual(cls.declarations.variables[0].name, "value")
         self.assertEqual(len(cls.declarations.methods), 1)
         self.assertEqual(cls.declarations.methods[0].name, "size")
         self.assertEqual(function.name, "make_widget")
@@ -874,7 +874,7 @@ struct Holder {
         namespace = result.module.declarations.namespaces[0]
         omen_kind = namespace.declarations.namespaces[0].declarations.enums[0]
         holder = namespace.declarations.classes[0]
-        field_type = holder.declarations.fields[0].cpp.type
+        field_type = holder.declarations.variables[0].cpp.type
         method = holder.declarations.methods[0]
 
         self.assertIsInstance(field_type, NamedCppType)
@@ -916,7 +916,7 @@ private:
         render = widget.declarations.methods[0]
         warmup = widget.declarations.methods[1]
         size = widget.declarations.methods[2]
-        cache_size = widget.declarations.fields[0]
+        cache_size = widget.declarations.variables[0]
 
         self.assertEqual(constructor.cpp.visibility, CppVisibility.PUBLIC)
         self.assertTrue(constructor.cpp.is_noexcept)
@@ -938,7 +938,56 @@ private:
         self.assertFalse(size.cpp.is_static)
 
         self.assertEqual(cache_size.cpp.visibility, CppVisibility.PROTECTED)
-        self.assertFalse(cache_size.cpp.is_static)
+        self.assertEqual(cache_size.cpp.kind, "member_variable")
+
+    def test_parse_headers_materialize_free_and_static_variables_and_ignore_locals(self) -> None:
+        source = """
+namespace demo {
+
+inline int global_count = 1;
+static int internal_count = 2;
+thread_local int tls_count = 3;
+constexpr int answer = 42;
+
+struct Widget {
+    static int instance_count;
+    int value {0};
+
+    int size() const {
+        int local_count = value;
+        return local_count;
+    }
+};
+
+int Widget::instance_count = 0;
+
+}
+"""
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        widget = namespace.declarations.classes[0]
+        method = widget.declarations.methods[0]
+
+        self.assertEqual(
+            [variable.name for variable in namespace.declarations.variables],
+            ["global_count", "internal_count", "tls_count", "answer"],
+        )
+        self.assertEqual(
+            [variable.cpp.kind for variable in namespace.declarations.variables],
+            ["variable", "variable", "variable", "variable"],
+        )
+        by_name = {variable.name: variable for variable in namespace.declarations.variables}
+        self.assertEqual(by_name["internal_count"].cpp.storage_class, "static")
+        self.assertEqual(by_name["internal_count"].cpp.linkage, "internal")
+        self.assertEqual(by_name["tls_count"].cpp.tls_kind, "dynamic")
+        self.assertTrue(by_name["answer"].cpp.is_const)
+        self.assertEqual([variable.name for variable in widget.declarations.variables], ["value"])
+        self.assertEqual(widget.declarations.variables[0].cpp.kind, "member_variable")
+        self.assertEqual([variable.name for variable in widget.declarations.static_variables], ["instance_count"])
+        self.assertEqual(widget.declarations.static_variables[0].cpp.kind, "static_member_variable")
+        self.assertEqual(method.element_names, [])
 
     def test_parse_headers_materializes_real_array_function_pointer_and_nested_template_types(self) -> None:
         source = """
@@ -1293,8 +1342,8 @@ using IntBox = Box<int>;
         class_template = namespace.declarations.class_templates[0]
         self.assertEqual(class_template.name, "Box")
         self.assertEqual(len(class_template.declaration.cpp.template_parameters), 1)
-        self.assertEqual(len(class_template.declaration.declarations.fields), 1)
-        self.assertEqual(class_template.declaration.declarations.fields[0].name, "value")
+        self.assertEqual(len(class_template.declaration.declarations.variables), 1)
+        self.assertEqual(class_template.declaration.declarations.variables[0].name, "value")
         self.assertEqual(len(class_template.declaration.cpp.observed_instances), 1)
         self.assertIsInstance(
             class_template.declaration.cpp.observed_instances[0].arguments[0].type,
@@ -1390,8 +1439,8 @@ struct Box {
         self.assertEqual(len(class_template.declaration.cpp.location.declarations), 2)
         self.assertIsNotNone(class_template.declaration.cpp.comment)
         self.assertIn("Forward declaration docs.", class_template.declaration.cpp.comment)
-        self.assertEqual(len(class_template.declaration.declarations.fields), 1)
-        self.assertEqual(class_template.declaration.declarations.fields[0].name, "value")
+        self.assertEqual(len(class_template.declaration.declarations.variables), 1)
+        self.assertEqual(class_template.declaration.declarations.variables[0].name, "value")
 
     def test_parse_headers_keeps_mixed_overload_groups_with_templates_across_reopened_namespaces(self) -> None:
         result = _parse_headers_from_sources(

@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from .enum import CppEnum, CppEnumBindFacet
     from .function import CppFunction, CppFunctionBindFacet
     from .template_ import CppClassTemplate, CppFunctionTemplate, CppTemplateBindFacet
+    from .variable import CppVariable, CppVariableBindFacet
 
 
 # ==================================================================================================
@@ -60,6 +61,7 @@ class CppNamespaceDefaults:
     class_template: "CppTemplateBindFacet" = field(default_factory=lambda: _make_template_bind_facet())
     function: "CppFunctionBindFacet" = field(default_factory=lambda: _make_function_bind_facet())
     function_template: "CppTemplateBindFacet" = field(default_factory=lambda: _make_template_bind_facet())
+    variable: "CppVariableBindFacet" = field(default_factory=lambda: _make_variable_bind_facet())
     enum: "CppEnumBindFacet" = field(default_factory=lambda: _make_enum_bind_facet())
 
 
@@ -95,6 +97,14 @@ def _make_enum_bind_facet() -> "CppEnumBindFacet":
     return CppEnumBindFacet()
 
 
+def _make_variable_bind_facet() -> "CppVariableBindFacet":
+    """Create one variable-bind facet without import cycles at module import time."""
+
+    from .variable import CppVariableBindFacet
+
+    return CppVariableBindFacet()
+
+
 # ==================================================================================================
 #     Declarations
 # ==================================================================================================
@@ -116,6 +126,8 @@ class CppScopeDeclarations:
     functions: list["CppFunction"] = field(default_factory=list)
     # Function template families declared directly inside this scope.
     function_templates: list["CppFunctionTemplate"] = field(default_factory=list)
+    # Variables declared directly inside this scope.
+    variables: list["CppVariable"] = field(default_factory=list)
     # Enums declared directly inside this scope.
     enums: list["CppEnum"] = field(default_factory=list)
     # Aliases declared directly inside this scope.
@@ -151,6 +163,7 @@ class CppNamespace(CppElement):
             self.declarations.class_templates,
             self.declarations.functions,
             self.declarations.function_templates,
+            self.declarations.variables,
             self.declarations.enums,
             self.declarations.aliases,
         ):
@@ -180,6 +193,11 @@ class CppNamespace(CppElement):
         """Attach one function template family declared directly in this namespace."""
 
         return self._append_child(self.declarations.function_templates, template)
+
+    def add_variable(self, variable: "CppVariable") -> "CppVariable":
+        """Attach one variable declared directly in this namespace."""
+
+        return self._append_child(self.declarations.variables, variable)
 
     def add_enum(self, enum: "CppEnum") -> "CppEnum":
         """Attach one enum declared directly in this namespace."""
@@ -220,6 +238,12 @@ class CppNamespace(CppElement):
         """Return a name-indexed view over function templates declared in this namespace."""
 
         return make_named_child_view(self, self.declarations, "function_templates", return_many=True)
+
+    @property
+    def variable(self):
+        """Return a name-indexed view over variables declared in this namespace."""
+
+        return make_named_child_view(self, self.declarations, "variables")
 
     @property
     def enum(self):

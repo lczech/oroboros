@@ -416,12 +416,13 @@ def _named_child_accessor(field_name: str) -> str | None:
         "constructors": "constructor",
         "enumerators": "enumerator",
         "enums": "enum",
-        "fields": "field",
         "function_templates": "function_template",
         "functions": "function",
         "methods": "method",
         "namespaces": "namespace",
         "parameters": "parameter",
+        "static_variables": "static_variable",
+        "variables": "variable",
     }
     return accessors.get(field_name)
 

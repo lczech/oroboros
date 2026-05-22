@@ -9,7 +9,8 @@ This directory contains the mythology-themed `cosmos` example library and a tiny
 - free functions
 - classes and structs
 - constructors, methods, and parameters
-- public and private fields
+- public and private member variables
+- static member variables and free variables
 - nested enums inside classes
 - multiple inheritance via `Demigod : Mortal, Deity`
 

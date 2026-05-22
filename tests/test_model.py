@@ -22,8 +22,6 @@ from oroboros.model import (
     CppEnum,
     CppEnumBindFacet,
     CppEnumerator,
-    CppField,
-    CppFieldBindFacet,
     CppFunction,
     CppFunctionBindFacet,
     CppFunctionTemplate,
@@ -56,6 +54,8 @@ from oroboros.model import (
     ModelSemanticValidationError,
     CppVisibility,
     ModelValidationError,
+    CppVariable,
+    CppVariableBindFacet,
     add_template_instance,
     find_aliases,
     NamedCppType,
@@ -79,7 +79,8 @@ def make_class(*, declarations: CppClassDeclarations | None = None, **kwargs) ->
         "classes",
         "constructors",
         "methods",
-        "fields",
+        "variables",
+        "static_variables",
         "aliases",
         "enums",
         "class_templates",
@@ -107,7 +108,8 @@ def make_class_template_declaration(
         "classes",
         "constructors",
         "methods",
-        "fields",
+        "variables",
+        "static_variables",
         "aliases",
         "enums",
         "class_templates",
@@ -133,6 +135,7 @@ def make_namespace(*, declarations: CppScopeDeclarations | None = None, **kwargs
         "class_templates",
         "functions",
         "function_templates",
+        "variables",
         "enums",
         "aliases",
     ):
@@ -156,6 +159,7 @@ def make_module(*, declarations: CppScopeDeclarations | None = None, **kwargs) -
         "class_templates",
         "functions",
         "function_templates",
+        "variables",
         "enums",
         "aliases",
     ):
@@ -288,22 +292,32 @@ class ModelScaffoldTest(unittest.TestCase):
     def test_named_child_views_navigate_unique_and_overloadable_collections(self) -> None:
         method_a = CppMethod(name="foo")
         method_b = CppMethod(name="foo")
-        field = CppField(name="size")
+        variable = CppVariable(name="size")
+        static_variable = CppVariable(name="instance_count")
         enum_ = CppEnum(name="Kind", enumerators=[CppEnumerator(name="primary")])
         cls = make_class(
             name="Widget",
             methods=[method_a, method_b],
-            fields=[field],
+            variables=[variable],
+            static_variables=[static_variable],
             enums=[enum_],
         )
         function_a = CppFunction(name="make_widget")
         function_b = CppFunction(name="make_widget")
-        namespace = make_namespace(name="demo", classes=[cls], functions=[function_a, function_b])
+        namespace_variable = CppVariable(name="global_count")
+        namespace = make_namespace(
+            name="demo",
+            classes=[cls],
+            functions=[function_a, function_b],
+            variables=[namespace_variable],
+        )
         module = make_module(name="bindings", namespaces=[namespace])
 
         self.assertIs(module.namespace["demo"], namespace)
         self.assertIs(namespace.class_["Widget"], cls)
-        self.assertIs(cls.field["size"], field)
+        self.assertIs(namespace.variable["global_count"], namespace_variable)
+        self.assertIs(cls.variable["size"], variable)
+        self.assertIs(cls.static_variable["instance_count"], static_variable)
         self.assertIs(cls.enum["Kind"], enum_)
         self.assertIs(enum_.enumerator["primary"], enum_.enumerators[0])
         self.assertEqual(namespace.function["make_widget"], [function_a, function_b])
@@ -390,12 +404,12 @@ class ModelScaffoldTest(unittest.TestCase):
         method = CppMethod(name="size", parameters=[parameter])
         function = CppFunction(name="make_widget", parameters=[CppParameter(name="seed")])
         enum_ = CppEnum(name="Kind", enumerators=[CppEnumerator(name="primary")])
-        field = CppField(name="size")
+        variable = CppVariable(name="size")
         cls = make_class(
             name="Widget",
             constructors=[constructor],
             methods=[method],
-            fields=[field],
+            variables=[variable],
             enums=[enum_],
         )
         namespace = make_namespace(name="demo", classes=[cls], functions=[function])
@@ -410,7 +424,7 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertIsNotNone(parameter.py)
         self.assertIsNotNone(enum_.py)
         self.assertIsNotNone(enum_.enumerators[0].py)
-        self.assertIsNotNone(field.py)
+        self.assertIsNotNone(variable.py)
         self.assertIsNone(module.py.module_name)
         self.assertIsNone(namespace.py.name)
         self.assertIsNone(cls.py.name)
@@ -423,13 +437,13 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertIsNone(parameter.py.sig)
         self.assertIsNone(enum_.py.name)
         self.assertIsNone(enum_.enumerators[0].py.name)
-        self.assertIsNone(field.py.name)
+        self.assertIsNone(variable.py.name)
         self.assertIsNone(namespace.bind.active)
         self.assertIsNone(cls.bind.active)
         self.assertIsNone(function.bind.active)
         self.assertIsNone(method.bind.active)
         self.assertIsNone(constructor.bind.active)
-        self.assertIsNone(field.bind.active)
+        self.assertIsNone(variable.bind.active)
         self.assertIsNone(enum_.bind.active)
         self.assertIsNone(enum_.enumerators[0].bind.active)
 
@@ -481,14 +495,16 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertIsInstance(class_defaults.class_template, CppTemplateBindFacet)
         self.assertIsInstance(class_defaults.method, CppMethodBindFacet)
         self.assertIsInstance(class_defaults.constructor, CppConstructorBindFacet)
-        self.assertIsInstance(class_defaults.field, CppFieldBindFacet)
+        self.assertIsInstance(class_defaults.variable, CppVariableBindFacet)
+        self.assertIsInstance(class_defaults.static_variable, CppVariableBindFacet)
         self.assertIsInstance(class_defaults.function_template, CppTemplateBindFacet)
         self.assertIsInstance(class_defaults.enum, CppEnumBindFacet)
         self.assertIsInstance(class_template_defaults.instance, CppClassBindFacet)
         self.assertIsInstance(class_template_defaults.class_, CppClassBindFacet)
         self.assertIsInstance(class_template_defaults.method, CppMethodBindFacet)
         self.assertIsInstance(class_template_defaults.constructor, CppConstructorBindFacet)
-        self.assertIsInstance(class_template_defaults.field, CppFieldBindFacet)
+        self.assertIsInstance(class_template_defaults.variable, CppVariableBindFacet)
+        self.assertIsInstance(class_template_defaults.static_variable, CppVariableBindFacet)
         self.assertIsInstance(class_template_defaults.enum, CppEnumBindFacet)
         self.assertIsInstance(function_template_defaults.instance, CppFunctionBindFacet)
 
@@ -1023,7 +1039,7 @@ class ModelScaffoldTest(unittest.TestCase):
         cls = make_class(name="Widget")
         function = CppFunction(name="make_widget")
         method = CppMethod(name="size")
-        field = CppField(name="size")
+        variable = CppVariable(name="size")
         enum_ = CppEnum(name="Kind")
         enumerator = CppEnumerator(name="primary")
 
@@ -1031,7 +1047,7 @@ class ModelScaffoldTest(unittest.TestCase):
         cls.bind.active = True
         function.bind.active = False
         method.bind.active = True
-        field.bind.active = False
+        variable.bind.active = False
         enum_.bind.active = True
         enumerator.bind.active = False
 
@@ -1039,7 +1055,7 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertTrue(cls.bind.active)
         self.assertFalse(function.bind.active)
         self.assertTrue(method.bind.active)
-        self.assertFalse(field.bind.active)
+        self.assertFalse(variable.bind.active)
         self.assertTrue(enum_.bind.active)
         self.assertFalse(enumerator.bind.active)
 

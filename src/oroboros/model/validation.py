@@ -106,7 +106,6 @@ def _root_access_path(root: CppElement) -> str:
         "CppConstructor": "constructor",
         "CppEnum": "enum_",
         "CppEnumerator": "enumerator",
-        "CppField": "field",
         "CppFunction": "function",
         "CppFunctionTemplate": "function_template",
         "CppFunctionTemplateDeclaration": "function_template_declaration",
@@ -115,6 +114,7 @@ def _root_access_path(root: CppElement) -> str:
         "CppModule": "module",
         "CppNamespace": "namespace",
         "CppParameter": "parameter",
+        "CppVariable": "variable",
     }
     return root_names.get(type(root).__name__, "root")
 
@@ -335,7 +335,8 @@ def _validate_duplicate_child_names(
         "classes",
         "class_templates",
         "enums",
-        "fields",
+        "variables",
+        "static_variables",
         "aliases",
         "enumerators",
     ]
@@ -379,7 +380,7 @@ def _validate_owner_kind(
     """Validate that selected element kinds appear only under valid owners."""
 
     from .alias import CppAlias
-    from .class_ import CppClassMembers, CppField
+    from .class_ import CppClassMembers
     from .enum import CppEnumerator
     from .function import CppFunction, CppParameter
     from .function_template import (
@@ -395,6 +396,7 @@ def _validate_owner_kind(
         CppClassTemplateDeclaration,
         CppClassTemplateInstance,
     )
+    from .variable import CppVariable
 
     owner = element.owner
     if owner is None:
@@ -427,13 +429,19 @@ def _validate_owner_kind(
             f"by function-like declarations."
         )
 
-    if isinstance(element, (CppMethod, CppConstructor, CppField)) and not isinstance(
-        owner,
-        CppClassMembers,
-    ):
+    if isinstance(element, (CppMethod, CppConstructor)) and not isinstance(owner, CppClassMembers):
         errors.append(
             f"{path} is owned by {owner._describe_element()}, but this member kind must be "
             f"owned by a class-like declaration."
+        )
+
+    if isinstance(element, CppVariable) and not isinstance(
+        owner,
+        (CppModule, CppNamespace, CppClassMembers),
+    ):
+        errors.append(
+            f"{path} is owned by {owner._describe_element()}, but variables must be owned by "
+            f"the module root, a namespace, or a class-like declaration."
         )
 
     if isinstance(element, CppEnumerator) and not isinstance(owner, CppEnum):
