@@ -201,6 +201,7 @@ def process_function_cursor(
             register_element_for_cursor=register_element_for_cursor,
         )
         visit_non_parameter_children(child_cursors, existing, context)
+        apply_parameter_docs(existing)
         return
 
     function = CppFunction(name=cursor.spelling, cpp=candidate_cpp)
@@ -208,6 +209,7 @@ def process_function_cursor(
     if attached is not None:
         register_element_for_cursor(cursor, attached, context)
         _visit_children(cursor.get_children(), attached, context)
+        apply_parameter_docs(attached)
 
 
 def process_alias_cursor(
@@ -277,6 +279,7 @@ def process_function_template_cursor(
             register_element_for_cursor=register_element_for_cursor,
         )
         visit_non_template_parameter_children(child_cursors, declaration, context)
+        apply_parameter_docs(declaration)
         return
 
     template = CppFunctionTemplate(
@@ -294,6 +297,7 @@ def process_function_template_cursor(
             attached.declaration,
             context,
         )
+        apply_parameter_docs(attached.declaration)
 
 
 def process_constructor_cursor(
@@ -319,6 +323,7 @@ def process_constructor_cursor(
             register_element_for_cursor=register_element_for_cursor,
         )
         visit_non_parameter_children(child_cursors, existing, context)
+        apply_parameter_docs(existing)
         return
 
     constructor = CppConstructor(name=constructor_name, cpp=candidate_cpp)
@@ -326,6 +331,7 @@ def process_constructor_cursor(
     if attached is not None:
         register_element_for_cursor(cursor, attached, context)
         _visit_children(cursor.get_children(), attached, context)
+        apply_parameter_docs(attached)
 
 
 def process_templated_constructor_cursor(
@@ -359,6 +365,7 @@ def process_templated_constructor_cursor(
             register_element_for_cursor=register_element_for_cursor,
         )
         visit_non_parameter_children(child_cursors, existing, context)
+        apply_parameter_docs(existing)
         return
 
     constructor = CppConstructor(
@@ -369,6 +376,7 @@ def process_templated_constructor_cursor(
     if attached is not None:
         register_element_for_cursor(template_cursor, attached, context)
         _visit_children(template_cursor.get_children(), attached, context)
+        apply_parameter_docs(attached)
 
 
 def process_method_cursor(
@@ -404,6 +412,7 @@ def process_method_cursor(
             register_element_for_cursor=register_element_for_cursor,
         )
         visit_non_parameter_children(child_cursors, existing, context)
+        apply_parameter_docs(existing)
         return
 
     method = CppMethod(name=cursor.spelling, cpp=candidate_cpp)
@@ -411,6 +420,7 @@ def process_method_cursor(
     if attached is not None:
         register_element_for_cursor(cursor, attached, context)
         _visit_children(cursor.get_children(), attached, context)
+        apply_parameter_docs(attached)
 
 
 def process_field_cursor(
@@ -499,6 +509,22 @@ def visit_non_parameter_children(
         if getattr(child_cursor, "kind", None) == CursorKind.PARM_DECL:
             continue
         _visit_cursor(child_cursor, owner, context)
+
+
+def apply_parameter_docs(callable_element: Any) -> None:
+    """Copy callable-level parameter docs onto the owned parameter nodes."""
+
+    cpp_doc = getattr(getattr(callable_element, "cpp", None), "doc", None)
+    parameters = getattr(callable_element, "parameters", None)
+    if cpp_doc is None or parameters is None:
+        return
+
+    parameter_docs = getattr(cpp_doc, "parameters", {})
+    for parameter in parameters:
+        if not parameter.name:
+            parameter.cpp.doc = None
+            continue
+        parameter.cpp.doc = parameter_docs.get(parameter.name)
 
 
 # ==================================================================================================

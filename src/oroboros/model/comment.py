@@ -17,7 +17,10 @@ class CppDoc:
     brief: str | None = None
     description: str | None = None
     parameters: dict[str, str] = field(default_factory=dict)
+    template_parameters: dict[str, str] = field(default_factory=dict)
     returns: str | None = None
+    return_values: dict[str, str] = field(default_factory=dict)
+    deprecated: str | None = None
     notes: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     see_also: list[str] = field(default_factory=list)
@@ -30,7 +33,10 @@ class PyDoc:
     summary: str | None = None
     description: str | None = None
     parameters: dict[str, str] = field(default_factory=dict)
+    template_parameters: dict[str, str] = field(default_factory=dict)
     returns: str | None = None
+    return_values: dict[str, str] = field(default_factory=dict)
+    deprecated: str | None = None
     notes: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     see_also: list[str] = field(default_factory=list)
@@ -46,7 +52,10 @@ def build_py_doc_from_cpp_doc(cpp_doc: CppDoc | None) -> PyDoc | None:
         summary=cpp_doc.brief,
         description=cpp_doc.description,
         parameters=dict(cpp_doc.parameters),
+        template_parameters=dict(cpp_doc.template_parameters),
         returns=cpp_doc.returns,
+        return_values=dict(cpp_doc.return_values),
+        deprecated=cpp_doc.deprecated,
         notes=list(cpp_doc.notes),
         warnings=list(cpp_doc.warnings),
         see_also=list(cpp_doc.see_also),

@@ -87,9 +87,7 @@ def build_clang_arguments(config: ParserConfig) -> list[str]:
     arguments: list[str] = []
 
     arguments.append(f"-x{config.language}")
-
-    if config.parse_all_comments:
-        arguments.append("-fparse-all-comments")
+    arguments.append("-fparse-all-comments")
 
     if config.cxx_standard is not None:
         arguments.append(f"-std={config.cxx_standard}")

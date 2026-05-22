@@ -979,9 +979,73 @@ class ParseBuildTest(unittest.TestCase):
             build_result.module.declarations.functions[0].cpp.comment,
             "/// Create one widget from the current demo factory state.",
         )
+        self.assertEqual(
+            build_result.module.declarations.functions[0].cpp.doc.brief,
+            "Create one widget from the current demo factory state.",
+        )
         self.assertTrue(
             any("Conflicting parsed comments" in warning for warning in build_result.warnings)
         )
+
+    def test_build_module_from_clang_recomputes_structured_doc_after_comment_merge(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        translation_unit = SimpleNamespace(
+            cursor=_fake_cursor(
+                "TRANSLATION_UNIT",
+                "",
+                file=active_header,
+                children=[
+                    _fake_cursor(
+                        "FUNCTION_DECL",
+                        "make_widget",
+                        file=active_header,
+                        usr="c:@F@make_widget#I#",
+                        children=[
+                            _fake_cursor(
+                                "PARM_DECL",
+                                "value",
+                                file=active_header,
+                                usr="c:@F@make_widget#I#@value",
+                            )
+                        ],
+                        raw_comment="""
+/**
+ * Forward declaration docs.
+ * @param value Value from the forward declaration.
+ */
+""",
+                    ),
+                    _fake_cursor(
+                        "FUNCTION_DECL",
+                        "make_widget",
+                        file=active_header,
+                        usr="c:@F@make_widget#I#",
+                        children=[
+                            _fake_cursor(
+                                "PARM_DECL",
+                                "value",
+                                file=active_header,
+                                usr="c:@F@make_widget#I#@value",
+                            )
+                        ],
+                        raw_comment="""
+/**
+ * Build one widget from the current state.
+ * @param value Value from the definition.
+ * @return One widget.
+ */
+""",
+                    ),
+                ],
+            )
+        )
+
+        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
+
+        function = build_result.module.declarations.functions[0]
+        self.assertEqual(function.cpp.doc.brief, "Build one widget from the current state.")
+        self.assertEqual(function.cpp.doc.parameters["value"], "Value from the definition.")
+        self.assertEqual(function.cpp.doc.returns, "One widget.")
 
 
 class ParseTypesTest(unittest.TestCase):

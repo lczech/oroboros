@@ -9,6 +9,7 @@ from clang.cindex import CursorKind
 from ..model import CppElement
 from ..model.type import cpp_types_equivalent
 from .build_facets import build_parameter_cpp_facet
+from .comments import parse_cpp_doc
 from .cursor_data import cursor_is_from_active_header, cursor_kind_name, cursor_source_location
 
 if TYPE_CHECKING:
@@ -42,6 +43,8 @@ def merge_common_cpp_fields(
             cursor=cursor,
         )
         setattr(element.cpp, comment_field_name, merged_comment)
+        if hasattr(element.cpp, "doc"):
+            element.cpp.doc = parse_cpp_doc(merged_comment)
 
 
 def merge_cpp_scalar(

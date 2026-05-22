@@ -1454,9 +1454,12 @@ class ModelScaffoldTest(unittest.TestCase):
     def test_build_py_doc_from_cpp_doc_copies_nested_data(self) -> None:
         cpp_doc = CppDoc(
             brief="Create a widget.",
-            description="Build a widget from one integer seed.",
+            description="Build a widget from one integer seed.\n\n```cpp\nWidget widget;\n```",
             parameters={"seed": "Seed value used by the constructor."},
+            template_parameters={"Factory": "Factory type used by the builder."},
             returns="A new widget instance.",
+            return_values={"true": "A widget was created successfully."},
+            deprecated="Prefer create_widget_v2().",
             notes=["This is only an example."],
             warnings=["Do not pass negative values."],
             see_also=["demo::Widget"],
@@ -1466,11 +1469,34 @@ class ModelScaffoldTest(unittest.TestCase):
 
         self.assertIsNotNone(py_doc)
         self.assertEqual(py_doc.summary, "Create a widget.")
+        self.assertEqual(
+            py_doc.description,
+            "Build a widget from one integer seed.\n\n```cpp\nWidget widget;\n```",
+        )
         self.assertEqual(py_doc.parameters["seed"], "Seed value used by the constructor.")
+        self.assertEqual(
+            py_doc.template_parameters["Factory"],
+            "Factory type used by the builder.",
+        )
+        self.assertEqual(
+            py_doc.return_values["true"],
+            "A widget was created successfully.",
+        )
+        self.assertEqual(py_doc.deprecated, "Prefer create_widget_v2().")
 
         cpp_doc.parameters["seed"] = "Changed"
+        cpp_doc.template_parameters["Factory"] = "Changed"
+        cpp_doc.return_values["true"] = "Changed"
         cpp_doc.notes.append("Changed")
         self.assertEqual(py_doc.parameters["seed"], "Seed value used by the constructor.")
+        self.assertEqual(
+            py_doc.template_parameters["Factory"],
+            "Factory type used by the builder.",
+        )
+        self.assertEqual(
+            py_doc.return_values["true"],
+            "A widget was created successfully.",
+        )
         self.assertEqual(py_doc.notes, ["This is only an example."])
 
     def test_named_cpp_type_renders_const_qualified_names(self) -> None:
