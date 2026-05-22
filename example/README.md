@@ -31,9 +31,9 @@ This directory contains the mythology-themed `cosmos` example library and a tiny
 PYTHONPATH=src python3 example/python/generate.py
 ```
 
-This updates `example/python/active_headers.hpp`, then feeds the currently active
-concrete headers into `oroboros.parse_headers(...)` and prints the resulting
-semantic tree plus any clang diagnostics.
+This updates `example/python/active_headers.hpp`, then feeds the resulting
+`HeaderSelection` into `oroboros.parse_header_selection(...)` and prints the
+resulting semantic tree plus any clang diagnostics.
 
 The command expects a working `clang.cindex` Python setup. In practice that
 means installing the `clang` Python package and making sure `libclang` itself is

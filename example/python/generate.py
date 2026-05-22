@@ -7,9 +7,10 @@ import sys
 
 from oroboros import (
     HeaderFile,
+    HeaderSelection,
     ParserConfig,
     find_included_headers,
-    parse_headers,
+    parse_header_selection,
     print_update_report,
     update_activation_header,
 )
@@ -33,18 +34,15 @@ def _discover_parser_inventory(header_dir: Path, root_header: Path) -> list[Head
 def main() -> int:
     """Update the activation header and run the current parser on the example."""
 
-    repo_root = Path("/home/lucas/Dropbox/GitHub/genesis/lib")
-    header_dir = repo_root
-    root_header = header_dir / "genesis" / "genesis.hpp"
-    activation_header = header_dir / "genesis" / "active_headers.hpp"
-    # repo_root = Path(__file__).resolve().parents[2]
-    # header_dir = repo_root / "example" / "inc"
-    # root_header = header_dir / "cosmos" / "cosmos.hpp"
-    # activation_header = repo_root / "example" / "python" / "active_headers.hpp"
+    # Path setup for the example.
+    repo_root = Path(__file__).resolve().parents[2]
+    header_dir = repo_root / "example" / "inc"
+    root_header = header_dir / "cosmos" / "cosmos.hpp"
+    activation_header = repo_root / "example" / "python" / "active_headers.hpp"
 
     # Exclude the umbrella header for now: the current parser does not yet merge
     # redeclarations from both the umbrella include and the concrete headers.
-    header_files = find_included_headers(header_dir, root_header)
+    header_files = _discover_parser_inventory(header_dir, root_header)
     update_result = update_activation_header(
         header_files,
         activation_header,
@@ -75,8 +73,8 @@ def main() -> int:
             include_dirs=[header_dir],
             cxx_standard="c++20",
         )
-        parse_result = parse_headers(
-            active_headers,
+        parse_result = parse_header_selection(
+            HeaderSelection(update_result.header_files),
             parser_config,
         )
     except RuntimeError as error:
