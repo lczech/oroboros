@@ -89,16 +89,16 @@ def build_class_cpp_facet(
     )
 
 
-def build_class_template_decl_cpp_facet(
+def build_class_template_declaration_cpp_facet(
     cursor: Any,
     *,
     context: BuildContext | None = None,
 ) -> Any:
     """Build one parsed generic class-template declaration facet."""
 
-    from ..model import CppClassTemplateDeclCppFacet
+    from ..model import CppClassTemplateDeclarationCppFacet
 
-    return CppClassTemplateDeclCppFacet(
+    return CppClassTemplateDeclarationCppFacet(
         original_name=cursor.spelling or None,
         location=build_location_info(cursor),
         comment=cursor_raw_comment(cursor),
@@ -169,16 +169,16 @@ def build_function_cpp_facet(
     )
 
 
-def build_function_template_decl_cpp_facet(
+def build_function_template_declaration_cpp_facet(
     cursor: Any,
     *,
     context: BuildContext | None = None,
 ) -> Any:
     """Build one parsed generic function-template declaration facet."""
 
-    from ..model import CppFunctionTemplateDeclCppFacet
+    from ..model import CppFunctionTemplateDeclarationCppFacet
 
-    return CppFunctionTemplateDeclCppFacet(
+    return CppFunctionTemplateDeclarationCppFacet(
         original_name=cursor.spelling or None,
         return_type=build_cpp_type(
             getattr(cursor, "result_type", None),

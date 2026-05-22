@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(slots=True)
-class CppClassTemplateDeclCppFacet(CppClassCppFacet):
+class CppClassTemplateDeclarationCppFacet(CppClassCppFacet):
     """Store parsed C++ details for one generic class template declaration."""
 
     template_parameters: list[CppTemplateParameter] = dataclass_field(default_factory=list)
@@ -81,11 +81,13 @@ def _make_enum_bind_facet() -> "CppEnumBindFacet":
 
 
 @dataclass(slots=True)
-class CppClassTemplateDecl(CppClassMembers):
+class CppClassTemplateDeclaration(CppClassMembers):
     """Represent one generic class template declaration without binding state."""
 
     # Parsed C++ details for the generic class template declaration.
-    cpp: CppClassTemplateDeclCppFacet = dataclass_field(default_factory=CppClassTemplateDeclCppFacet)
+    cpp: CppClassTemplateDeclarationCppFacet = dataclass_field(
+        default_factory=CppClassTemplateDeclarationCppFacet
+    )
 
 
 @dataclass(slots=True)
@@ -109,7 +111,7 @@ class CppClassTemplate(CppElement):
     # Binding policy attached to this template family wrapper itself.
     bind: CppTemplateBindFacet = dataclass_field(default_factory=CppTemplateBindFacet)
     # Parsed generic class template declaration, including observed instances.
-    declaration: CppClassTemplateDecl | None = None
+    declaration: CppClassTemplateDeclaration | None = None
     # Selected concrete instantiations to bind for this template family.
     instances: list[CppClassTemplateInstance] = dataclass_field(default_factory=list)
     # Defaults applied to selected instances and their descendants.
@@ -135,7 +137,7 @@ class CppClassTemplate(CppElement):
 
         declaration = self.declaration
         if declaration is None:
-            declaration = CppClassTemplateDecl(name=self.name)
+            declaration = CppClassTemplateDeclaration(name=self.name)
         _synchronize_template_name(self, declaration)
         self.declaration = declaration
 

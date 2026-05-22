@@ -11,7 +11,7 @@ from ..model import (
     CppClass,
     CppClassMembers,
     CppClassTemplate,
-    CppClassTemplateDecl,
+    CppClassTemplateDeclaration,
     CppConstructor,
     CppElement,
     CppEnum,
@@ -19,7 +19,7 @@ from ..model import (
     CppField,
     CppFunction,
     CppFunctionTemplate,
-    CppFunctionTemplateDecl,
+    CppFunctionTemplateDeclaration,
     CppMethod,
     CppParameter,
 )
@@ -27,13 +27,13 @@ from ..model.type import cpp_types_equivalent
 from .build_facets import (
     build_alias_cpp_facet,
     build_class_cpp_facet,
-    build_class_template_decl_cpp_facet,
+    build_class_template_declaration_cpp_facet,
     build_constructor_cpp_facet,
     build_enum_cpp_facet,
     build_enumerator_cpp_facet,
     build_field_cpp_facet,
     build_function_cpp_facet,
-    build_function_template_decl_cpp_facet,
+    build_function_template_declaration_cpp_facet,
     build_method_cpp_facet,
     build_parameter_cpp_facet,
 )
@@ -119,7 +119,7 @@ def process_class_template_cursor(
 ) -> None:
     """Create or enrich one class-template family and recurse into its declaration."""
 
-    candidate_cpp = build_class_template_decl_cpp_facet(cursor, context=context)
+    candidate_cpp = build_class_template_declaration_cpp_facet(cursor, context=context)
     existing = lookup_registered_element(cursor, context, CppClassTemplate)
     if existing is not None:
         declaration = existing.declaration
@@ -139,7 +139,7 @@ def process_class_template_cursor(
 
     template = CppClassTemplate(
         name=cursor.spelling,
-        declaration=CppClassTemplateDecl(
+        declaration=CppClassTemplateDeclaration(
             name=cursor.spelling,
             cpp=candidate_cpp,
         ),
@@ -246,7 +246,7 @@ def process_function_template_cursor(
         )
         return
 
-    candidate_cpp = build_function_template_decl_cpp_facet(cursor, context=context)
+    candidate_cpp = build_function_template_declaration_cpp_facet(cursor, context=context)
     existing = lookup_registered_element(cursor, context, CppFunctionTemplate)
     if existing is not None:
         declaration = existing.declaration
@@ -281,7 +281,7 @@ def process_function_template_cursor(
 
     template = CppFunctionTemplate(
         name=cursor.spelling,
-        declaration=CppFunctionTemplateDecl(
+        declaration=CppFunctionTemplateDeclaration(
             name=cursor.spelling,
             cpp=candidate_cpp,
         ),

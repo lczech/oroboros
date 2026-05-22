@@ -362,8 +362,8 @@ def _template_parameter_shape_key(parameter: CppTemplateParameter) -> tuple[obje
 
 from .class_template import (  # noqa: E402
     CppClassTemplate,
-    CppClassTemplateDecl,
-    CppClassTemplateDeclCppFacet,
+    CppClassTemplateDeclaration,
+    CppClassTemplateDeclarationCppFacet,
     CppClassTemplateDefaults,
     CppClassTemplateInstance,
     CppClassTemplateInstanceCppFacet,
@@ -371,8 +371,8 @@ from .class_template import (  # noqa: E402
 )
 from .function_template import (  # noqa: E402
     CppFunctionTemplate,
-    CppFunctionTemplateDecl,
-    CppFunctionTemplateDeclCppFacet,
+    CppFunctionTemplateDeclaration,
+    CppFunctionTemplateDeclarationCppFacet,
     CppFunctionTemplateDefaults,
     CppFunctionTemplateInstance,
     CppFunctionTemplateInstanceCppFacet,

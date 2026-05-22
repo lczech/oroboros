@@ -13,7 +13,7 @@ from oroboros.model import (
     CppClassDeclarations,
     CppClassDefaults,
     CppClassTemplate,
-    CppClassTemplateDecl,
+    CppClassTemplateDeclaration,
     CppClassTemplateDefaults,
     CppClassTemplateInstance,
     CppConstructor,
@@ -40,7 +40,7 @@ from oroboros.model import (
     CppOperator,
     CppOperatorBind,
     CppParameter,
-    CppFunctionTemplateDecl,
+    CppFunctionTemplateDeclaration,
     CppFunctionTemplateDefaults,
     CppLocationInfo,
     CppParameterCppFacet,
@@ -95,11 +95,11 @@ def make_class(*, declarations: CppClassDeclarations | None = None, **kwargs) ->
     return CppClass(declarations=declaration_container, **kwargs)
 
 
-def make_class_template_decl(
+def make_class_template_declaration(
     *,
     declarations: CppClassDeclarations | None = None,
     **kwargs,
-) -> CppClassTemplateDecl:
+) -> CppClassTemplateDeclaration:
     """Build one class-template declaration with direct declaration-list keyword arguments."""
 
     declaration_kwargs = {}
@@ -120,7 +120,7 @@ def make_class_template_decl(
     for key, value in declaration_kwargs.items():
         setattr(declaration_container, key, list(value))
 
-    return CppClassTemplateDecl(declarations=declaration_container, **kwargs)
+    return CppClassTemplateDeclaration(declarations=declaration_container, **kwargs)
 
 
 def make_namespace(*, declarations: CppScopeDeclarations | None = None, **kwargs) -> CppNamespace:
@@ -1098,7 +1098,7 @@ class ModelScaffoldTest(unittest.TestCase):
         )
         class_template = CppClassTemplate(
             name="Vector",
-            declaration=make_class_template_decl(
+            declaration=make_class_template_declaration(
                 name="Vector",
                 function_templates=[inner_function_template],
             ),

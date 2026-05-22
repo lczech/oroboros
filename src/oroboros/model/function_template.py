@@ -23,7 +23,7 @@ from .template_ import (
 
 
 @dataclass(slots=True)
-class CppFunctionTemplateDeclCppFacet(CppFunctionCppFacet):
+class CppFunctionTemplateDeclarationCppFacet(CppFunctionCppFacet):
     """Store parsed C++ details for one generic function template declaration."""
 
     template_parameters: list[CppTemplateParameter] = dataclass_field(default_factory=list)
@@ -55,11 +55,13 @@ class CppFunctionTemplateDefaults:
 
 
 @dataclass(slots=True)
-class CppFunctionTemplateDecl(CppElement):
+class CppFunctionTemplateDeclaration(CppElement):
     """Represent one generic function template declaration without binding state."""
 
     # Parsed C++ details for the generic function template declaration.
-    cpp: CppFunctionTemplateDeclCppFacet = dataclass_field(default_factory=CppFunctionTemplateDeclCppFacet)
+    cpp: CppFunctionTemplateDeclarationCppFacet = dataclass_field(
+        default_factory=CppFunctionTemplateDeclarationCppFacet
+    )
     # Parameters declared directly on this generic function template declaration.
     parameters: list[CppParameter] = dataclass_field(default_factory=list)
 
@@ -93,7 +95,7 @@ class CppFunctionTemplate(CppElement):
     # Binding policy attached to this template family wrapper itself.
     bind: CppTemplateBindFacet = dataclass_field(default_factory=CppTemplateBindFacet)
     # Parsed generic function template declaration, including observed instances.
-    declaration: CppFunctionTemplateDecl | None = None
+    declaration: CppFunctionTemplateDeclaration | None = None
     # Selected concrete instantiations to bind for this template family.
     instances: list[CppFunctionTemplateInstance] = dataclass_field(default_factory=list)
     # Defaults applied to selected instances of this template family.
@@ -119,7 +121,7 @@ class CppFunctionTemplate(CppElement):
 
         declaration = self.declaration
         if declaration is None:
-            declaration = CppFunctionTemplateDecl(name=self.name)
+            declaration = CppFunctionTemplateDeclaration(name=self.name)
         _synchronize_template_name(self, declaration)
         self.declaration = declaration
 

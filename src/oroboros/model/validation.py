@@ -359,13 +359,17 @@ def _validate_owner_kind(
     from .function import CppFunction, CppParameter
     from .function_template import (
         CppFunctionTemplate,
-        CppFunctionTemplateDecl,
+        CppFunctionTemplateDeclaration,
         CppFunctionTemplateInstance,
     )
     from .module import CppModule
     from .member import CppConstructor, CppMethod
     from .namespace import CppNamespace
-    from .class_template import CppClassTemplate, CppClassTemplateDecl, CppClassTemplateInstance
+    from .class_template import (
+        CppClassTemplate,
+        CppClassTemplateDeclaration,
+        CppClassTemplateInstance,
+    )
 
     owner = element.owner
     if owner is None:
@@ -391,7 +395,7 @@ def _validate_owner_kind(
 
     if isinstance(element, CppParameter) and not isinstance(
         owner,
-        (CppFunction, CppMethod, CppConstructor, CppFunctionTemplateDecl),
+        (CppFunction, CppMethod, CppConstructor, CppFunctionTemplateDeclaration),
     ):
         errors.append(
             f"{path} is owned by {owner._describe_element()}, but parameters must be owned "
@@ -434,7 +438,7 @@ def _validate_owner_kind(
             f"owned by the module root, a namespace, or a class-like declaration."
         )
 
-    if isinstance(element, CppClassTemplateDecl) and not isinstance(owner, CppClassTemplate):
+    if isinstance(element, CppClassTemplateDeclaration) and not isinstance(owner, CppClassTemplate):
         errors.append(
             f"{path} is owned by {owner._describe_element()}, but class-template declarations "
             f"must be owned by class-template families."
@@ -446,7 +450,7 @@ def _validate_owner_kind(
             f"must be owned by class-template families."
         )
 
-    if isinstance(element, CppFunctionTemplateDecl) and not isinstance(owner, CppFunctionTemplate):
+    if isinstance(element, CppFunctionTemplateDeclaration) and not isinstance(owner, CppFunctionTemplate):
         errors.append(
             f"{path} is owned by {owner._describe_element()}, but function-template declarations "
             f"must be owned by function-template families."
@@ -490,7 +494,7 @@ def _validate_method_like_flags(
     """Validate method-like flag invariants for class member callables."""
 
     from .class_ import CppClassMembers
-    from .function_template import CppFunctionTemplateDecl, CppFunctionTemplateInstance
+    from .function_template import CppFunctionTemplateDeclaration, CppFunctionTemplateInstance
     from .member import CppMethod
 
     cpp_facet = getattr(element, "cpp", None)
@@ -500,7 +504,10 @@ def _validate_method_like_flags(
     if not hasattr(cpp_facet, "is_virtual"):
         return
 
-    if not isinstance(element, (CppMethod, CppFunctionTemplateDecl, CppFunctionTemplateInstance)):
+    if not isinstance(
+        element,
+        (CppMethod, CppFunctionTemplateDeclaration, CppFunctionTemplateInstance),
+    ):
         return
 
     owner = element.owner
@@ -822,7 +829,7 @@ def _is_valid_named_type_declaration(declaration: CppElement) -> bool:
     """Check whether one declaration element may be referenced by a named type."""
 
     from .alias import CppAlias
-    from .class_template import CppClassTemplateDecl, CppClassTemplateInstance
+    from .class_template import CppClassTemplateDeclaration, CppClassTemplateInstance
 
     return isinstance(
         declaration,
@@ -830,7 +837,7 @@ def _is_valid_named_type_declaration(declaration: CppElement) -> bool:
             CppAlias,
             CppClass,
             CppEnum,
-            CppClassTemplateDecl,
+            CppClassTemplateDeclaration,
             CppClassTemplateInstance,
         ),
     )
