@@ -14,6 +14,7 @@ namespace cosmos::beings {
 /** A mortal with a vocation and a year of birth. */
 class Mortal {
 public:
+    /** The public set of mortal vocations used by the example parser. */
     enum class Vocation {
         farmer,
         philosopher,
@@ -88,14 +89,21 @@ public:
     Oracle();
     explicit Oracle(std::string sanctuary);
 
+    /**
+     * @brief Return the sanctuary name.
+     *
+     * Example usage:
+     *
+     *     oracle.sanctuary();
+     */
     const std::string& sanctuary() const;
     void set_sanctuary(std::string sanctuary);
     types::OmenKind last_omen() const;
     void set_last_omen(types::OmenKind omen);
 
 private:
-    std::string sanctuary_ {"Delphi"};
-    types::OmenKind last_omen_ {types::omen_blessing};
+    std::string sanctuary_ {"Delphi"};           ///< Remembered sanctuary name.
+    types::OmenKind last_omen_ {types::omen_blessing};  ///< Most recent omen.
 };
 
 }  // namespace cosmos::beings

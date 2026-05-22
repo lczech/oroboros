@@ -29,7 +29,7 @@ def ensure_namespace(
 ) -> CppNamespace | None:
     """Return one existing or newly created namespace for one parser cursor."""
 
-    candidate_cpp = build_namespace_cpp_facet(cursor)
+    candidate_cpp = build_namespace_cpp_facet(cursor, context=context)
     existing = lookup_registered_element(cursor, context, CppNamespace)
     if existing is not None:
         merge_common_cpp_fields(existing, candidate_cpp, context, cursor)

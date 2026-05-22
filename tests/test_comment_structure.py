@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from oroboros.parse.comments import parse_cpp_doc
+from oroboros.parse.comment_structure import parse_cpp_doc
 
 
 class ParseCommentsTest(unittest.TestCase):

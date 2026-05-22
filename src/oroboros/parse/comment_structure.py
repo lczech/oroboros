@@ -1,6 +1,19 @@
 from __future__ import annotations
 
-"""Normalize clang-attached raw comments into structured documentation."""
+"""Normalize one raw attached comment block into a structured ``CppDoc``.
+
+This module assumes comment attachment has already been decided elsewhere. Its job
+is to take one raw comment string, strip comment delimiters, normalize indentation,
+recognize common Doxygen or Qt-style tags, and convert the result into the
+structured documentation model used by Oroboros.
+
+Known structural tags such as ``@brief``, ``@param``, ``@return``, ``@tparam``,
+``@note``, and related variants are parsed into dedicated ``CppDoc`` fields. Plain
+prose comments are split into brief and description paragraphs best-effort, and
+unknown tags are preserved in the normalized prose instead of being discarded.
+Inline markup and code blocks are also rendered into a Python-doc-friendly Markdown
+style so later translation can reuse that normalized text directly.
+"""
 
 from collections.abc import Iterable
 import re
@@ -34,6 +47,11 @@ _REF_RE = re.compile(r"(?P<prefix>\s|^)[@\\]ref\s+(?P<target>\S+)")
 _INLINE_CODE_RE = re.compile(r"(?P<prefix>\s|^)[@\\][cp]\s+(?P<target>\S+)")
 
 
+# ==================================================================================================
+#     Public API
+# ==================================================================================================
+
+
 def parse_cpp_doc(raw_comment: str | None) -> CppDoc | None:
     """Parse one clang-attached raw comment block into structured documentation."""
 
@@ -45,6 +63,59 @@ def parse_cpp_doc(raw_comment: str | None) -> CppDoc | None:
         return None
 
     return _parse_doc_sections(normalized_lines)
+
+
+def comment_preference_key(raw_comment: str | None) -> tuple[int, int, int]:
+    """Return one sortable preference key for choosing between raw comment blocks."""
+
+    if raw_comment is None:
+        return (0, 0, 0)
+
+    stripped = raw_comment.strip()
+    syntax_rank = _comment_syntax_rank(stripped)
+    cpp_doc = parse_cpp_doc(raw_comment)
+    structure_rank = _structured_doc_rank(cpp_doc)
+    return (syntax_rank, structure_rank, len(stripped))
+
+
+# ==================================================================================================
+#     Comment Preference Ranking
+# ==================================================================================================
+
+
+def _comment_syntax_rank(raw_comment: str) -> int:
+    """Return one coarse syntax-based documentation preference rank."""
+
+    if raw_comment.startswith(("/**", "/*!", "///", "//!")):
+        return 3
+    if raw_comment.startswith("/*"):
+        return 2
+    if raw_comment.startswith("//"):
+        return 1
+    return 0
+
+
+def _structured_doc_rank(cpp_doc: CppDoc | None) -> int:
+    """Return one structured-content score for a parsed documentation block."""
+
+    if cpp_doc is None:
+        return 0
+
+    return (
+        len(cpp_doc.parameters)
+        + len(cpp_doc.template_parameters)
+        + len(cpp_doc.return_values)
+        + len(cpp_doc.notes)
+        + len(cpp_doc.warnings)
+        + len(cpp_doc.see_also)
+        + int(cpp_doc.returns is not None)
+        + int(cpp_doc.deprecated is not None)
+    )
+
+
+# ==================================================================================================
+#     Delimiter Stripping And Line Normalization
+# ==================================================================================================
 
 
 def _strip_comment_delimiters(raw_comment: str) -> list[str]:
@@ -108,6 +179,11 @@ def _normalize_comment_lines(lines: Iterable[str]) -> list[str]:
         ]
 
     return [line.rstrip() for line in normalized]
+
+
+# ==================================================================================================
+#     Structured Tag Parsing
+# ==================================================================================================
 
 
 def _parse_doc_sections(lines: list[str]) -> CppDoc:
@@ -217,6 +293,11 @@ def _record_named_doc(target: dict[str, str], content: str, *, allow_annotations
     target[name] = body
 
 
+# ==================================================================================================
+#     Paragraph And Section Helpers
+# ==================================================================================================
+
+
 def _collapse_lines(lines: list[str]) -> str | None:
     """Collapse one line sequence into paragraph-preserving prose."""
 
@@ -269,6 +350,11 @@ def _join_sections(sections: list[str]) -> str | None:
     if not filtered:
         return None
     return "\n\n".join(filtered)
+
+
+# ==================================================================================================
+#     Inline Markup And Code Blocks
+# ==================================================================================================
 
 
 def _normalize_inline_markup(text: str) -> str:
@@ -338,6 +424,11 @@ def _normalize_embedded_code_blocks(lines: list[str]) -> list[str]:
     return normalized
 
 
+# ==================================================================================================
+#     Code Block Detection
+# ==================================================================================================
+
+
 def _can_start_indented_code_block(normalized: list[str], line: str) -> bool:
     """Return whether one line should start a Markdown-style indented code block."""
 
@@ -379,6 +470,11 @@ def _leading_indent_width(line: str) -> int:
             continue
         break
     return width
+
+
+# ==================================================================================================
+#     Inline Markup Rendering
+# ==================================================================================================
 
 
 def _replace_link_block(match: re.Match[str]) -> str:

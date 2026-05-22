@@ -56,6 +56,6 @@ class ParserConfig:
     # ------------------------------------------------------------------------------
 
     # How to resolve conflicting comment text across repeated declarations.
-    comment_conflict_policy: Literal["longer", "first", "last", "append"] = "longer"
+    comment_conflict_policy: Literal["structured", "longer", "first", "last", "append"] = "structured"
     # Whether to validate the resulting semantic model before returning it.
     validate_model: bool = True

@@ -44,9 +44,6 @@ prioritized engineering work here.
 
 ### Still missing or incomplete
 
-- Normalized comment and documentation parsing.
-  Raw comment blocks are already preserved, but they still need to be parsed
-  into the richer documentation model and parameter-doc fields.
 - Unsupported libclang declaration kinds that should be tracked explicitly.
   The current walker materializes namespaces, classes/structs, enums,
   aliases/typedefs, free functions, methods, constructors, variables,
@@ -57,7 +54,6 @@ prioritized engineering work here.
   - `UNION_DECL`
 - Alias templates.
 - Destructors.
-- Static or free variables and constants.
 - Unions.
 - Richer exception specifications beyond `is_noexcept`.
 - Richer method qualifiers such as ref-qualifiers.
@@ -72,10 +68,11 @@ prioritized engineering work here.
   links named types back to declarations. Parameter-slot enrichment for
   repeated callables is now handled positionally, but fuller kind-specific
   redeclaration enrichment is still conservative first-pass behavior.
-- Raw comment handling.
-  Repeated-declaration comment conflicts are now resolved by parser policy, but
-  the overall documentation flow is still incomplete until normalized docs and
-  parameter docs are built on top.
+- Raw comment handling and recovery heuristics.
+  Normalized docs, parameter-doc extraction, and token-based recovery are now
+  implemented. Remaining refinement is mostly around edge cases such as macros,
+  unusual comment placement, and any future decision to recover comments beyond
+  what clang tokenization can support cleanly.
 - Structured type parsing and declaration linking.
   Recursive `CppType` parsing and deferred `NamedCppType.declaration` linking
   now exist, but more clang type kinds, richer qualifiers, and better
@@ -102,16 +99,16 @@ prioritized engineering work here.
   intentionally ignored, and template parameter defaults remain intentionally
   unused for now.
 
-- Normalized comment and documentation parsing.
-  Raw comments are preserved, but they still need to flow into the richer doc
-  model, including parameter-doc extraction and later Python-facing doc
-  translation.
 - Template instance selection ergonomics.
   Selected template instances should become easy to request and customize in
   the model, without depending on fake specialized declaration trees.
 - Variable metadata beyond type, docs, and visibility.
   Follow-up candidates include storage class, linkage, `constexpr`, `constinit`,
   and `inline` when later binding policy or diagnostics need them.
+- Documentation/tag refinement.
+  Common tags are supported already, but follow-up candidates include richer
+  handling for `@throws`, `@exception`, `@remark`, and more specialized code or
+  cross-reference markup if later translation/emission needs them.
 
 ## Binding Policy Model
 
@@ -188,9 +185,9 @@ prioritized engineering work here.
   The current `ParserConfig` already covers include directories, defines,
   extra compiler arguments, language standard, resource directory, system
   include directories, and optional compiler-based toolchain autodetection.
-  Remaining likely extensions are compilation database integration and a config
-  parameter to decide what style of doc blocks to look for - doxygen styles,
-  plain comments, etc, or auto (guessing or taking whatever is there).
+  Remaining likely extensions are compilation database integration and any
+  future recovery/debug toggles around comment attachment if the current
+  always-on clang-plus-token approach needs user-facing control later.
 - Project-level configuration for module naming, top-level namespace handling,
   selected template instances, activation-header workflow, and exception
   translation policy.
@@ -201,8 +198,6 @@ prioritized engineering work here.
 
 - Add one real libclang integration test for scope-relative named type
   spellings such as `types::OmenKind` and `Mortal::Vocation`.
-- Add one real libclang integration test for raw comment extraction from
-  Doxygen-style comment blocks.
 - Add one real libclang integration test for alias-preserving type spellings,
   so declarations like `using Alias = Widget;` keep the written alias spelling
   while still linking to the resolved declaration where appropriate.

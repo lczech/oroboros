@@ -11,13 +11,27 @@
 
 namespace cosmos::functions {
 
-/** Return a greeting for a mortal visitor. */
+/**
+ * @brief Return a greeting for a mortal visitor.
+ * @param name Display name used in the greeting text.
+ * @return One greeting string for the named pilgrim.
+ */
 std::string greet_pilgrim(std::string_view name);
 
 /** Combine two ritual offering counts. */
 int combine_offerings(int grain, int nectar);
 
-/** Build one small relic description from plain inputs. */
+/**
+ * @brief Build one small relic description from plain inputs.
+ *
+ * Use @link cosmos::types::RelicInfo the relic record @endlink when passing
+ * parsed data through later binding stages.
+ *
+ * @param name Public relic name.
+ * @param realm Mythological realm that owns the relic.
+ * @param power Display power used by the example application.
+ * @return One populated relic description.
+ */
 types::RelicInfo describe_relic(
     std::string_view name,
     types::Realm realm,

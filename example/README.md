@@ -12,6 +12,7 @@ This directory contains the mythology-themed `cosmos` example library and a tiny
 - public and private member variables
 - static member variables and free variables
 - nested enums inside classes
+- preserved raw comments plus normalized doc parsing for Doxygen/plain comments
 - multiple inheritance via `Demigod : Mortal, Deity`
 
 ## Planned later layers
@@ -35,6 +36,10 @@ PYTHONPATH=src python3 example/python/generate.py
 This updates `example/python/active_headers.hpp`, then feeds the resulting
 `HeaderSelection` into `oroboros.parse_header_selection(...)` and prints the
 resulting semantic tree plus any clang diagnostics.
+
+The example headers now also include richer doc blocks, nested declaration
+docs, and trailing member/enumerator comments so the printed parse tree can be
+used to inspect comment normalization and recovery behavior as well.
 
 The command expects a working `clang.cindex` Python setup. In practice that
 means installing the `clang` Python package and making sure `libclang` itself is

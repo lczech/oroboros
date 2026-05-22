@@ -5,11 +5,14 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Sequence
+from typing import TYPE_CHECKING, Any, Sequence
 
 from ..model import CppElement, CppModule, NamedCppType
 from .config import ParserConfig
 from .clang_walk import visit_cursor
+
+if TYPE_CHECKING:
+    from .comment_recovery import CursorCommentResolution
 
 
 # ==================================================================================================
@@ -53,16 +56,33 @@ class PendingTypeDeclarationLink:
 class BuildContext:
     """Store shared mutable state while walking one translation unit."""
 
+    # ----------
+    # Prior input for the build.
+
     # Active project headers whose declarations should be materialized.
     active_headers: set[Path]
     # All known project headers, including inactive ones, when provided by the caller.
     known_project_headers: set[Path]
     # Parser configuration used while building and resolving the module.
     config: ParserConfig
+
+    # ----------
+    # Mutable state accumulated during the build.
+
     # Internal clang-USR registry for already materialized semantic elements.
     usr_to_element: dict[str, CppElement] = field(default_factory=dict)
+    # Parser-local per-cursor comment resolutions grouped by declaration USR when available.
+    usr_to_comments: dict[str, list[CursorCommentResolution]] = field(default_factory=dict)
+    # Token cache grouped by source file for comment recovery.
+    file_tokens_by_path: dict[Path, list[Any]] = field(default_factory=dict)
+    # Parsed clang translation unit used for token-based comment recovery.
+    translation_unit: Any | None = None
     # Deferred named-type declaration links to resolve after the clang walk.
     pending_type_declaration_links: list[PendingTypeDeclarationLink] = field(default_factory=list)
+
+    # ----------
+    # Output results accumulated during the build.
+
     # User-facing semantic warnings gathered while enriching repeated declarations.
     semantic_warnings: list[str] = field(default_factory=list)
     # Counts of unsupported libclang cursor kinds skipped during the walk.
@@ -96,6 +116,7 @@ def build_module_from_clang(
         active_headers={header.resolve() for header in normalized_headers},
         known_project_headers=normalized_known_project_headers,
         config=config,
+        translation_unit=translation_unit,
     )
     root_cursor = translation_unit.cursor
     for child_cursor in root_cursor.get_children():

@@ -9,7 +9,7 @@ from clang.cindex import CursorKind
 from ..model import CppElement
 from ..model.type import cpp_types_equivalent
 from .build_facets import build_parameter_cpp_facet
-from .comments import parse_cpp_doc
+from .comment_structure import comment_preference_key, parse_cpp_doc
 from .cursor_data import cursor_is_from_active_header, cursor_kind_name, cursor_source_location
 
 if TYPE_CHECKING:
@@ -231,6 +231,10 @@ def resolve_comment_conflict(
         return new_comment
     if context.config.comment_conflict_policy == "append":
         return append_distinct_comments(existing_comment, new_comment)
+    if context.config.comment_conflict_policy == "structured":
+        if comment_preference_key(new_comment) > comment_preference_key(existing_comment):
+            return new_comment
+        return existing_comment
     if len(new_comment) > len(existing_comment):
         return new_comment
     return existing_comment

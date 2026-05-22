@@ -161,7 +161,7 @@ def process_enumerator_cursor(
 ) -> None:
     """Create or enrich one enumerator declaration."""
 
-    candidate_cpp = build_enumerator_cpp_facet(cursor)
+    candidate_cpp = build_enumerator_cpp_facet(cursor, context=context)
     existing = lookup_registered_element(cursor, context, CppEnumerator)
     if existing is not None:
         warn_unexpected_repeated_declaration(context, cursor, "enumerator")
@@ -307,7 +307,7 @@ def process_constructor_cursor(
 ) -> None:
     """Create or enrich one constructor declaration and recurse into its children."""
 
-    candidate_cpp = build_constructor_cpp_facet(cursor)
+    candidate_cpp = build_constructor_cpp_facet(cursor, context=context)
     constructor_name = _constructor_name_for_owner(owner, cursor)
     candidate_cpp.original_name = constructor_name
     existing = lookup_registered_element(cursor, context, CppConstructor)
@@ -341,7 +341,7 @@ def process_templated_constructor_cursor(
 ) -> None:
     """Create or enrich one templated constructor under a class-like declaration."""
 
-    candidate_cpp = build_constructor_cpp_facet(template_cursor)
+    candidate_cpp = build_constructor_cpp_facet(template_cursor, context=context)
     candidate_cpp.original_name = _constructor_name_for_owner(owner, template_cursor)
     candidate_cpp.template_parameters = build_template_parameters(template_cursor, context=context)
 

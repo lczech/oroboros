@@ -272,17 +272,20 @@ The current parser internals are also intentionally split into:
 - `cursor_data.py` for low-level libclang cursor helpers
 - `build_facets.py` for cursor-to-`.cpp` facet extraction
 - `build_templates.py` for template-parameter extraction
+- `comment_structure.py` for raw-comment normalization into structured docs
+- `comment_recovery.py` for token-based comment attachment recovery and
+  clang/recovery reconciliation
 - `node_registry.py` for USR-based node attachment/reuse and namespace reopening
 - `merge_declarations.py` for redeclaration merging and parser warnings
 - `process_declarations.py` for concrete declaration-kind processing
 
-Comments/docs, operators, destructor/conversion functions, and fuller
-parser-side redeclaration enrichment are still follow-up work.
+Operators, destructor/conversion functions, and fuller parser-side
+redeclaration enrichment are still follow-up work. Comment/doc parsing and
+token-based comment recovery are now in place for clang-attached and recovered
+declaration docs.
 
 The next parser work should focus first on:
 
-- normalized comment/doc parsing on top of the preserved raw comments,
-  including parameter-doc extraction
 - destructor and conversion-function coverage
 - parsed operator coverage
 
@@ -340,7 +343,7 @@ Typical contents:
 - kind information such as class/struct/enum/function/method
 - source location
 - raw comment
-- normalized comment
+- normalized comment/doc representation, including recovered declaration docs
 - alias target type for alias declarations
 - parameters
 - return type
