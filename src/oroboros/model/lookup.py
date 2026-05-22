@@ -125,12 +125,12 @@ def find_direct_child(
 
     matches = [
         child
-        for _, child in _iter_direct_child_nodes(scope, scope._describe_node())
+        for _, child in _iter_direct_child_elements(scope, scope._describe_element())
         if child.name == name
     ]
     if not matches:
         raise ModelLookupError(
-            f"No direct child named {name!r} exists under {scope._describe_node()}."
+            f"No direct child named {name!r} exists under {scope._describe_element()}."
         )
 
     if len(matches) == 1:
@@ -153,7 +153,7 @@ def direct_child_names(scope: CppElement) -> list[str]:
     return list(
         dict.fromkeys(
             child.name
-            for _, child in _iter_direct_child_nodes(scope, scope._describe_node())
+            for _, child in _iter_direct_child_elements(scope, scope._describe_element())
         )
     )
 
@@ -198,7 +198,7 @@ class NamedChildView(Generic[ElementT]):
         if self._return_many:
             if not matches:
                 raise ModelLookupError(
-                    f"No child named {name!r} exists in {self._owner._describe_node()}.{self._field_name}."
+                    f"No child named {name!r} exists in {self._owner._describe_element()}.{self._field_name}."
                 )
             return matches
 
@@ -245,25 +245,25 @@ class NamedChildView(Generic[ElementT]):
 
 
 def _iter_subtree(scope: CppElement) -> Iterator[CppElement]:
-    """Yield one node followed by all descendants reachable from it."""
+    """Yield one element followed by all descendants reachable from it."""
 
     yield scope
 
-    for _, child in _iter_direct_child_nodes(scope, scope._describe_node()):
+    for _, child in _iter_direct_child_elements(scope, scope._describe_element()):
         yield from _iter_subtree(child)
 
 
-def _iter_direct_child_nodes(
-    node: CppElement,
+def _iter_direct_child_elements(
+    element: CppElement,
     path: str,
     errors: list[str] | None = None,
 ) -> list[tuple[str, CppElement]]:
-    """Collect direct child element references declared on one node."""
+    """Collect direct child element references declared on one element."""
 
-    return _collect_direct_child_nodes(node, path, errors=errors, skip_owner=True)
+    return _collect_direct_child_elements(element, path, errors=errors, skip_owner=True)
 
 
-def _collect_direct_child_nodes(
+def _collect_direct_child_elements(
     value: object,
     path: str,
     *,
@@ -314,7 +314,7 @@ def _collect_direct_child_nodes(
 
         if is_dataclass(field_value) and getattr(field_value, "_is_child_container", False):
             children.extend(
-                _collect_direct_child_nodes(
+                _collect_direct_child_elements(
                     field_value,
                     field_path,
                     errors=errors,
@@ -379,7 +379,7 @@ def _require_one_match(
         return matches[0]
 
     type_description = _describe_types(types)
-    scope_description = scope._describe_node()
+    scope_description = scope._describe_element()
 
     if not matches:
         raise ModelLookupError(

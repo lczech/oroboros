@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Backbone objects shared by semantic declaration nodes."""
+"""Backbone objects shared by semantic declaration elements."""
 
 from dataclasses import dataclass, field
 import json
@@ -21,7 +21,7 @@ class ModelValidationError(ValueError):
 
 @dataclass(slots=True)
 class CppElement:
-    """Provide shared identity and ownership behavior for semantic nodes."""
+    """Provide shared identity and ownership behavior for semantic elements."""
 
     name: str
     owner: CppElement | None = field(default=None, repr=False, compare=False)
@@ -66,19 +66,19 @@ class CppElement:
         return tuple(reversed(elements))
 
     def _adopt_children(self, children: Iterable[CppElement]) -> None:
-        """Attach a collection of child nodes to this element."""
+        """Attach a collection of child elements to this element."""
 
         for child in children:
             child.owner = self
 
     def _adopt_child(self, child: ElementT) -> ElementT:
-        """Attach one child node to this element and return it."""
+        """Attach one child element to this element and return it."""
 
         child.owner = self
         return child
 
     def _append_child(self, children: list[ElementT], child: ElementT) -> ElementT:
-        """Attach one child node and append it into one owned collection."""
+        """Attach one child element and append it into one owned collection."""
 
         self._adopt_child(child)
         children.append(child)
@@ -185,8 +185,8 @@ class CppElement:
 
         validate_semantics(self)
 
-    def _describe_node(self) -> str:
-        """Return a short user-facing label for this semantic node."""
+    def _describe_element(self) -> str:
+        """Return a short user-facing label for this semantic element."""
 
         label = _element_label(type(self).__name__)
         if not self.name:
@@ -198,7 +198,7 @@ class CppElement:
 
         if self.owner is None:
             return "None"
-        return self.owner._describe_node()
+        return self.owner._describe_element()
 
 
 def _element_label(type_name: str) -> str:

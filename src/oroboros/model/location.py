@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Source location helpers for semantic model nodes."""
+"""Source location helpers for semantic model elements."""
 
 from dataclasses import dataclass, field
 from pathlib import Path

@@ -9,7 +9,7 @@ from .class_ import CppClass
 from .function import CppParameter
 from .element import CppElement, ModelValidationError
 from .enum import CppEnum
-from .lookup import _iter_direct_child_nodes
+from .lookup import _iter_direct_child_elements
 from .location import CppLocationInfo, SourceLocation
 from .type import NamedCppType
 
@@ -22,7 +22,7 @@ from .type import NamedCppType
 def validate_tree(root: CppElement) -> None:
     """Validate owner links and direct-child containment across one subtree."""
 
-    root_path = root._describe_node()
+    root_path = root._describe_element()
     errors: list[str] = []
     visited: dict[int, str] = {id(root): root_path}
 
@@ -35,26 +35,26 @@ def validate_tree(root: CppElement) -> None:
 
 
 def _validate_tree_subtree(
-    node: CppElement,
+    element: CppElement,
     path: str,
     visited: dict[int, str],
     errors: list[str],
 ) -> None:
     """Collect structural validation errors for one subtree into one shared list."""
 
-    _validate_owner_chain(node, path, errors)
+    _validate_owner_chain(element, path, errors)
 
-    for child_path, child in _iter_direct_child_nodes(node, path, errors):
-        if child.owner is not node:
+    for child_path, child in _iter_direct_child_elements(element, path, errors):
+        if child.owner is not element:
             errors.append(
                 f"{child_path} has owner {child._describe_owner()}, "
-                f"expected {node._describe_node()}."
+                f"expected {element._describe_element()}."
             )
 
         child_id = id(child)
         if child_id in visited:
             errors.append(
-                f"{child_path} references the same node already seen at "
+                f"{child_path} references the same element already seen at "
                 f"{visited[child_id]}."
             )
             continue
@@ -64,21 +64,21 @@ def _validate_tree_subtree(
 
 
 def _validate_owner_chain(
-    node: CppElement,
+    element: CppElement,
     path: str,
     errors: list[str],
 ) -> None:
-    """Detect cyclic owner links starting from one node."""
+    """Detect cyclic owner links starting from one element."""
 
-    seen_owner_ids = {id(node)}
-    current = node.owner
+    seen_owner_ids = {id(element)}
+    current = element.owner
 
     while current is not None:
         current_id = id(current)
         if current_id in seen_owner_ids:
             errors.append(
                 f"{path} participates in an owner cycle involving "
-                f"{current._describe_node()}."
+                f"{current._describe_element()}."
             )
             return
         seen_owner_ids.add(current_id)
@@ -97,7 +97,7 @@ class ModelSemanticValidationError(ValueError):
 def validate_semantics(root: CppElement) -> None:
     """Validate semantic cross-links and type usage across one subtree."""
 
-    root_path = root._describe_node()
+    root_path = root._describe_element()
     errors: list[str] = []
 
     _validate_semantic_subtree(root, root_path, errors)
@@ -109,50 +109,50 @@ def validate_semantics(root: CppElement) -> None:
 
 
 def _validate_semantic_subtree(
-    node: CppElement,
+    element: CppElement,
     path: str,
     errors: list[str],
 ) -> None:
-    """Validate one node plus all descendants in one semantic subtree."""
+    """Validate one element plus all descendants in one semantic subtree."""
 
-    _validate_element_semantics(node, path, errors)
+    _validate_element_semantics(element, path, errors)
 
-    for dataclass_field in dataclass_fields(node):
+    for dataclass_field in dataclass_fields(element):
         field_name = dataclass_field.name
         if field_name == "owner":
             continue
-        value = getattr(node, field_name)
+        value = getattr(element, field_name)
         _validate_embedded_value(
             value,
             f"{path}.{field_name}",
             errors,
-            reference_scope=_reference_lookup_scope(node),
+            reference_scope=_reference_lookup_scope(element),
         )
 
-    for child_path, child in _iter_direct_child_nodes(node, path):
+    for child_path, child in _iter_direct_child_elements(element, path):
         _validate_semantic_subtree(child, child_path, errors)
 
 
 def _validate_element_semantics(
-    node: CppElement,
+    element: CppElement,
     path: str,
     errors: list[str],
 ) -> None:
-    """Validate semantic constraints specific to one declaration node."""
+    """Validate semantic constraints specific to one declaration element."""
 
-    _validate_cpp_name_sanity(node, path, errors)
-    _validate_cpp_original_name(node, path, errors)
-    _validate_duplicate_child_names(node, path, errors)
-    _validate_owner_kind(node, path, errors)
-    _validate_constructor_name(node, path, errors)
-    _validate_method_like_flags(node, path, errors)
-    _validate_alias_target(node, path, errors)
-    _validate_enumerator_value_sanity(node, path, errors)
-    _validate_template_family(node, path, errors)
-    _validate_overload_indices(node, path, errors)
+    _validate_cpp_name_sanity(element, path, errors)
+    _validate_cpp_original_name(element, path, errors)
+    _validate_duplicate_child_names(element, path, errors)
+    _validate_owner_kind(element, path, errors)
+    _validate_constructor_name(element, path, errors)
+    _validate_method_like_flags(element, path, errors)
+    _validate_alias_target(element, path, errors)
+    _validate_enumerator_value_sanity(element, path, errors)
+    _validate_template_family(element, path, errors)
+    _validate_overload_indices(element, path, errors)
 
-    if isinstance(node, CppClass):
-        for index, base in enumerate(node.cpp.bases):
+    if isinstance(element, CppClass):
+        for index, base in enumerate(element.cpp.bases):
             _validate_class_base(
                 base.type,
                 f"{path}.cpp.bases[{index}].type",
@@ -224,7 +224,7 @@ def _validate_named_cpp_type(
 
     if not _is_valid_named_type_declaration(declaration):
         errors.append(
-            f"{path} links to {declaration._describe_node()}, which is not a valid type declaration."
+            f"{path} links to {declaration._describe_element()}, which is not a valid type declaration."
         )
         return
 
@@ -255,51 +255,51 @@ def _validate_class_base(
 
     if not isinstance(declaration, CppClass):
         errors.append(
-            f"{path} uses {declaration._describe_node()} as a base, but class bases "
+            f"{path} uses {declaration._describe_element()} as a base, but class bases "
             f"must refer to class-like declarations."
         )
 
 
 def _validate_cpp_name_sanity(
-    node: CppElement,
+    element: CppElement,
     path: str,
     errors: list[str],
 ) -> None:
-    """Validate that one semantic node name looks like plausible C++."""
+    """Validate that one semantic element name looks like plausible C++."""
 
     from .module import CppModule
 
-    if isinstance(node, CppModule):
+    if isinstance(element, CppModule):
         return
 
     _validate_cpp_name(
-        node.name,
+        element.name,
         path,
         errors,
-        allow_operator_names=_allows_operator_name(node),
+        allow_operator_names=_allows_operator_name(element),
     )
 
 
 def _validate_cpp_original_name(
-    node: CppElement,
+    element: CppElement,
     path: str,
     errors: list[str],
 ) -> None:
     """Validate that parsed original names stay aligned with element names."""
 
-    cpp_facet = getattr(node, "cpp", None)
+    cpp_facet = getattr(element, "cpp", None)
     original_name = getattr(cpp_facet, "original_name", None)
     if original_name is None:
         return
 
-    if node.name != original_name:
+    if element.name != original_name:
         errors.append(
-            f"{path} is named {node.name!r}, but cpp.original_name is {original_name!r}."
+            f"{path} is named {element.name!r}, but cpp.original_name is {original_name!r}."
         )
 
 
 def _validate_duplicate_child_names(
-    node: CppElement,
+    element: CppElement,
     path: str,
     errors: list[str],
 ) -> None:
@@ -316,7 +316,7 @@ def _validate_duplicate_child_names(
     ]
 
     for field_name in duplicate_checked_fields:
-        children = _direct_declaration_collection(node, field_name)
+        children = _direct_declaration_collection(element, field_name)
         if children is None:
             continue
         _validate_unique_names(children, f"{path}.{field_name}", errors)
@@ -347,7 +347,7 @@ def _validate_unique_names(
 
 
 def _validate_owner_kind(
-    node: CppElement,
+    element: CppElement,
     path: str,
     errors: list[str],
 ) -> None:
@@ -367,100 +367,100 @@ def _validate_owner_kind(
     from .namespace import CppNamespace
     from .class_template import CppClassTemplate, CppClassTemplateDecl, CppClassTemplateInstance
 
-    owner = node.owner
+    owner = element.owner
     if owner is None:
         return
 
-    if isinstance(node, CppNamespace) and not isinstance(owner, (CppModule, CppNamespace)):
+    if isinstance(element, CppNamespace) and not isinstance(owner, (CppModule, CppNamespace)):
         errors.append(
-            f"{path} is owned by {owner._describe_node()}, but namespaces must be owned "
+            f"{path} is owned by {owner._describe_element()}, but namespaces must be owned "
             f"by the module root or another namespace."
         )
 
-    if isinstance(node, CppFunction) and not isinstance(owner, (CppModule, CppNamespace)):
+    if isinstance(element, CppFunction) and not isinstance(owner, (CppModule, CppNamespace)):
         errors.append(
-            f"{path} is owned by {owner._describe_node()}, but free functions must be "
+            f"{path} is owned by {owner._describe_element()}, but free functions must be "
             f"owned by the module root or a namespace."
         )
 
-    if isinstance(node, CppAlias) and not isinstance(owner, (CppModule, CppNamespace, CppClassMembers)):
+    if isinstance(element, CppAlias) and not isinstance(owner, (CppModule, CppNamespace, CppClassMembers)):
         errors.append(
-            f"{path} is owned by {owner._describe_node()}, but aliases must be owned by "
+            f"{path} is owned by {owner._describe_element()}, but aliases must be owned by "
             f"the module root, a namespace, or a class-like declaration."
         )
 
-    if isinstance(node, CppParameter) and not isinstance(
+    if isinstance(element, CppParameter) and not isinstance(
         owner,
         (CppFunction, CppMethod, CppConstructor, CppFunctionTemplateDecl),
     ):
         errors.append(
-            f"{path} is owned by {owner._describe_node()}, but parameters must be owned "
+            f"{path} is owned by {owner._describe_element()}, but parameters must be owned "
             f"by function-like declarations."
         )
 
-    if isinstance(node, (CppMethod, CppConstructor, CppField)) and not isinstance(
+    if isinstance(element, (CppMethod, CppConstructor, CppField)) and not isinstance(
         owner,
         CppClassMembers,
     ):
         errors.append(
-            f"{path} is owned by {owner._describe_node()}, but this member kind must be "
+            f"{path} is owned by {owner._describe_element()}, but this member kind must be "
             f"owned by a class-like declaration."
         )
 
-    if isinstance(node, CppEnumerator) and not isinstance(owner, CppEnum):
+    if isinstance(element, CppEnumerator) and not isinstance(owner, CppEnum):
         errors.append(
-            f"{path} is owned by {owner._describe_node()}, but enumerators must be owned "
+            f"{path} is owned by {owner._describe_element()}, but enumerators must be owned "
             f"by enums."
         )
 
-    if isinstance(node, CppEnum) and not isinstance(owner, (CppModule, CppNamespace, CppClassMembers)):
+    if isinstance(element, CppEnum) and not isinstance(owner, (CppModule, CppNamespace, CppClassMembers)):
         errors.append(
-            f"{path} is owned by {owner._describe_node()}, but enums must be owned by "
+            f"{path} is owned by {owner._describe_element()}, but enums must be owned by "
             f"the module root, a namespace, or a class-like declaration."
         )
 
-    if isinstance(node, CppClass) and not isinstance(owner, (CppModule, CppNamespace, CppClassMembers)):
+    if isinstance(element, CppClass) and not isinstance(owner, (CppModule, CppNamespace, CppClassMembers)):
         errors.append(
-            f"{path} is owned by {owner._describe_node()}, but classes must be owned by "
+            f"{path} is owned by {owner._describe_element()}, but classes must be owned by "
             f"the module root, a namespace, or a class-like declaration."
         )
 
-    if isinstance(node, (CppClassTemplate, CppFunctionTemplate)) and not isinstance(
+    if isinstance(element, (CppClassTemplate, CppFunctionTemplate)) and not isinstance(
         owner,
         (CppModule, CppNamespace, CppClassMembers),
     ):
         errors.append(
-            f"{path} is owned by {owner._describe_node()}, but template families must be "
+            f"{path} is owned by {owner._describe_element()}, but template families must be "
             f"owned by the module root, a namespace, or a class-like declaration."
         )
 
-    if isinstance(node, CppClassTemplateDecl) and not isinstance(owner, CppClassTemplate):
+    if isinstance(element, CppClassTemplateDecl) and not isinstance(owner, CppClassTemplate):
         errors.append(
-            f"{path} is owned by {owner._describe_node()}, but class-template declarations "
+            f"{path} is owned by {owner._describe_element()}, but class-template declarations "
             f"must be owned by class-template families."
         )
 
-    if isinstance(node, CppClassTemplateInstance) and not isinstance(owner, CppClassTemplate):
+    if isinstance(element, CppClassTemplateInstance) and not isinstance(owner, CppClassTemplate):
         errors.append(
-            f"{path} is owned by {owner._describe_node()}, but class-template instances "
+            f"{path} is owned by {owner._describe_element()}, but class-template instances "
             f"must be owned by class-template families."
         )
 
-    if isinstance(node, CppFunctionTemplateDecl) and not isinstance(owner, CppFunctionTemplate):
+    if isinstance(element, CppFunctionTemplateDecl) and not isinstance(owner, CppFunctionTemplate):
         errors.append(
-            f"{path} is owned by {owner._describe_node()}, but function-template declarations "
+            f"{path} is owned by {owner._describe_element()}, but function-template declarations "
             f"must be owned by function-template families."
         )
 
-    if isinstance(node, CppFunctionTemplateInstance) and not isinstance(owner, CppFunctionTemplate):
+    if isinstance(element, CppFunctionTemplateInstance) and not isinstance(owner, CppFunctionTemplate):
         errors.append(
-            f"{path} is owned by {owner._describe_node()}, but function-template instances "
+            f"{path} is owned by {owner._describe_element()}, but function-template instances "
             f"must be owned by function-template families."
         )
 
 
 def _validate_constructor_name(
-    node: CppElement,
+    element: CppElement,
     path: str,
     errors: list[str],
 ) -> None:
@@ -468,22 +468,22 @@ def _validate_constructor_name(
 
     from .member import CppConstructor
 
-    if not isinstance(node, CppConstructor):
+    if not isinstance(element, CppConstructor):
         return
 
-    owner = node.owner
+    owner = element.owner
     if owner is None:
         return
 
-    if node.name != owner.name:
+    if element.name != owner.name:
         errors.append(
-            f"{path} is named {node.name!r}, but its owning class-like declaration is "
+            f"{path} is named {element.name!r}, but its owning class-like declaration is "
             f"named {owner.name!r}."
         )
 
 
 def _validate_method_like_flags(
-    node: CppElement,
+    element: CppElement,
     path: str,
     errors: list[str],
 ) -> None:
@@ -493,17 +493,17 @@ def _validate_method_like_flags(
     from .function_template import CppFunctionTemplateDecl, CppFunctionTemplateInstance
     from .member import CppMethod
 
-    cpp_facet = getattr(node, "cpp", None)
+    cpp_facet = getattr(element, "cpp", None)
     if cpp_facet is None:
         return
 
     if not hasattr(cpp_facet, "is_virtual"):
         return
 
-    if not isinstance(node, (CppMethod, CppFunctionTemplateDecl, CppFunctionTemplateInstance)):
+    if not isinstance(element, (CppMethod, CppFunctionTemplateDecl, CppFunctionTemplateInstance)):
         return
 
-    owner = node.owner
+    owner = element.owner
     if owner is None or not isinstance(owner, CppClassMembers):
         return
 
@@ -519,7 +519,7 @@ def _validate_method_like_flags(
 
 
 def _validate_alias_target(
-    node: CppElement,
+    element: CppElement,
     path: str,
     errors: list[str],
 ) -> None:
@@ -527,15 +527,15 @@ def _validate_alias_target(
 
     from .alias import CppAlias
 
-    if not isinstance(node, CppAlias):
+    if not isinstance(element, CppAlias):
         return
 
-    if node.cpp.target is None:
+    if element.cpp.target is None:
         errors.append(f"{path}.cpp.target is missing for this alias declaration.")
 
 
 def _validate_template_family(
-    node: CppElement,
+    element: CppElement,
     path: str,
     errors: list[str],
 ) -> None:
@@ -545,32 +545,32 @@ def _validate_template_family(
     from .function_template import CppFunctionTemplate
     from .template_ import _validate_template_arguments
 
-    if not isinstance(node, (CppClassTemplate, CppFunctionTemplate)):
+    if not isinstance(element, (CppClassTemplate, CppFunctionTemplate)):
         return
 
-    declaration = node.declaration
+    declaration = element.declaration
     if declaration is None:
         errors.append(f"{path} does not contain a generic declaration.")
         return
 
-    if declaration.name != node.name:
+    if declaration.name != element.name:
         errors.append(
             f"{path}.declaration is named {declaration.name!r}, but the template family "
-            f"is named {node.name!r}."
+            f"is named {element.name!r}."
         )
 
-    for index, instance in enumerate(node.instances):
-        if instance.name != node.name:
+    for index, instance in enumerate(element.instances):
+        if instance.name != element.name:
             errors.append(
                 f"{path}.instances[{index}] is named {instance.name!r}, but the template "
-                f"family is named {node.name!r}."
+                f"family is named {element.name!r}."
             )
 
         try:
             _validate_template_arguments(
                 declaration.cpp.template_parameters,
                 instance.cpp.template_arguments,
-                context=f"{type(node).__name__} '{node.name}' instance {index}",
+                context=f"{type(element).__name__} '{element.name}' instance {index}",
             )
         except ValueError as error:
             errors.append(f"{path}.instances[{index}] has invalid template arguments: {error}")
@@ -580,7 +580,7 @@ def _validate_template_family(
             _validate_template_arguments(
                 declaration.cpp.template_parameters,
                 observed_instance.arguments,
-                context=f"{type(node).__name__} '{node.name}' observed instance {index}",
+                context=f"{type(element).__name__} '{element.name}' observed instance {index}",
             )
         except ValueError as error:
             errors.append(
@@ -590,7 +590,7 @@ def _validate_template_family(
 
 
 def _validate_enumerator_value_sanity(
-    node: CppElement,
+    element: CppElement,
     path: str,
     errors: list[str],
 ) -> None:
@@ -598,10 +598,10 @@ def _validate_enumerator_value_sanity(
 
     from .enum import CppEnumerator
 
-    if not isinstance(node, CppEnumerator):
+    if not isinstance(element, CppEnumerator):
         return
 
-    value_spelling = node.cpp.value_spelling
+    value_spelling = element.cpp.value_spelling
     if value_spelling is None:
         return
 
@@ -612,29 +612,29 @@ def _validate_enumerator_value_sanity(
 
 
 def _validate_overload_indices(
-    node: CppElement,
+    element: CppElement,
     path: str,
     errors: list[str],
 ) -> None:
     """Validate overload-index uniqueness and contiguity inside sibling groups."""
 
     _validate_overload_index_collection(
-        _direct_declaration_collection(node, "functions"),
+        _direct_declaration_collection(element, "functions"),
         f"{path}.functions",
         errors,
     )
     _validate_overload_index_collection(
-        _direct_declaration_collection(node, "methods"),
+        _direct_declaration_collection(element, "methods"),
         f"{path}.methods",
         errors,
     )
     _validate_overload_index_collection(
-        _direct_declaration_collection(node, "constructors"),
+        _direct_declaration_collection(element, "constructors"),
         f"{path}.constructors",
         errors,
     )
 
-    function_templates = _direct_declaration_collection(node, "function_templates")
+    function_templates = _direct_declaration_collection(element, "function_templates")
     if function_templates is not None:
         _validate_overload_index_collection(
             [template.declaration for template in function_templates if getattr(template, "declaration", None) is not None],
@@ -644,16 +644,16 @@ def _validate_overload_indices(
 
 
 def _direct_declaration_collection(
-    node: CppElement,
+    element: CppElement,
     field_name: str,
 ) -> list[Any] | None:
-    """Return one direct declaration collection from a node when it exists."""
+    """Return one direct declaration collection from an element when it exists."""
 
-    declarations = getattr(node, "declarations", None)
+    declarations = getattr(element, "declarations", None)
     if declarations is not None:
         return getattr(declarations, field_name, None)
 
-    return getattr(node, field_name, None)
+    return getattr(element, field_name, None)
 
 
 def _validate_overload_index_collection(
@@ -794,11 +794,11 @@ def _validate_cpp_qualified_name(
         _validate_cpp_name(part, f"{path}[part {index}]", errors)
 
 
-def _allows_operator_name(node: CppElement) -> bool:
-    """Return whether one node kind may legitimately use an operator name."""
+def _allows_operator_name(element: CppElement) -> bool:
+    """Return whether one element kind may legitimately use an operator name."""
 
-    cpp_facet = getattr(node, "cpp", None)
-    return getattr(cpp_facet, "operator", None) is not None or node.name.startswith("operator")
+    cpp_facet = getattr(element, "cpp", None)
+    return getattr(cpp_facet, "operator", None) is not None or element.name.startswith("operator")
 
 
 def _is_cpp_identifier(name: str) -> bool:
@@ -819,7 +819,7 @@ def _is_cpp_identifier(name: str) -> bool:
 
 
 def _is_valid_named_type_declaration(declaration: CppElement) -> bool:
-    """Check whether one declaration node may be referenced by a named type."""
+    """Check whether one declaration element may be referenced by a named type."""
 
     from .alias import CppAlias
     from .class_template import CppClassTemplateDecl, CppClassTemplateInstance
@@ -872,13 +872,13 @@ def _terminal_type_name_segment(name: str) -> str:
     return segments[-1].strip() if segments else name.strip()
 
 
-def _reference_lookup_scope(node: CppElement) -> CppElement | None:
+def _reference_lookup_scope(element: CppElement) -> CppElement | None:
     """Return the semantic scope used for validating embedded type-name spellings."""
 
-    if isinstance(node, CppParameter):
-        owner = node.owner
+    if isinstance(element, CppParameter):
+        owner = element.owner
         if owner is None:
             return None
         return owner.scope_parent
 
-    return node.scope_parent
+    return element.scope_parent

@@ -9,7 +9,7 @@ from clang.cindex import CursorKind
 from ..model import CppElement
 from .cursor_data import cursor_is_from_active_header, cursor_kind_name, is_base_specifier_cursor
 from .merge_declarations import merge_common_cpp_fields, merge_cpp_scalar
-from .node_registry import ensure_namespace
+from .element_registry import ensure_namespace
 from .process_declarations import (
     process_alias_cursor,
     process_class_cursor,
@@ -62,7 +62,7 @@ def visit_children(
     owner: CppElement,
     context: BuildContext,
 ) -> None:
-    """Visit the children of one materialized semantic declaration node."""
+    """Visit the children of one materialized semantic declaration element."""
 
     for child in children:
         visit_cursor(child, owner, context)

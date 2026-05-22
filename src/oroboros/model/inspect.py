@@ -7,13 +7,13 @@ import sys
 from typing import Iterable, TextIO
 
 from .element import CppElement
-from .lookup import _iter_direct_child_nodes
+from .lookup import _iter_direct_child_elements
 
 
 def iter_child_elements(element: CppElement) -> Iterable[CppElement]:
     """Yield the direct semantic children of one model element."""
 
-    for _, child in _iter_direct_child_nodes(element, element._describe_node()):
+    for _, child in _iter_direct_child_elements(element, element._describe_element()):
         yield child
 
 

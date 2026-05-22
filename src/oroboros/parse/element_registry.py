@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Attach and reuse semantic nodes during clang model building."""
+"""Attach and reuse semantic elements during clang model building."""
 
 from typing import TYPE_CHECKING, Any, TypeVar
 
@@ -11,11 +11,11 @@ from .cursor_data import cursor_usr
 if TYPE_CHECKING:
     from .build_model import BuildContext
 
-_NodeT = TypeVar("_NodeT")
+_ElementT = TypeVar("_ElementT")
 
 
 # ==================================================================================================
-#     Node Registry
+#     Element Registry
 # ==================================================================================================
 
 
@@ -51,30 +51,30 @@ def ensure_namespace(
         name=namespace_name,
         cpp=candidate_cpp,
     )
-    attached = attach_node(owner, "add_namespace", namespace)
+    attached = attach_element(owner, "add_namespace", namespace)
     if attached is not None:
         register_element_for_cursor(cursor, attached, context)
     return attached
 
 
-def attach_node(
+def attach_element(
     owner: CppElement,
     attach_method_name: str,
-    node: _NodeT,
-) -> _NodeT | None:
-    """Attach one node through the named owner `add_*` helper when available."""
+    element: _ElementT,
+) -> _ElementT | None:
+    """Attach one element through the named owner `add_*` helper when available."""
 
     attach = getattr(owner, attach_method_name, None)
     if attach is None:
         return None
-    return attach(node)
+    return attach(element)
 
 
 def lookup_registered_element(
     cursor: Any,
     context: BuildContext,
-    expected_type: type[_NodeT],
-) -> _NodeT | None:
+    expected_type: type[_ElementT],
+) -> _ElementT | None:
     """Return the previously materialized element for one cursor USR, if any."""
 
     usr = cursor_usr(cursor)

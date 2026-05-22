@@ -42,14 +42,14 @@ class NamedCppType(CppType):
     """Represent a plain named C++ type such as ``Widget`` or ``std::string``.
 
     The optional ``declaration`` links this leaf type back to the semantic
-    declaration node it names when that node is known in the model. The
+    declaration element it names when that element is known in the model. The
     optional ``canonical`` stores a resolved underlying type for reasoning,
     while ``name`` remains the original spelling used for rendering and emission.
     """
 
     # Original source-spelled name preserved for diagnostics and default emission.
     name: str = ""
-    # Semantic declaration node this name refers to when the target is known.
+    # Semantic declaration element this name refers to when the target is known.
     declaration: CppElement | None = None
     # Canonicalized underlying type used for semantic reasoning when available.
     canonical: CppType | None = None

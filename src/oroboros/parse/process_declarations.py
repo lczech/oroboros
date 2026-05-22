@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Process concrete libclang declaration cursors into semantic model nodes."""
+"""Process concrete libclang declaration cursors into semantic model elements."""
 
 from typing import TYPE_CHECKING, Any, Iterable
 
@@ -46,7 +46,7 @@ from .merge_declarations import (
     merge_template_parameters,
     warn_unexpected_repeated_declaration,
 )
-from .node_registry import attach_node, lookup_registered_element, register_element_for_cursor
+from .element_registry import attach_element, lookup_registered_element, register_element_for_cursor
 
 if TYPE_CHECKING:
     from .build_model import BuildContext
@@ -82,7 +82,7 @@ def process_class_cursor(
         return
 
     cls = CppClass(name=cursor.spelling, cpp=candidate_cpp)
-    attached = attach_node(owner, "add_class", cls)
+    attached = attach_element(owner, "add_class", cls)
     if attached is not None:
         register_element_for_cursor(cursor, attached, context)
         _visit_children(cursor.get_children(), attached, context)
@@ -106,7 +106,7 @@ def process_enum_cursor(
         return
 
     enum_ = CppEnum(name=cursor.spelling, cpp=candidate_cpp)
-    attached = attach_node(owner, "add_enum", enum_)
+    attached = attach_element(owner, "add_enum", enum_)
     if attached is not None:
         register_element_for_cursor(cursor, attached, context)
         _visit_children(cursor.get_children(), attached, context)
@@ -144,7 +144,7 @@ def process_class_template_cursor(
             cpp=candidate_cpp,
         ),
     )
-    attached = attach_node(owner, "add_class_template", template)
+    attached = attach_element(owner, "add_class_template", template)
     if attached is not None:
         register_element_for_cursor(cursor, attached, context)
         visit_non_template_parameter_children(
@@ -168,7 +168,7 @@ def process_enumerator_cursor(
         return
 
     enumerator = CppEnumerator(name=cursor.spelling, cpp=candidate_cpp)
-    attached = attach_node(owner, "add_enumerator", enumerator)
+    attached = attach_element(owner, "add_enumerator", enumerator)
     if attached is not None:
         register_element_for_cursor(cursor, attached, context)
 
@@ -204,7 +204,7 @@ def process_function_cursor(
         return
 
     function = CppFunction(name=cursor.spelling, cpp=candidate_cpp)
-    attached = attach_node(owner, "add_function", function)
+    attached = attach_element(owner, "add_function", function)
     if attached is not None:
         register_element_for_cursor(cursor, attached, context)
         _visit_children(cursor.get_children(), attached, context)
@@ -224,7 +224,7 @@ def process_alias_cursor(
         return
 
     alias = CppAlias(name=cursor.spelling, cpp=candidate_cpp)
-    attached = attach_node(owner, "add_alias", alias)
+    attached = attach_element(owner, "add_alias", alias)
     if attached is not None:
         register_element_for_cursor(cursor, attached, context)
 
@@ -286,7 +286,7 @@ def process_function_template_cursor(
             cpp=candidate_cpp,
         ),
     )
-    attached = attach_node(owner, "add_function_template", template)
+    attached = attach_element(owner, "add_function_template", template)
     if attached is not None:
         register_element_for_cursor(cursor, attached, context)
         visit_non_template_parameter_children(
@@ -322,7 +322,7 @@ def process_constructor_cursor(
         return
 
     constructor = CppConstructor(name=constructor_name, cpp=candidate_cpp)
-    attached = attach_node(owner, "add_constructor", constructor)
+    attached = attach_element(owner, "add_constructor", constructor)
     if attached is not None:
         register_element_for_cursor(cursor, attached, context)
         _visit_children(cursor.get_children(), attached, context)
@@ -365,7 +365,7 @@ def process_templated_constructor_cursor(
         name=_constructor_name_for_owner(owner, template_cursor),
         cpp=candidate_cpp,
     )
-    attached = attach_node(owner, "add_constructor", constructor)
+    attached = attach_element(owner, "add_constructor", constructor)
     if attached is not None:
         register_element_for_cursor(template_cursor, attached, context)
         _visit_children(template_cursor.get_children(), attached, context)
@@ -407,7 +407,7 @@ def process_method_cursor(
         return
 
     method = CppMethod(name=cursor.spelling, cpp=candidate_cpp)
-    attached = attach_node(owner, "add_method", method)
+    attached = attach_element(owner, "add_method", method)
     if attached is not None:
         register_element_for_cursor(cursor, attached, context)
         _visit_children(cursor.get_children(), attached, context)
@@ -427,7 +427,7 @@ def process_field_cursor(
         return
 
     field = CppField(name=cursor.spelling, cpp=candidate_cpp)
-    attached = attach_node(owner, "add_field", field)
+    attached = attach_element(owner, "add_field", field)
     if attached is not None:
         register_element_for_cursor(cursor, attached, context)
 
@@ -446,7 +446,7 @@ def process_parameter_cursor(
         return
 
     parameter = CppParameter(name=cursor.spelling, cpp=candidate_cpp)
-    attached = attach_node(owner, "add_parameter", parameter)
+    attached = attach_element(owner, "add_parameter", parameter)
     if attached is not None:
         register_element_for_cursor(cursor, attached, context)
 
@@ -539,7 +539,7 @@ def _templated_constructor_owner(
     owner: CppElement,
     context: BuildContext,
 ) -> CppClassMembers | None:
-    """Resolve the owning class-like node when one function-template cursor is a constructor."""
+    """Resolve the owning class-like element when one function-template cursor is a constructor."""
 
     if _looks_like_templated_constructor(cursor, owner):
         return owner if isinstance(owner, CppClassMembers) else None
