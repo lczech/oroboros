@@ -543,11 +543,10 @@ def _clang_builtin_kind(clang_type: Any) -> str | None:
     """Return one semantic builtin kind for one clang builtin type."""
 
     actual_kind = getattr(clang_type, "kind", None)
-    if actual_kind is not None:
-        builtin_kind = _CLANG_BUILTIN_KIND_MAP.get(actual_kind)
-        if builtin_kind is not None:
-            return builtin_kind
-    return _CLANG_BUILTIN_KIND_MAP.get(_type_kind_name(clang_type))
+    if actual_kind is None:
+        return None
+
+    return _CLANG_BUILTIN_KIND_MAP.get(actual_kind)
 
 
 def _type_kind_matches(clang_type: Any, *expected_kinds: Any) -> bool:

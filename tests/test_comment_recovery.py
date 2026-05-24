@@ -283,6 +283,30 @@ struct Widget {
         self.assertEqual(nested_state.cpp.doc.brief, "Nested state docs.")
         self.assertEqual(nested_state.enumerators[0].cpp.doc.brief, "Idle state.")
 
+    def test_parse_headers_do_not_attach_closing_namespace_comments_as_namespace_docs(self) -> None:
+        source = """
+// ================================================================================================
+//   demo::detail
+// ================================================================================================
+namespace demo::detail {
+
+/// Widget docs.
+struct Widget {};
+
+}  // namespace demo::detail
+"""
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0].declarations.namespaces[0]
+        widget = namespace.declarations.classes[0]
+
+        self.assertIsNotNone(namespace.cpp.comment)
+        self.assertNotIn("namespace demo::detail", namespace.cpp.comment)
+        self.assertIn("demo::detail", namespace.cpp.comment)
+        self.assertEqual(widget.cpp.doc.brief, "Widget docs.")
+        self.assertFalse(any("Recovered attached comment" in warning for warning in result.warnings))
+
     def test_parse_headers_attach_plain_trailing_comments_and_indented_code_blocks(self) -> None:
         source = """
 namespace demo {
@@ -380,6 +404,30 @@ int make_widget();
         self.assertIsNone(widget.cpp.doc)
         self.assertIsNone(function.cpp.comment)
         self.assertIsNone(function.cpp.doc)
+        self.assertFalse(any("Recovered attached comment" in warning for warning in result.warnings))
+
+    def test_parse_headers_suppress_detached_namespace_banner_warnings(self) -> None:
+        source = """
+// ================================================================================================
+//   demo
+// ================================================================================================
+
+namespace demo {
+
+struct Widget {};
+
+}
+"""
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        widget = namespace.declarations.classes[0]
+
+        self.assertIsNone(namespace.cpp.comment)
+        self.assertIsNone(namespace.cpp.doc)
+        self.assertEqual(widget.name, "Widget")
+        self.assertFalse(any("Recovered attached comment" in warning for warning in result.warnings))
 
     def test_parse_headers_attach_comments_across_methods_constructors_templates_aliases_and_reopened_namespaces(self) -> None:
         result = _parse_headers_from_sources(

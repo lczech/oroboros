@@ -6,7 +6,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from clang.cindex import CursorKind, TokenKind
+from clang.cindex import (
+    AccessSpecifier,
+    CursorKind,
+    ExceptionSpecificationKind,
+    LinkageKind,
+    StorageClass,
+    TLSKind,
+    TokenKind,
+)
 
 from ..model import CppVisibility, SourceLocation
 
@@ -145,6 +153,13 @@ def cursor_visibility(cursor: Any) -> CppVisibility | None:
     """Return one semantic C++ visibility value for one clang cursor."""
 
     access_specifier = getattr(cursor, "access_specifier", None)
+    if access_specifier == AccessSpecifier.PUBLIC:
+        return CppVisibility.PUBLIC
+    if access_specifier == AccessSpecifier.PROTECTED:
+        return CppVisibility.PROTECTED
+    if access_specifier == AccessSpecifier.PRIVATE:
+        return CppVisibility.PRIVATE
+
     access_name = getattr(access_specifier, "name", None)
     if access_name == "PUBLIC":
         return CppVisibility.PUBLIC
@@ -162,6 +177,11 @@ def cursor_storage_class(cursor: Any) -> str | None:
     if storage_class is None:
         return None
 
+    if storage_class == StorageClass.INVALID:
+        return None
+    if storage_class == StorageClass.NONE:
+        return None
+
     name = getattr(storage_class, "name", None)
     if not name or name in {"INVALID", "NONE"}:
         return None
@@ -175,6 +195,9 @@ def cursor_linkage(cursor: Any) -> str | None:
     if linkage is None:
         return None
 
+    if linkage == LinkageKind.INVALID:
+        return None
+
     name = getattr(linkage, "name", None)
     if not name or name in {"INVALID"}:
         return None
@@ -186,6 +209,9 @@ def cursor_tls_kind(cursor: Any) -> str | None:
 
     tls_kind = getattr(cursor, "tls_kind", None)
     if tls_kind is None:
+        return None
+
+    if tls_kind == TLSKind.NONE:
         return None
 
     name = getattr(tls_kind, "name", None)
@@ -226,6 +252,14 @@ def cursor_is_noexcept(cursor: Any) -> bool:
     """Return whether one clang cursor represents a noexcept callable."""
 
     exception_spec_kind = getattr(cursor, "exception_specification_kind", None)
+    if exception_spec_kind is None:
+        return False
+
+    if exception_spec_kind == ExceptionSpecificationKind.BASIC_NOEXCEPT:
+        return True
+    if exception_spec_kind == ExceptionSpecificationKind.COMPUTED_NOEXCEPT:
+        return True
+
     kind_name = getattr(exception_spec_kind, "name", None)
     return kind_name in {"BASIC_NOEXCEPT", "COMPUTED_NOEXCEPT"}
 
@@ -367,6 +401,8 @@ def cursor_class_kind(cursor: Any) -> str:
     if getattr(cursor, "kind", None) == CursorKind.CLASS_DECL:
         return "class"
 
+    # Real libclang cursors should normally be enough here, but keep the token
+    # fallback for odd synthetic/test cursors where only the spelled keyword is available.
     token_spellings = cursor_token_spellings(cursor)
     if "struct" in token_spellings:
         return "struct"

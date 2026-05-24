@@ -9,6 +9,7 @@ This directory contains the mythology-themed `cosmos` example library and a tiny
 - free functions
 - classes and structs
 - constructors, methods, and parameters
+- explicit constructors and parameter default values
 - public and private member variables
 - static member variables and free variables
 - nested enums inside classes
@@ -45,10 +46,10 @@ The command expects a working `clang.cindex` Python setup. In practice that
 means installing the `clang` Python package and making sure `libclang` itself is
 available to that environment.
 
-The example driver also asks `clang++` for its builtin resource directory and
-system include search paths, then forwards those to libclang through
-`ParserConfig(auto_detect_toolchain=True)`. That keeps the parser aligned with
-the active compiler toolchain instead of hard-coding host-specific include
+The example driver uses `ParserConfig` with toolchain autodetection left on, so
+Oroboros asks `clang++` for its builtin resource directory and system include
+search paths before invoking libclang. That keeps the parser aligned with the
+active compiler toolchain instead of hard-coding host-specific include
 directories.
 
 For now, the parser driver intentionally excludes the umbrella header

@@ -47,6 +47,7 @@ from .merge_declarations import (
     merge_template_parameters,
     warn_unexpected_repeated_declaration,
 )
+from .cursor_data import cursor_usr
 from .element_registry import attach_element, lookup_registered_element, register_element_for_cursor
 
 if TYPE_CHECKING:
@@ -649,7 +650,7 @@ def _lookup_semantic_owner_for_cursor(
     """Return the parsed class-like semantic owner of one cursor when available."""
 
     semantic_parent = getattr(cursor, "semantic_parent", None)
-    semantic_parent_usr = _cursor_usr(semantic_parent)
+    semantic_parent_usr = cursor_usr(semantic_parent)
     if semantic_parent_usr is None:
         return None
 
@@ -659,22 +660,6 @@ def _lookup_semantic_owner_for_cursor(
     if isinstance(semantic_owner, CppClassMembers):
         return semantic_owner
     return None
-
-
-def _cursor_usr(cursor: Any) -> str | None:
-    """Return one cursor USR when libclang exposes one for the entity."""
-
-    if cursor is None:
-        return None
-
-    get_usr = getattr(cursor, "get_usr", None)
-    if not callable(get_usr):
-        return None
-
-    usr = get_usr()
-    if not usr:
-        return None
-    return str(usr)
 
 
 def _strip_trailing_template_arguments(name: str) -> str:

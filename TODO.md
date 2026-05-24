@@ -1,232 +1,117 @@
 # TODO
 
-This file is the working backlog for implementation tasks.
+Actionable backlog only. Keep long-term design intent and invariants in
+`AGENTS.md`.
 
-Keep long-term design intent, invariants, and architecture decisions in
-`AGENTS.md`. Keep actionable next steps, open implementation gaps, and
-prioritized engineering work here.
+## Next Up
 
-## Model Core
+- Effective settings resolution across `.bind` and `.defaults`
+- Translation from `.cpp` plus `.bind` into `.py`
+- Activation-aware model behavior and filtered traversal of active bindable elements
+- Better `CppType` query helpers for policy/emitter decisions
+- Template instance selection/materialization ergonomics
 
-### High priority
+## Remaining Parser Work
 
-- Effective settings resolution across `.bind` and `.defaults`.
-  Needed for things like `active`, `return_value_policy`, `keep_alive`,
-  holder types, hooks, and future policy inheritance.
-- Translation layer from `.cpp` plus `.bind` into `.py`.
-  Fill default Python names, docs, signatures, and operator exposure without
-  overwriting explicit user edits unless requested.
-- Activation-aware model behavior.
-  Support effective active/inactive resolution and filtered traversal of only
-  bindable active elements.
-- Better type-query helpers on `CppType`.
-  Add small helpers for common policy/emitter questions such as builtin vs
-  named type, pointer/reference/value, constness, innermost named type, and
-  template-family recognition.
-- Template ergonomics for users.
-  Selecting, materializing, and customizing template instances should become
-  easier than working directly with low-level instance lists.
+### Missing declaration coverage
 
-### Medium priority
+- Destructors
+- Conversion functions
+- Parsed operators
+- Unions
+- Alias templates
 
-- Shared callable-base facets if duplication grows further.
-  Especially for common callable metadata shared between functions, methods,
-  constructors, and template declarations.
-- Clarify parameter semantics in the model design docs.
-  Parameters are intentionally first-class objects, but not full declaration
-  scopes in the same sense as namespaces and classes.
-- Document parameter doc fields explicitly as lightweight strings derived from
-  Doxygen parameter documentation, not full `CppDoc` or `PyDoc` objects.
-- Consider a shared declaration-metadata facet only if repeated fields keep
-  growing across namespaces, classes, enums, variables, and callables.
+### Missing or thin parsed facts
 
-## C++ Semantic Coverage
+- Richer exception specifications beyond `is_noexcept`
+- Richer method qualifiers such as ref-qualifiers
+- `constexpr` / `consteval` metadata
+- More structured template specialization behavior if a real binding need justifies it
 
-### Still missing or incomplete
+### Areas that still need refinement
 
-- Unsupported libclang declaration kinds that should be tracked explicitly.
-  The current walker materializes namespaces, classes/structs, enums,
-  aliases/typedefs, free functions, methods, constructors, variables,
-  parameters, and template declarations. Still
-  missing at the cursor-dispatch level are:
-  - `DESTRUCTOR`
-  - `CONVERSION_FUNCTION`
-  - `UNION_DECL`
-- Alias templates.
-- Destructors.
-- Unions.
-- Richer exception specifications beyond `is_noexcept`.
-- Richer method qualifiers such as ref-qualifiers.
-- Deleted/defaulted/constexpr/consteval metadata.
-- Template specialization nodes and specialization-aware behavior.
-- Preprocessor-conditioned API presence, if it becomes necessary.
+- Redeclaration enrichment beyond the current conservative first pass
+- Comment recovery edge cases around unusual placement/macros
+- Structured type parsing and declaration linking for more clang type kinds
+- Alias-target linking/emission behavior
+- Access control / visibility coverage
+- Variable metadata follow-ups such as `constinit` and `inline`, if later policy needs them
+- Documentation/tag refinement such as `@throws`, `@exception`, `@remark`, and richer code/cross-reference handling
 
-### Partially covered, but likely still needs refinement
+## Binding Model Work
 
-- Redeclaration enrichment.
-  The parser now reuses semantic nodes by clang USR, merges provenance, and
-  links named types back to declarations. Parameter-slot enrichment for
-  repeated callables is now handled positionally, but fuller kind-specific
-  redeclaration enrichment is still conservative first-pass behavior.
-- Raw comment handling and recovery heuristics.
-  Normalized docs, parameter-doc extraction, and token-based recovery are now
-  implemented. Remaining refinement is mostly around edge cases such as macros,
-  unusual comment placement, and any future decision to recover comments beyond
-  what clang tokenization can support cleanly.
-- Structured type parsing and declaration linking.
-  Recursive `CppType` parsing and deferred `NamedCppType.declaration` linking
-  now exist, but more clang type kinds, richer qualifiers, and better
-  user-facing type-query helpers are still needed.
-- Type aliases / `using` / `typedef`.
-  Alias declarations are now first-class semantic nodes, but emission policy,
-  alias-target linking behavior for named type uses, and template aliases are
-  still incomplete.
-- Access control and visibility.
-  Visibility now exists on several semantic nodes, but access-specifier-driven
-  behavior and parser coverage may still need refinement.
-- Templates in general.
-  Families, declarations, observed instances, and selected instances exist,
-  but substitution/specialization behavior is still not complete. The current
-  spelling-based template fallback should stay minimal; qualifier and wrapper
-  association in parsed template-argument spellings is brittle. The main path
-  should move toward emitter-side binding helper templates instantiated once
-  per selected argument list, with deeper clang-driven specialization parsing
-  only as an optional later refinement.
-  Use-site template-instantiated types now carry structured template arguments,
-  including non-type arguments, and parser-observed class template instances
-  are collected from declaration-surface type uses. Use-site template-template
-  arguments are still not richly inferred, block-scope body observations are
-  intentionally ignored, and template parameter defaults remain intentionally
-  unused for now.
+- Richer hook model than plain `list[str]`
+- Real property model for variables
+- Iterator exposure policy
+- More precise callable/argument policy:
+  - keyword-only / positional-only
+  - `noconvert`
+  - `None` acceptance
+- Better overload-group handling
+- More complete return-value and ownership policy coverage
+- Implicit conversion policy
+- Custom constructor / init emission choices
+- Namespace/module policy
+- Richer enum export/flag behavior
+- Custom wrappers/adaptors for awkward C++ APIs
 
-- Template instance selection ergonomics.
-  Selected template instances should become easy to request and customize in
-  the model, without depending on fake specialized declaration trees.
-- Variable metadata beyond type, docs, and visibility.
-  Follow-up candidates include storage class, linkage, `constexpr`, `constinit`,
-  and `inline` when later binding policy or diagnostics need them.
-- Documentation/tag refinement.
-  Common tags are supported already, but follow-up candidates include richer
-  handling for `@throws`, `@exception`, `@remark`, and more specialized code or
-  cross-reference markup if later translation/emission needs them.
+## Translation Work
 
-## Binding Policy Model
+- Derived naming for template instances
+- Operator translation into Python-facing names / dunder methods
+- Python signature synthesis from callable shape, defaults, and `py.sig`
+- Python doc translation/customization flow that preserves user edits by default
 
-### High priority
+## Emitter Work
 
-- Richer hook model than plain `list[str]`.
-  Model hook kinds explicitly instead of storing raw strings only.
-- Property model.
-  Current variable getter/setter knobs are not yet a real first-class property
-  decision model.
-- Iterator exposure policy.
-- More precise callable and argument policy modeling.
-  Include keyword-only, positional-only, `noconvert`, `None` acceptance, and
-  similar argument-shape decisions.
-- Better overload-group handling beyond preserving `overload_index`.
-- More complete return-value-policy and ownership-policy coverage.
+### Nanobind-first backend work
 
-### Medium priority
-
-- Implicit conversion policy.
-- Custom constructor / init emission choices.
-- Module / submodule policy for namespaces.
-- Enum export-style and flag behavior beyond the current minimal fields.
-- Custom wrappers / adaptors for awkward C++ APIs.
-
-## Translation Layer
-
-- Derived naming for template instances.
-  This belongs in translation, not in raw parse state. It should be
-  configurable and able to use spelled names, canonicalized names, or custom
-  naming replacements.
-- Operator translation into Python-facing names or dunder methods.
-- Python signature synthesis.
-  Combine parsed callable shape, parameter defaults, and `py.sig` overrides
-  into a coherent Python-facing signature model.
-- Python doc translation and customization flow.
-  Preserve the current "fill missing values only" rule unless overwrite mode is
-  requested.
-
-## Emitter / Backend Work
-
-### Nanobind-facing gaps
-
-- STL/container policy configuration.
-  Especially caster-vs-bind decisions such as `bind_vector` / `bind_map`.
-- `ndarray` policy and shape metadata.
-- Class flags such as dynamic attributes and similar backend-facing options.
-- Explicit `__new__`-style construction policy where nanobind needs it.
-- Exception registration / translation configuration.
+- Nanobind emitter implementation
+- STL/container policy configuration
+- `ndarray` policy and shape metadata
+- Class flags such as dynamic attributes
+- Explicit `__new__`-style construction policy where needed
+- Exception registration/translation configuration
 
 ### General emitter work
 
-- Nanobind emitter implementation.
-- Pybind11 emitter implementation after the nanobind pipeline is stable.
-- Template-family emission via generated C++ binding helper templates.
-  Emit one generic binding helper per template family and instantiate it once
-  per selected argument list, so the C++ compiler performs specialization.
-- Incremental write behavior for generated files.
-  Write via temp files and replace only when content changes.
-- Namespace-to-Python-module emission behavior.
-- Emission ordering helpers that respect declaration order and dependency order.
+- Template-family emission via generated C++ helper templates
+- Incremental write behavior for generated files
+- Namespace-to-Python-module emission behavior
+- Emission ordering helpers that respect declaration and dependency order
+- Pybind11 emitter after the nanobind pipeline is stable
 
-## Parser / Project Configuration
+## Configuration And Project Layer
 
-- Revisit parser builder helper layering once the parse stage stabilizes.
-  In particular, check whether the `build_*_cpp_facet()` helpers still buy
-  enough readability over direct construction, and whether `clang_walk.py`
-  can be shortened further without adding too much abstraction.
-- Keep the new `headers/` layer cleanly separated from parsing.
-  `HeaderSelection` should remain the public handoff object between header
-  discovery/activation workflow and the parse stage, rather than letting
-  parser APIs grow ad-hoc parallel header-list parameters again.
-- Extend the existing parser configuration layer around libclang invocation.
-  The current `ParserConfig` already covers include directories, defines,
-  extra compiler arguments, language standard, resource directory, system
-  include directories, and optional compiler-based toolchain autodetection.
-  Remaining likely extensions are compilation database integration and any
-  future recovery/debug toggles around comment attachment if the current
-  always-on clang-plus-token approach needs user-facing control later.
-- Project-level configuration for module naming, top-level namespace handling,
-  selected template instances, activation-header workflow, and exception
-  translation policy.
-- Emitter/backend configuration for output layout, optional signature emission,
-  and backend selection.
+- Keep `headers/` cleanly separated from parsing
+- Revisit parser helper layering once the parse stage stabilizes
+- Extend `ParserConfig` only where it buys real value:
+  - compilation database integration
+  - possible future recovery/debug toggles if needed
+- Project-level configuration for:
+  - module naming
+  - top-level namespace handling
+  - selected template instances
+  - activation-header workflow
+  - exception translation policy
+- Emitter/backend configuration for output layout, signatures, and backend choice
 
-## Clang Integration Coverage
+## Test Coverage Still Worth Adding
 
-- Add one real libclang integration test for scope-relative named type
-  spellings such as `types::OmenKind` and `Mortal::Vocation`.
-- Add one real libclang integration test for alias-preserving type spellings,
-  so declarations like `using Alias = Widget;` keep the written alias spelling
-  while still linking to the resolved declaration where appropriate.
-- Add one real libclang integration test for typedef-preserving type spellings,
-  parallel to the alias case, to pin the intended separation between written
-  spelling, declaration link, and canonical underlying type.
-- Add one real libclang integration test for reopened namespaces that carry
-  multiple declaration locations/comments, including anonymous-namespace
-  behavior where appropriate.
-- Add one real libclang integration test for nested declaration linking inside
-  spelling-parsed template arguments, to pin the current gap and the intended
-  future behavior once clang-driven template instantiation covers more of it.
+- Real libclang integration test for scope-relative named type spellings
+- Real libclang integration test for alias-preserving written spellings
+- Real libclang integration test for typedef-preserving written spellings
+- Real libclang integration test for reopened namespaces with multiple locations/comments
+- Real libclang integration test for nested declaration linking inside spelling-parsed template arguments
 
 ## Outputs Beyond Bindings
 
-- Python stub generation.
-- Binding test-stub generation.
-- Better diagnostics and warnings tied to source locations.
-  Especially for missing activation-header entries, unsupported declarations,
-  skipped elements, and ambiguous user customizations.
+- Python stub generation
+- Binding test scaffolding
+- Better diagnostics and warnings tied to source locations
 
-## Nice To Revisit Later
+## Later / Nice To Revisit
 
-- Box-type support similar in spirit to litgen, if it turns out to be useful.
-- Broader coverage questions for standard-library types and other framework
-  types once the basic parser/translate/emit pipeline is working well.
-- Review `NotImplementedError` sites periodically to ensure the abstract
-  methods that remain are still the right abstraction boundaries.
-- In case of the user customization having an exception due to not finding a type,
-  we could check if the git history of the to-be-bound repo contains a change
-  that previously contained that type, and now changed, to aid the user in
-  finding out why it broke. Maybe too fancy of an idea though...
+- Box-type support if it proves useful
+- Broader standard-library/framework-type policy once parse/translate/emit is stable
+- Periodic review of `NotImplementedError` boundaries

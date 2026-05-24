@@ -19,7 +19,7 @@ namespace cosmos::functions {
 std::string greet_pilgrim(std::string_view name);
 
 /** Combine two ritual offering counts. */
-int combine_offerings(int grain, int nectar);
+int combine_offerings(int grain, int nectar = 1);
 
 /**
  * @brief Build one small relic description from plain inputs.

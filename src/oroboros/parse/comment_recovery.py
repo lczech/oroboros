@@ -81,7 +81,11 @@ def resolve_cursor_comment(cursor: Any, context: BuildContext | None) -> CursorC
                 selected_comment=None,
                 selected_doc=None,
                 selection_reason="discarded_detached_clang_raw_comment",
-                mismatch_warning=_build_detached_warning(cursor, raw_comment),
+                # Keep detached-comment discard itself, but do not warn for it:
+                # blank-line-separated comments that clang still attaches as raw comments
+                # turned out to produce too much noise without indicating a real problem.
+                # mismatch_warning=_build_detached_warning(cursor, raw_comment),
+                mismatch_warning=None,
             )
         else:
             resolution = fallback
@@ -120,7 +124,12 @@ def recover_comment_candidates(cursor: Any, context: BuildContext) -> list[Recov
 
     candidates: list[RecoveredCommentCandidate] = []
 
-    trailing = _recover_trailing_comment(tokens, end_line=end_line, end_offset=end_offset)
+    trailing = _recover_trailing_comment(
+        tokens,
+        start_line=start_line,
+        end_line=end_line,
+        end_offset=end_offset,
+    )
     if trailing is not None:
         candidates.append(trailing)
 
@@ -249,7 +258,7 @@ def _raw_comment_is_detached(cursor: Any, context: BuildContext, raw_comment: st
         return False
 
     if token.spelling.lstrip().startswith("//"):
-        group: list[_CursorToken] = [token]
+        group: list[CursorTokenInfo] = [token]
         index = preceding_index - 1
         while index >= 0:
             candidate = tokens[index]
@@ -277,10 +286,17 @@ def _raw_comment_is_detached(cursor: Any, context: BuildContext, raw_comment: st
 def _recover_trailing_comment(
     tokens: list[CursorTokenInfo],
     *,
+    start_line: int,
     end_line: int,
     end_offset: int,
 ) -> RecoveredCommentCandidate | None:
     """Recover one same-line trailing comment token after the declaration extent."""
+
+    # Only treat line-local declaration trailers as docs. Multi-line extents such as
+    # namespaces, classes, or function bodies should not attach closing `// namespace ...`
+    # comments from the end of the scope.
+    if start_line != end_line:
+        return None
 
     for token in tokens:
         if token.start_offset < end_offset:
@@ -326,7 +342,7 @@ def _recover_leading_comment_group(
     if token.spelling.lstrip().startswith("//"):
         if token.end_line != start_line - 1:
             return None
-        group: list[_CursorToken] = [token]
+        group: list[CursorTokenInfo] = [token]
         index = preceding_index - 1
         while index >= 0:
             candidate = tokens[index]
