@@ -68,6 +68,11 @@ _TEMPLATE_PARAMETER_CURSOR_KINDS = frozenset({
 # ==================================================================================================
 
 
+# ------------------------------------------------------------------------------
+#     Class
+# ------------------------------------------------------------------------------
+
+
 def process_class_cursor(
     cursor: Any,
     owner: CppElement,
@@ -90,223 +95,6 @@ def process_class_cursor(
     if attached is not None:
         register_element_for_cursor(cursor, attached, context)
         _visit_children(cursor.get_children(), attached, context)
-
-
-def process_enum_cursor(
-    cursor: Any,
-    owner: CppElement,
-    context: BuildContext,
-) -> None:
-    """Create or enrich one enum declaration and recurse into its children."""
-
-    candidate_cpp = build_enum_cpp_facet(cursor, context=context)
-    existing = lookup_registered_element(cursor, context, CppEnum)
-    if existing is not None:
-        merge_common_cpp_fields(existing, candidate_cpp, context, cursor)
-        merge_cpp_scalar(existing, "underlying_type", candidate_cpp.underlying_type, context, cursor)
-        merge_cpp_scalar(existing, "is_scoped", candidate_cpp.is_scoped, context, cursor)
-        merge_cpp_scalar(existing, "visibility", candidate_cpp.visibility, context, cursor)
-        _visit_children(cursor.get_children(), existing, context)
-        return
-
-    enum_ = CppEnum(name=cursor.spelling, cpp=candidate_cpp)
-    attached = attach_element(owner, "add_enum", enum_)
-    if attached is not None:
-        register_element_for_cursor(cursor, attached, context)
-        _visit_children(cursor.get_children(), attached, context)
-
-
-def process_class_template_cursor(
-    cursor: Any,
-    owner: CppElement,
-    context: BuildContext,
-) -> None:
-    """Create or enrich one class-template family and recurse into its declaration."""
-
-    candidate_cpp = build_class_template_declaration_cpp_facet(cursor, context=context)
-    existing = lookup_registered_element(cursor, context, CppClassTemplate)
-    if existing is not None:
-        declaration = existing.declaration
-        child_cursors = list(cursor.get_children())
-        merge_common_cpp_fields(declaration, candidate_cpp, context, cursor)
-        merge_cpp_scalar(declaration, "kind", candidate_cpp.kind, context, cursor)
-        merge_cpp_scalar(declaration, "visibility", candidate_cpp.visibility, context, cursor)
-        merge_class_bases(declaration, candidate_cpp.bases, context, cursor)
-        merge_template_parameters(
-            declaration.cpp.template_parameters,
-            candidate_cpp.template_parameters,
-            context,
-            cursor,
-        )
-        visit_non_template_parameter_children(child_cursors, declaration, context)
-        return
-
-    template = CppClassTemplate(
-        name=cursor.spelling,
-        declaration=CppClassTemplateDeclaration(
-            name=cursor.spelling,
-            cpp=candidate_cpp,
-        ),
-    )
-    attached = attach_element(owner, "add_class_template", template)
-    if attached is not None:
-        register_element_for_cursor(cursor, attached, context)
-        visit_non_template_parameter_children(
-            cursor.get_children(),
-            attached.declaration,
-            context,
-        )
-
-
-def process_enumerator_cursor(
-    cursor: Any,
-    owner: CppElement,
-    context: BuildContext,
-) -> None:
-    """Create or enrich one enumerator declaration."""
-
-    candidate_cpp = build_enumerator_cpp_facet(cursor, context=context)
-    existing = lookup_registered_element(cursor, context, CppEnumerator)
-    if existing is not None:
-        warn_unexpected_repeated_declaration(context, cursor, "enumerator")
-        return
-
-    enumerator = CppEnumerator(name=cursor.spelling, cpp=candidate_cpp)
-    attached = attach_element(owner, "add_enumerator", enumerator)
-    if attached is not None:
-        register_element_for_cursor(cursor, attached, context)
-
-
-def process_function_cursor(
-    cursor: Any,
-    owner: CppElement,
-    context: BuildContext,
-) -> None:
-    """Create or enrich one free function declaration and recurse into its children."""
-
-    candidate_cpp = build_function_cpp_facet(cursor, context=context)
-    existing = lookup_registered_element(cursor, context, CppFunction)
-    if existing is not None:
-        child_cursors = list(cursor.get_children())
-        merge_common_cpp_fields(existing, candidate_cpp, context, cursor)
-        merge_cpp_scalar(
-            existing,
-            "return_type",
-            candidate_cpp.return_type,
-            context,
-            cursor,
-            values_equivalent=cpp_types_equivalent,
-        )
-        merge_cpp_scalar(existing, "operator", candidate_cpp.operator, context, cursor)
-        merge_cpp_scalar(existing, "is_noexcept", candidate_cpp.is_noexcept, context, cursor)
-        merge_cpp_bool_enrichment(existing, "is_deleted", candidate_cpp.is_deleted)
-        merge_callable_parameter_children(
-            existing,
-            child_cursors,
-            context,
-            register_element_for_cursor=register_element_for_cursor,
-        )
-        visit_non_parameter_children(child_cursors, existing, context)
-        apply_parameter_docs(existing)
-        return
-
-    function = CppFunction(name=cursor.spelling, cpp=candidate_cpp)
-    attached = attach_element(owner, "add_function", function)
-    if attached is not None:
-        register_element_for_cursor(cursor, attached, context)
-        _visit_children(cursor.get_children(), attached, context)
-        apply_parameter_docs(attached)
-
-
-def process_alias_cursor(
-    cursor: Any,
-    owner: CppElement,
-    context: BuildContext,
-) -> None:
-    """Create or enrich one alias declaration."""
-
-    candidate_cpp = build_alias_cpp_facet(cursor, context=context)
-    existing = lookup_registered_element(cursor, context, CppAlias)
-    if existing is not None:
-        warn_unexpected_repeated_declaration(context, cursor, "alias")
-        return
-
-    alias = CppAlias(name=cursor.spelling, cpp=candidate_cpp)
-    attached = attach_element(owner, "add_alias", alias)
-    if attached is not None:
-        register_element_for_cursor(cursor, attached, context)
-
-
-def process_function_template_cursor(
-    cursor: Any,
-    owner: CppElement,
-    context: BuildContext,
-) -> None:
-    """Create or enrich one function-template family and recurse into its declaration."""
-
-    child_cursors = list(cursor.get_children())
-    constructor_owner = _templated_constructor_owner(cursor, owner, context)
-    if constructor_owner is not None:
-        process_templated_constructor_cursor(
-            cursor,
-            constructor_owner,
-            context,
-        )
-        return
-
-    candidate_cpp = build_function_template_declaration_cpp_facet(cursor, context=context)
-    existing = lookup_registered_element(cursor, context, CppFunctionTemplate)
-    if existing is not None:
-        declaration = existing.declaration
-        merge_common_cpp_fields(declaration, candidate_cpp, context, cursor)
-        merge_cpp_scalar(
-            declaration,
-            "return_type",
-            candidate_cpp.return_type,
-            context,
-            cursor,
-            values_equivalent=cpp_types_equivalent,
-        )
-        merge_cpp_scalar(declaration, "operator", candidate_cpp.operator, context, cursor)
-        merge_cpp_scalar(declaration, "is_noexcept", candidate_cpp.is_noexcept, context, cursor)
-        merge_cpp_bool_enrichment(declaration, "is_deleted", candidate_cpp.is_deleted)
-        merge_cpp_scalar(declaration, "is_const", candidate_cpp.is_const, context, cursor)
-        merge_cpp_scalar(declaration, "ref_qualifier", candidate_cpp.ref_qualifier, context, cursor)
-        merge_cpp_scalar(declaration, "is_static", candidate_cpp.is_static, context, cursor)
-        merge_cpp_scalar(declaration, "is_virtual", candidate_cpp.is_virtual, context, cursor)
-        merge_cpp_scalar(declaration, "is_pure_virtual", candidate_cpp.is_pure_virtual, context, cursor)
-        merge_template_parameters(
-            declaration.cpp.template_parameters,
-            candidate_cpp.template_parameters,
-            context,
-            cursor,
-        )
-        merge_callable_parameter_children(
-            declaration,
-            child_cursors,
-            context,
-            register_element_for_cursor=register_element_for_cursor,
-        )
-        visit_non_template_parameter_children(child_cursors, declaration, context)
-        apply_parameter_docs(declaration)
-        return
-
-    template = CppFunctionTemplate(
-        name=cursor.spelling,
-        declaration=CppFunctionTemplateDeclaration(
-            name=cursor.spelling,
-            cpp=candidate_cpp,
-        ),
-    )
-    attached = attach_element(owner, "add_function_template", template)
-    if attached is not None:
-        register_element_for_cursor(cursor, attached, context)
-        visit_non_template_parameter_children(
-            child_cursors,
-            attached.declaration,
-            context,
-        )
-        apply_parameter_docs(attached.declaration)
 
 
 def process_constructor_cursor(
@@ -343,54 +131,6 @@ def process_constructor_cursor(
     if attached is not None:
         register_element_for_cursor(cursor, attached, context)
         _visit_children(cursor.get_children(), attached, context)
-        apply_parameter_docs(attached)
-
-
-def process_templated_constructor_cursor(
-    template_cursor: Any,
-    owner: CppElement,
-    context: BuildContext,
-) -> None:
-    """Create or enrich one templated constructor under a class-like declaration."""
-
-    candidate_cpp = build_constructor_cpp_facet(template_cursor, context=context)
-    candidate_cpp.original_name = _constructor_name_for_owner(owner, template_cursor)
-    candidate_cpp.template_parameters = build_template_parameters(template_cursor, context=context)
-
-    existing = lookup_registered_element(template_cursor, context, CppConstructor)
-    if existing is not None:
-        child_cursors = list(template_cursor.get_children())
-        merge_common_cpp_fields(existing, candidate_cpp, context, template_cursor)
-        merge_template_parameters(
-            existing.cpp.template_parameters,
-            candidate_cpp.template_parameters,
-            context,
-            template_cursor,
-        )
-        merge_cpp_scalar(existing, "is_noexcept", candidate_cpp.is_noexcept, context, template_cursor)
-        merge_cpp_bool_enrichment(existing, "is_explicit", candidate_cpp.is_explicit)
-        merge_cpp_bool_enrichment(existing, "is_deleted", candidate_cpp.is_deleted)
-        merge_cpp_bool_enrichment(existing, "is_defaulted", candidate_cpp.is_defaulted)
-        merge_cpp_scalar(existing, "visibility", candidate_cpp.visibility, context, template_cursor)
-        register_element_for_cursor(template_cursor, existing, context)
-        merge_callable_parameter_children(
-            existing,
-            child_cursors,
-            context,
-            register_element_for_cursor=register_element_for_cursor,
-        )
-        visit_non_parameter_children(child_cursors, existing, context)
-        apply_parameter_docs(existing)
-        return
-
-    constructor = CppConstructor(
-        name=_constructor_name_for_owner(owner, template_cursor),
-        cpp=candidate_cpp,
-    )
-    attached = attach_element(owner, "add_constructor", constructor)
-    if attached is not None:
-        register_element_for_cursor(template_cursor, attached, context)
-        _visit_children(template_cursor.get_children(), attached, context)
         apply_parameter_docs(attached)
 
 
@@ -526,6 +266,147 @@ def process_variable_cursor(
         register_element_for_cursor(cursor, attached, context)
 
 
+# ------------------------------------------------------------------------------
+#     Class Template
+# ------------------------------------------------------------------------------
+
+
+def process_class_template_cursor(
+    cursor: Any,
+    owner: CppElement,
+    context: BuildContext,
+) -> None:
+    """Create or enrich one class-template family and recurse into its declaration."""
+
+    candidate_cpp = build_class_template_declaration_cpp_facet(cursor, context=context)
+    existing = lookup_registered_element(cursor, context, CppClassTemplate)
+    if existing is not None:
+        declaration = existing.declaration
+        child_cursors = list(cursor.get_children())
+        merge_common_cpp_fields(declaration, candidate_cpp, context, cursor)
+        merge_cpp_scalar(declaration, "kind", candidate_cpp.kind, context, cursor)
+        merge_cpp_scalar(declaration, "visibility", candidate_cpp.visibility, context, cursor)
+        merge_class_bases(declaration, candidate_cpp.bases, context, cursor)
+        merge_template_parameters(
+            declaration.cpp.template_parameters,
+            candidate_cpp.template_parameters,
+            context,
+            cursor,
+        )
+        visit_non_template_parameter_children(child_cursors, declaration, context)
+        return
+
+    template = CppClassTemplate(
+        name=cursor.spelling,
+        declaration=CppClassTemplateDeclaration(
+            name=cursor.spelling,
+            cpp=candidate_cpp,
+        ),
+    )
+    attached = attach_element(owner, "add_class_template", template)
+    if attached is not None:
+        register_element_for_cursor(cursor, attached, context)
+        visit_non_template_parameter_children(
+            cursor.get_children(),
+            attached.declaration,
+            context,
+        )
+
+
+def process_templated_constructor_cursor(
+    template_cursor: Any,
+    owner: CppElement,
+    context: BuildContext,
+) -> None:
+    """Create or enrich one templated constructor under a class-like declaration."""
+
+    candidate_cpp = build_constructor_cpp_facet(template_cursor, context=context)
+    candidate_cpp.original_name = _constructor_name_for_owner(owner, template_cursor)
+    candidate_cpp.template_parameters = build_template_parameters(template_cursor, context=context)
+
+    existing = lookup_registered_element(template_cursor, context, CppConstructor)
+    if existing is not None:
+        child_cursors = list(template_cursor.get_children())
+        merge_common_cpp_fields(existing, candidate_cpp, context, template_cursor)
+        merge_template_parameters(
+            existing.cpp.template_parameters,
+            candidate_cpp.template_parameters,
+            context,
+            template_cursor,
+        )
+        merge_cpp_scalar(existing, "is_noexcept", candidate_cpp.is_noexcept, context, template_cursor)
+        merge_cpp_bool_enrichment(existing, "is_explicit", candidate_cpp.is_explicit)
+        merge_cpp_bool_enrichment(existing, "is_deleted", candidate_cpp.is_deleted)
+        merge_cpp_bool_enrichment(existing, "is_defaulted", candidate_cpp.is_defaulted)
+        merge_cpp_scalar(existing, "visibility", candidate_cpp.visibility, context, template_cursor)
+        register_element_for_cursor(template_cursor, existing, context)
+        merge_callable_parameter_children(
+            existing,
+            child_cursors,
+            context,
+            register_element_for_cursor=register_element_for_cursor,
+        )
+        visit_non_parameter_children(child_cursors, existing, context)
+        apply_parameter_docs(existing)
+        return
+
+    constructor = CppConstructor(
+        name=_constructor_name_for_owner(owner, template_cursor),
+        cpp=candidate_cpp,
+    )
+    attached = attach_element(owner, "add_constructor", constructor)
+    if attached is not None:
+        register_element_for_cursor(template_cursor, attached, context)
+        _visit_children(template_cursor.get_children(), attached, context)
+        apply_parameter_docs(attached)
+
+
+# ------------------------------------------------------------------------------
+#     Function
+# ------------------------------------------------------------------------------
+
+
+def process_function_cursor(
+    cursor: Any,
+    owner: CppElement,
+    context: BuildContext,
+) -> None:
+    """Create or enrich one free function declaration and recurse into its children."""
+
+    candidate_cpp = build_function_cpp_facet(cursor, context=context)
+    existing = lookup_registered_element(cursor, context, CppFunction)
+    if existing is not None:
+        child_cursors = list(cursor.get_children())
+        merge_common_cpp_fields(existing, candidate_cpp, context, cursor)
+        merge_cpp_scalar(
+            existing,
+            "return_type",
+            candidate_cpp.return_type,
+            context,
+            cursor,
+            values_equivalent=cpp_types_equivalent,
+        )
+        merge_cpp_scalar(existing, "operator", candidate_cpp.operator, context, cursor)
+        merge_cpp_scalar(existing, "is_noexcept", candidate_cpp.is_noexcept, context, cursor)
+        merge_cpp_bool_enrichment(existing, "is_deleted", candidate_cpp.is_deleted)
+        merge_callable_parameter_children(
+            existing,
+            child_cursors,
+            context,
+            register_element_for_cursor=register_element_for_cursor,
+        )
+        visit_non_parameter_children(child_cursors, existing, context)
+        apply_parameter_docs(existing)
+        return
+
+    function = CppFunction(name=cursor.spelling, cpp=candidate_cpp)
+    attached = attach_element(owner, "add_function", function)
+    if attached is not None:
+        register_element_for_cursor(cursor, attached, context)
+        _visit_children(cursor.get_children(), attached, context)
+        apply_parameter_docs(attached)
+
+
 def process_parameter_cursor(
     cursor: Any,
     owner: CppElement,
@@ -572,6 +453,155 @@ def apply_parameter_docs(callable_element: Any) -> None:
             parameter.cpp.doc = None
             continue
         parameter.cpp.doc = parameter_docs.get(parameter.name)
+
+
+# ------------------------------------------------------------------------------
+#     Function Template
+# ------------------------------------------------------------------------------
+
+
+def process_function_template_cursor(
+    cursor: Any,
+    owner: CppElement,
+    context: BuildContext,
+) -> None:
+    """Create or enrich one function-template family and recurse into its declaration."""
+
+    child_cursors = list(cursor.get_children())
+    constructor_owner = _templated_constructor_owner(cursor, owner, context)
+    if constructor_owner is not None:
+        process_templated_constructor_cursor(
+            cursor,
+            constructor_owner,
+            context,
+        )
+        return
+
+    candidate_cpp = build_function_template_declaration_cpp_facet(cursor, context=context)
+    existing = lookup_registered_element(cursor, context, CppFunctionTemplate)
+    if existing is not None:
+        declaration = existing.declaration
+        merge_common_cpp_fields(declaration, candidate_cpp, context, cursor)
+        merge_cpp_scalar(
+            declaration,
+            "return_type",
+            candidate_cpp.return_type,
+            context,
+            cursor,
+            values_equivalent=cpp_types_equivalent,
+        )
+        merge_cpp_scalar(declaration, "operator", candidate_cpp.operator, context, cursor)
+        merge_cpp_scalar(declaration, "is_noexcept", candidate_cpp.is_noexcept, context, cursor)
+        merge_cpp_bool_enrichment(declaration, "is_deleted", candidate_cpp.is_deleted)
+        merge_cpp_scalar(declaration, "is_const", candidate_cpp.is_const, context, cursor)
+        merge_cpp_scalar(declaration, "ref_qualifier", candidate_cpp.ref_qualifier, context, cursor)
+        merge_cpp_scalar(declaration, "is_static", candidate_cpp.is_static, context, cursor)
+        merge_cpp_scalar(declaration, "is_virtual", candidate_cpp.is_virtual, context, cursor)
+        merge_cpp_scalar(declaration, "is_pure_virtual", candidate_cpp.is_pure_virtual, context, cursor)
+        merge_template_parameters(
+            declaration.cpp.template_parameters,
+            candidate_cpp.template_parameters,
+            context,
+            cursor,
+        )
+        merge_callable_parameter_children(
+            declaration,
+            child_cursors,
+            context,
+            register_element_for_cursor=register_element_for_cursor,
+        )
+        visit_non_template_parameter_children(child_cursors, declaration, context)
+        apply_parameter_docs(declaration)
+        return
+
+    template = CppFunctionTemplate(
+        name=cursor.spelling,
+        declaration=CppFunctionTemplateDeclaration(
+            name=cursor.spelling,
+            cpp=candidate_cpp,
+        ),
+    )
+    attached = attach_element(owner, "add_function_template", template)
+    if attached is not None:
+        register_element_for_cursor(cursor, attached, context)
+        visit_non_template_parameter_children(
+            child_cursors,
+            attached.declaration,
+            context,
+        )
+        apply_parameter_docs(attached.declaration)
+
+
+# ------------------------------------------------------------------------------
+#     Enum
+# ------------------------------------------------------------------------------
+
+
+def process_enum_cursor(
+    cursor: Any,
+    owner: CppElement,
+    context: BuildContext,
+) -> None:
+    """Create or enrich one enum declaration and recurse into its children."""
+
+    candidate_cpp = build_enum_cpp_facet(cursor, context=context)
+    existing = lookup_registered_element(cursor, context, CppEnum)
+    if existing is not None:
+        merge_common_cpp_fields(existing, candidate_cpp, context, cursor)
+        merge_cpp_scalar(existing, "underlying_type", candidate_cpp.underlying_type, context, cursor)
+        merge_cpp_scalar(existing, "is_scoped", candidate_cpp.is_scoped, context, cursor)
+        merge_cpp_scalar(existing, "visibility", candidate_cpp.visibility, context, cursor)
+        _visit_children(cursor.get_children(), existing, context)
+        return
+
+    enum_ = CppEnum(name=cursor.spelling, cpp=candidate_cpp)
+    attached = attach_element(owner, "add_enum", enum_)
+    if attached is not None:
+        register_element_for_cursor(cursor, attached, context)
+        _visit_children(cursor.get_children(), attached, context)
+
+
+def process_enumerator_cursor(
+    cursor: Any,
+    owner: CppElement,
+    context: BuildContext,
+) -> None:
+    """Create or enrich one enumerator declaration."""
+
+    candidate_cpp = build_enumerator_cpp_facet(cursor, context=context)
+    existing = lookup_registered_element(cursor, context, CppEnumerator)
+    if existing is not None:
+        warn_unexpected_repeated_declaration(context, cursor, "enumerator")
+        return
+
+    enumerator = CppEnumerator(name=cursor.spelling, cpp=candidate_cpp)
+    attached = attach_element(owner, "add_enumerator", enumerator)
+    if attached is not None:
+        register_element_for_cursor(cursor, attached, context)
+
+
+# ------------------------------------------------------------------------------
+#     Alias
+# ------------------------------------------------------------------------------
+
+
+def process_alias_cursor(
+    cursor: Any,
+    owner: CppElement,
+    context: BuildContext,
+) -> None:
+    """Create or enrich one alias declaration."""
+
+    candidate_cpp = build_alias_cpp_facet(cursor, context=context)
+    existing = lookup_registered_element(cursor, context, CppAlias)
+    if existing is not None:
+        warn_unexpected_repeated_declaration(context, cursor, "alias")
+        return
+
+    alias = CppAlias(name=cursor.spelling, cpp=candidate_cpp)
+    attached = attach_element(owner, "add_alias", alias)
+    if attached is not None:
+        register_element_for_cursor(cursor, attached, context)
 
 
 # ==================================================================================================
