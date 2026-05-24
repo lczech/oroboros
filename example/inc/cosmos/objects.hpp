@@ -106,4 +106,56 @@ private:
     types::OmenKind last_omen_ {types::omen_blessing};  ///< Most recent omen.
 };
 
+/** Small operator-heavy fixture used to exercise binding-relevant operator parsing. */
+class OmenCounter {
+public:
+    OmenCounter() = default;
+    explicit OmenCounter(int count)
+        : count_(count)
+    {
+    }
+
+    int count() const
+    {
+        return count_;
+    }
+
+    int operator()(int offset) const
+    {
+        return count_ + offset;
+    }
+
+    OmenCounter& operator++()
+    {
+        ++count_;
+        return *this;
+    }
+
+    OmenCounter operator++(int)
+    {
+        OmenCounter previous(*this);
+        ++count_;
+        return previous;
+    }
+
+    explicit operator bool() const
+    {
+        return count_ > 0;
+    }
+
+    friend OmenCounter operator+(OmenCounter const& left, OmenCounter const& right)
+    {
+        return OmenCounter(left.count_ + right.count_);
+    }
+
+    template <class T>
+    friend bool operator==(OmenCounter const& left, T const& right)
+    {
+        return left.count_ == static_cast<int>(right);
+    }
+
+private:
+    int count_ {0};
+};
+
 }  // namespace cosmos::beings

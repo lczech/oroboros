@@ -57,6 +57,13 @@ int main()
     std::cout << "  Divine title: " << demigod.title() << '\n';
     std::cout << "  Completed quests: " << demigod.quest_count() << '\n';
 
+    OmenCounter omens_observed(1);
+    ++omens_observed;
+    const auto total_omens = omens_observed + OmenCounter(2);
+    std::cout << "The scribes tally the omens.\n";
+    std::cout << "  Confirmed omens: " << total_omens.count() << '\n';
+    std::cout << "  Any omens recorded? " << (static_cast<bool>(total_omens) ? "yes" : "no") << '\n';
+
     Oracle oracle("Delphi");
     oracle.set_last_omen(classify_comet(30));
     std::cout << "At last, the oracle speaks.\n";

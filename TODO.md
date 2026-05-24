@@ -16,17 +16,8 @@ Actionable backlog only. Keep long-term design intent and invariants in
 ### Missing declaration coverage
 
 - Destructors
-- Conversion functions
-- Parsed operators
 - Unions
 - Alias templates
-
-### Missing or thin parsed facts
-
-- Richer exception specifications beyond `is_noexcept`
-- Richer method qualifiers such as ref-qualifiers
-- `constexpr` / `consteval` metadata
-- More structured template specialization behavior if a real binding need justifies it
 
 ### Areas that still need refinement
 
@@ -103,6 +94,7 @@ Actionable backlog only. Keep long-term design intent and invariants in
 - Real libclang integration test for typedef-preserving written spellings
 - Real libclang integration test for reopened namespaces with multiple locations/comments
 - Real libclang integration test for nested declaration linking inside spelling-parsed template arguments
+- Real libclang integration test for operator-heavy example fixtures across member, hidden-friend, and templated operators
 
 ## Outputs Beyond Bindings
 
@@ -115,3 +107,11 @@ Actionable backlog only. Keep long-term design intent and invariants in
 - Box-type support if it proves useful
 - Broader standard-library/framework-type policy once parse/translate/emit is stable
 - Periodic review of `NotImplementedError` boundaries
+
+## Missing or thin parsed facts
+
+- Richer exception specifications beyond `is_noexcept`
+- Richer method qualifiers such as ref-qualifiers
+- `constexpr` / `consteval` metadata
+- More structured template specialization behavior if a real binding need justifies it
+- Classification for currently unclassified operator forms such as user-defined literal operators, if a concrete binding need appears

@@ -14,9 +14,10 @@ from clang.cindex import (
     StorageClass,
     TLSKind,
     TokenKind,
+    TypeKind,
 )
 
-from ..model import CppVisibility, SourceLocation
+from ..model import CppOperator, CppVisibility, SourceLocation
 
 
 # ==================================================================================================
@@ -382,6 +383,47 @@ def cursor_callable_is_defaulted(cursor: Any, *, context: Any | None = None) -> 
     return following_tokens[:2] == ["=", "default"]
 
 
+def cursor_operator(cursor: Any) -> CppOperator | None:
+    """Return structured operator metadata for one callable cursor when applicable."""
+
+    kind = getattr(cursor, "kind", None)
+    if kind == CursorKind.CONVERSION_FUNCTION:
+        return CppOperator(
+            kind="conversion",
+            is_explicit=cursor_conversion_operator_is_explicit(cursor),
+        )
+
+    spelling = getattr(cursor, "spelling", None)
+    if spelling is None:
+        return None
+
+    normalized_spelling = str(spelling).strip()
+    if not normalized_spelling.startswith("operator"):
+        return None
+
+    operator_spelling = normalized_spelling[len("operator") :].strip()
+    if not operator_spelling:
+        return None
+
+    if operator_spelling == "co_await":
+        return CppOperator(kind="co_await", symbol=operator_spelling)
+
+    if operator_spelling in {"new", "new[]"}:
+        return CppOperator(kind="allocation", symbol=operator_spelling)
+
+    if operator_spelling in {"delete", "delete[]"}:
+        return CppOperator(kind="deallocation", symbol=operator_spelling)
+
+    if operator_spelling not in _SYMBOLIC_OPERATOR_SPELLINGS:
+        return None
+
+    return CppOperator(
+        kind="symbolic",
+        symbol=operator_spelling,
+        is_postfix=_cursor_operator_is_postfix(cursor, operator_spelling),
+    )
+
+
 # ==================================================================================================
 #     Cursor Shape Helpers
 # ==================================================================================================
@@ -537,6 +579,106 @@ def _has_token_suffix_sequence(token_spellings: list[str], suffix: list[str]) ->
     if len(token_spellings) < len(suffix):
         return False
     return token_spellings[-len(suffix) :] == suffix
+
+
+_SYMBOLIC_OPERATOR_SPELLINGS = frozenset({
+    "+", "-", "*", "/", "%",
+    "^", "&", "|", "~",
+    "!", "=",
+    "<", ">", "+=", "-=", "*=", "/=", "%=",
+    "^=", "&=", "|=",
+    "<<", ">>", ">>=", "<<=",
+    "==", "!=", "<=", ">=", "<=>",
+    "&&", "||",
+    "++", "--",
+    ",", "->*", "->",
+    "()", "[]",
+})
+
+
+def _cursor_operator_is_postfix(
+    cursor: Any,
+    operator_spelling: str,
+) -> bool:
+    """Return whether one increment/decrement operator uses postfix callable shape."""
+
+    if operator_spelling not in {"++", "--"}:
+        return False
+
+    parameter_cursors = [
+        child_cursor
+        for child_cursor in cursor.get_children()
+        if getattr(child_cursor, "kind", None) == CursorKind.PARM_DECL
+    ]
+    if len(parameter_cursors) != 1:
+        return False
+
+    return _cursor_parameter_is_int(parameter_cursors[0])
+
+
+def _cursor_parameter_is_int(cursor: Any) -> bool:
+    """Return whether one parameter cursor has plain `int` type."""
+
+    clang_type = getattr(cursor, "type", None)
+    if clang_type is None:
+        return False
+
+    kind = getattr(clang_type, "kind", None)
+    if kind == TypeKind.INT:
+        return True
+
+    kind_name = getattr(kind, "name", None)
+    if kind_name == "INT":
+        return True
+
+    return str(getattr(clang_type, "spelling", "")).strip() == "int"
+
+
+def cursor_conversion_operator_is_explicit(cursor: Any) -> bool:
+    """Return whether one conversion operator uses an `explicit` specifier."""
+
+    if getattr(cursor, "kind", None) != CursorKind.CONVERSION_FUNCTION:
+        return False
+
+    token_spellings = cursor_token_spellings(cursor)
+    if "explicit" not in token_spellings:
+        return False
+
+    explicit_index = token_spellings.index("explicit")
+    try:
+        operator_index = token_spellings.index("operator")
+    except ValueError:
+        return True
+
+    if explicit_index >= operator_index:
+        return False
+
+    if explicit_index + 1 >= operator_index or token_spellings[explicit_index + 1] != "(":
+        return True
+
+    parenthesis_depth = 0
+    inner_tokens: list[str] = []
+    for token in token_spellings[explicit_index + 1 : operator_index]:
+        if token == "(":
+            if parenthesis_depth > 0:
+                inner_tokens.append(token)
+            parenthesis_depth += 1
+            continue
+        if token == ")":
+            parenthesis_depth -= 1
+            if parenthesis_depth > 0:
+                inner_tokens.append(token)
+            continue
+        if parenthesis_depth > 0:
+            inner_tokens.append(token)
+
+    normalized_inner = normalize_token_spellings(inner_tokens)
+    if normalized_inner == "false":
+        return False
+    if normalized_inner == "true":
+        return True
+
+    return True
 
 
 def _cursor_file_path(cursor: Any) -> Path | None:

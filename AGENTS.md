@@ -171,6 +171,7 @@ The parser/model currently materializes:
 - free functions
 - methods
 - constructors
+- conversion functions
 - variables
   - namespace/free variables
   - member variables
@@ -186,6 +187,7 @@ The parser/model currently materializes:
   - constructor `explicit`
   - deleted/defaulted state
   - parameter default values
+- parsed operator metadata for binding-relevant operator declarations
 - structured recursive type parsing for common declaration-surface types
 - raw comments plus normalized docs
 - token-based comment recovery and clang/recovery reconciliation
@@ -230,8 +232,6 @@ The parser/model currently materializes:
 Highest-value remaining parser gaps:
 
 - destructors
-- conversion functions
-- parsed operators
 - unions
 - richer callable qualifiers beyond current coverage
 - fuller redeclaration enrichment where later declarations add useful facts

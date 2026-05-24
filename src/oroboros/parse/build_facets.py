@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """Build parsed `.cpp` facet data from libclang cursors."""
 
+from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
 from ..model import CppClassBase, CppLocationInfo
@@ -21,6 +22,7 @@ from .cursor_data import (
     cursor_is_noexcept,
     cursor_is_scoped_enum,
     cursor_linkage,
+    cursor_operator,
     cursor_parameter_default_value,
     cursor_source_location,
     cursor_storage_class,
@@ -187,14 +189,16 @@ def build_function_cpp_facet(
 
     from ..model import CppFunctionCppFacet
     raw_comment, doc = _comment_and_doc(cursor, context=context)
+    return_type = build_cpp_type(
+        getattr(cursor, "result_type", None),
+        context=context,
+        source_cursor=cursor,
+    )
 
     return CppFunctionCppFacet(
         original_name=cursor.spelling or None,
-        return_type=build_cpp_type(
-            getattr(cursor, "result_type", None),
-            context=context,
-            source_cursor=cursor,
-        ),
+        operator=_build_operator_metadata(cursor, return_type),
+        return_type=return_type,
         location=build_location_info(cursor),
         comment=raw_comment,
         doc=doc,
@@ -212,14 +216,16 @@ def build_function_template_declaration_cpp_facet(
 
     from ..model import CppFunctionTemplateDeclarationCppFacet
     raw_comment, doc = _comment_and_doc(cursor, context=context)
+    return_type = build_cpp_type(
+        getattr(cursor, "result_type", None),
+        context=context,
+        source_cursor=cursor,
+    )
 
     return CppFunctionTemplateDeclarationCppFacet(
         original_name=cursor.spelling or None,
-        return_type=build_cpp_type(
-            getattr(cursor, "result_type", None),
-            context=context,
-            source_cursor=cursor,
-        ),
+        operator=_build_operator_metadata(cursor, return_type),
+        return_type=return_type,
         location=build_location_info(cursor),
         comment=raw_comment,
         doc=doc,
@@ -242,14 +248,16 @@ def build_method_cpp_facet(
 
     from ..model import CppMethodCppFacet
     raw_comment, doc = _comment_and_doc(cursor, context=context)
+    return_type = build_cpp_type(
+        getattr(cursor, "result_type", None),
+        context=context,
+        source_cursor=cursor,
+    )
 
     return CppMethodCppFacet(
         original_name=cursor.spelling or None,
-        return_type=build_cpp_type(
-            getattr(cursor, "result_type", None),
-            context=context,
-            source_cursor=cursor,
-        ),
+        operator=_build_operator_metadata(cursor, return_type),
+        return_type=return_type,
         location=build_location_info(cursor),
         comment=raw_comment,
         doc=doc,
@@ -386,3 +394,18 @@ def build_class_bases(
         )
 
     return bases
+
+
+def _build_operator_metadata(
+    cursor: Any,
+    return_type: Any,
+) -> Any:
+    """Build structured operator metadata for one function-like cursor."""
+
+    operator = cursor_operator(cursor)
+    if operator is None:
+        return None
+
+    if operator.kind == "conversion" and operator.conversion_type is None and return_type is not None:
+        operator.conversion_type = deepcopy(return_type)
+    return operator

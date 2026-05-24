@@ -13,6 +13,12 @@ This directory contains the mythology-themed `cosmos` example library and a tiny
 - public and private member variables
 - static member variables and free variables
 - nested enums inside classes
+- binding-relevant operators:
+  - member `operator()`
+  - prefix/postfix `operator++`
+  - explicit conversion `operator bool`
+  - hidden-friend `operator+`
+  - hidden-friend templated `operator==`
 - preserved raw comments plus normalized doc parsing for Doxygen/plain comments
 - multiple inheritance via `Demigod : Mortal, Deity`
 

@@ -68,6 +68,18 @@ from oroboros.model import (
     add_observed_template_instances,
     build_py_doc_from_cpp_doc,
     cpp_types_equivalent,
+    is_allocation_operator,
+    is_arithmetic_operator,
+    is_assignment_operator,
+    is_bitwise_operator,
+    is_call_operator,
+    is_comparison_operator,
+    is_conversion_operator,
+    is_deallocation_operator,
+    is_increment_decrement_operator,
+    is_index_operator,
+    is_logical_operator,
+    is_symbolic_operator,
 )
 
 
@@ -449,17 +461,18 @@ class ModelScaffoldTest(unittest.TestCase):
 
     def test_operator_metadata_lives_in_cpp_and_bind_facets(self) -> None:
         free_operator = CppFunction(name="operator+")
-        free_operator.cpp.operator = CppOperator(kind="punctuation", symbol="+")
+        free_operator.cpp.operator = CppOperator(kind="symbolic", symbol="+")
         free_operator.bind.operator = CppOperatorBind(mode="named")
 
         method_operator = CppMethod(name="operator[]")
-        method_operator.cpp.operator = CppOperator(kind="punctuation", symbol="[]")
+        method_operator.cpp.operator = CppOperator(kind="symbolic", symbol="[]")
         method_operator.bind.operator = CppOperatorBind(mode="dunder")
 
         conversion_operator = CppMethod(name="operator bool")
         conversion_operator.cpp.operator = CppOperator(
             kind="conversion",
             conversion_type=NamedCppType(name="bool"),
+            is_explicit=True,
         )
 
         self.assertEqual(free_operator.cpp.operator.symbol, "+")
@@ -467,10 +480,57 @@ class ModelScaffoldTest(unittest.TestCase):
         self.assertEqual(method_operator.cpp.operator.symbol, "[]")
         self.assertEqual(method_operator.bind.operator.mode, "dunder")
         self.assertEqual(conversion_operator.cpp.operator.kind, "conversion")
+        self.assertTrue(conversion_operator.cpp.operator.is_explicit)
         self.assertEqual(
             conversion_operator.cpp.operator.conversion_type.render(),
             "bool",
         )
+
+    def test_operator_helpers_classify_cxx_operator_families(self) -> None:
+        comparison = CppOperator(kind="symbolic", symbol="==")
+        arithmetic = CppOperator(kind="symbolic", symbol="+")
+        bitwise = CppOperator(kind="symbolic", symbol="<<")
+        logical = CppOperator(kind="symbolic", symbol="&&")
+        assignment = CppOperator(kind="symbolic", symbol="=")
+        call = CppOperator(kind="symbolic", symbol="()")
+        index = CppOperator(kind="symbolic", symbol="[]")
+        increment = CppOperator(kind="symbolic", symbol="++", is_postfix=True)
+        conversion = CppOperator(kind="conversion", conversion_type=BuiltinCppType(kind="int"))
+        allocation = CppOperator(kind="allocation", symbol="new[]")
+        deallocation = CppOperator(kind="deallocation", symbol="delete")
+
+        self.assertTrue(is_symbolic_operator(comparison))
+        self.assertTrue(is_comparison_operator(comparison))
+        self.assertFalse(is_arithmetic_operator(comparison))
+
+        self.assertTrue(is_arithmetic_operator(arithmetic))
+        self.assertFalse(is_assignment_operator(arithmetic))
+
+        self.assertTrue(is_bitwise_operator(bitwise))
+        self.assertFalse(is_logical_operator(bitwise))
+
+        self.assertTrue(is_logical_operator(logical))
+        self.assertFalse(is_bitwise_operator(logical))
+
+        self.assertTrue(is_assignment_operator(assignment))
+        self.assertFalse(is_comparison_operator(assignment))
+
+        self.assertTrue(is_call_operator(call))
+        self.assertFalse(is_index_operator(call))
+
+        self.assertTrue(is_index_operator(index))
+        self.assertFalse(is_call_operator(index))
+
+        self.assertTrue(is_increment_decrement_operator(increment))
+
+        self.assertTrue(is_conversion_operator(conversion))
+        self.assertFalse(is_symbolic_operator(conversion))
+
+        self.assertTrue(is_allocation_operator(allocation))
+        self.assertTrue(is_deallocation_operator(deallocation))
+
+        self.assertFalse(is_call_operator(None))
+        self.assertFalse(is_conversion_operator(None))
 
     def test_defaults_reuse_bind_facet_types(self) -> None:
         module_defaults = CppModuleDefaults()
@@ -802,7 +862,7 @@ class ModelScaffoldTest(unittest.TestCase):
 
     def test_validate_semantics_accepts_operator_names(self) -> None:
         method = CppMethod(name="operator+")
-        method.cpp.operator = CppOperator(kind="punctuation", symbol="+")
+        method.cpp.operator = CppOperator(kind="symbolic", symbol="+")
         cls = make_class(name="Widget", methods=[method])
         namespace = make_namespace(name="demo", classes=[cls])
         module = make_module(name="bindings", namespaces=[namespace])

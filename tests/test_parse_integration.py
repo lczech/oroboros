@@ -1298,6 +1298,259 @@ void make(int value) = delete;
 
         self.assertTrue(free_function.cpp.is_deleted)
 
+    def test_parse_headers_populates_structured_operator_metadata(self) -> None:
+        source = """
+namespace demo {
+
+struct Awaitable {};
+struct Ordering {};
+
+struct Widget {
+    Widget& operator=(Widget&&) = default;
+    int operator[](int index) const;
+    int operator()(int value) const;
+    Widget operator++();
+    Widget operator++(int);
+    explicit operator bool() const;
+    operator int() const;
+
+    static void* operator new(unsigned long count);
+    static void operator delete(void* memory);
+    static void* operator new[](unsigned long count);
+    static void operator delete[](void* memory);
+    Ordering operator<=>(Widget const&) const;
+    Awaitable operator co_await() const;
+};
+
+}
+"""
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        widget = next(class_ for class_ in namespace.declarations.classes if class_.name == "Widget")
+        methods = widget.declarations.methods
+
+        assignment = next(method for method in methods if method.name == "operator=")
+        index = next(method for method in methods if method.name == "operator[]")
+        call = next(method for method in methods if method.name == "operator()")
+        prefix_increment = next(
+            method for method in methods if method.name == "operator++" and len(method.parameters) == 0
+        )
+        postfix_increment = next(
+            method for method in methods if method.name == "operator++" and len(method.parameters) == 1
+        )
+        conversion = next(method for method in methods if method.name == "operator bool")
+        integer_conversion = next(method for method in methods if method.name == "operator int")
+        allocation = next(method for method in methods if method.name == "operator new")
+        deallocation = next(method for method in methods if method.name == "operator delete")
+        array_allocation = next(method for method in methods if method.name == "operator new[]")
+        array_deallocation = next(method for method in methods if method.name == "operator delete[]")
+        spaceship = next(method for method in methods if method.name == "operator<=>")
+        co_await = next(method for method in methods if method.name == "operator co_await")
+
+        self.assertEqual(assignment.cpp.operator.kind, "symbolic")
+        self.assertEqual(assignment.cpp.operator.symbol, "=")
+        self.assertFalse(assignment.cpp.operator.is_postfix)
+        self.assertTrue(assignment.cpp.is_defaulted)
+
+        self.assertEqual(index.cpp.operator.kind, "symbolic")
+        self.assertEqual(index.cpp.operator.symbol, "[]")
+        self.assertTrue(index.cpp.is_const)
+
+        self.assertEqual(call.cpp.operator.kind, "symbolic")
+        self.assertEqual(call.cpp.operator.symbol, "()")
+        self.assertTrue(call.cpp.is_const)
+
+        self.assertEqual(prefix_increment.cpp.operator.symbol, "++")
+        self.assertFalse(prefix_increment.cpp.operator.is_postfix)
+        self.assertEqual(postfix_increment.cpp.operator.symbol, "++")
+        self.assertTrue(postfix_increment.cpp.operator.is_postfix)
+
+        self.assertEqual(conversion.cpp.operator.kind, "conversion")
+        self.assertIsInstance(conversion.cpp.operator.conversion_type, BuiltinCppType)
+        self.assertEqual(conversion.cpp.operator.conversion_type.kind, "bool")
+        self.assertTrue(conversion.cpp.operator.is_explicit)
+        self.assertTrue(conversion.cpp.is_const)
+
+        self.assertEqual(integer_conversion.cpp.operator.kind, "conversion")
+        self.assertIsInstance(integer_conversion.cpp.operator.conversion_type, BuiltinCppType)
+        self.assertEqual(integer_conversion.cpp.operator.conversion_type.kind, "int")
+        self.assertFalse(integer_conversion.cpp.operator.is_explicit)
+
+        self.assertEqual(allocation.cpp.operator.kind, "allocation")
+        self.assertEqual(allocation.cpp.operator.symbol, "new")
+        self.assertEqual(deallocation.cpp.operator.kind, "deallocation")
+        self.assertEqual(deallocation.cpp.operator.symbol, "delete")
+        self.assertEqual(array_allocation.cpp.operator.kind, "allocation")
+        self.assertEqual(array_allocation.cpp.operator.symbol, "new[]")
+        self.assertEqual(array_deallocation.cpp.operator.kind, "deallocation")
+        self.assertEqual(array_deallocation.cpp.operator.symbol, "delete[]")
+
+        self.assertEqual(spaceship.cpp.operator.kind, "symbolic")
+        self.assertEqual(spaceship.cpp.operator.symbol, "<=>")
+        self.assertTrue(spaceship.cpp.is_const)
+
+        self.assertEqual(co_await.cpp.operator.kind, "co_await")
+        self.assertEqual(co_await.cpp.operator.symbol, "co_await")
+        self.assertTrue(co_await.cpp.is_const)
+
+    def test_parse_headers_materialize_hidden_friend_operator_under_namespace(self) -> None:
+        source = """
+namespace demo {
+
+struct Widget {
+    int value {};
+
+    friend Widget operator+(Widget const& left, Widget const& right) {
+        return Widget {left.value + right.value};
+    }
+};
+
+}
+"""
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        widget = namespace.declarations.classes[0]
+        operator_function = next(function for function in namespace.declarations.functions if function.name == "operator+")
+
+        self.assertEqual([method.name for method in widget.declarations.methods], [])
+        self.assertEqual(operator_function.qualified_name, "demo::operator+")
+        self.assertEqual(operator_function.cpp.operator.kind, "symbolic")
+        self.assertEqual(operator_function.cpp.operator.symbol, "+")
+        self.assertEqual(len(operator_function.parameters), 2)
+        self.assertEqual(result.skipped_kind_counts, {})
+
+    def test_parse_headers_materialize_free_operator_templates_with_operator_metadata(self) -> None:
+        source = """
+namespace demo {
+
+struct Widget {};
+
+template <class T>
+bool operator==(Widget const& left, T const& right);
+
+}
+"""
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        function_template = next(
+            template
+            for template in namespace.declarations.function_templates
+            if template.name == "operator=="
+        )
+
+        self.assertIsInstance(function_template, CppFunctionTemplate)
+        self.assertEqual(function_template.qualified_name, "demo::operator==")
+        self.assertEqual(function_template.declaration.cpp.operator.kind, "symbolic")
+        self.assertEqual(function_template.declaration.cpp.operator.symbol, "==")
+        self.assertFalse(function_template.declaration.cpp.operator.is_postfix)
+        self.assertEqual(len(function_template.declaration.cpp.template_parameters), 1)
+        self.assertIsInstance(function_template.declaration.cpp.template_parameters[0], CppTypeTemplateParameter)
+        self.assertEqual(function_template.declaration.cpp.template_parameters[0].name, "T")
+        self.assertIsInstance(function_template.declaration.cpp.return_type, BuiltinCppType)
+        self.assertEqual(function_template.declaration.cpp.return_type.kind, "bool")
+        self.assertEqual(len(function_template.declaration.parameters), 2)
+        self.assertEqual(function_template.declaration.parameters[0].name, "left")
+        self.assertEqual(function_template.declaration.parameters[1].name, "right")
+
+    def test_parse_headers_materialize_hidden_friend_operator_templates_under_namespace(self) -> None:
+        source = """
+namespace demo {
+
+struct Widget {
+    template <class T>
+    friend bool operator==(Widget const& left, T const& right) {
+        return true;
+    }
+};
+
+}
+"""
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        widget = namespace.declarations.classes[0]
+        function_template = next(
+            template
+            for template in namespace.declarations.function_templates
+            if template.name == "operator=="
+        )
+
+        self.assertEqual(widget.declarations.function_templates, [])
+        self.assertEqual(function_template.qualified_name, "demo::operator==")
+        self.assertEqual(function_template.declaration.cpp.operator.kind, "symbolic")
+        self.assertEqual(function_template.declaration.cpp.operator.symbol, "==")
+        self.assertEqual(len(function_template.declaration.cpp.template_parameters), 1)
+        self.assertIsInstance(function_template.declaration.cpp.template_parameters[0], CppTypeTemplateParameter)
+        self.assertEqual(function_template.declaration.cpp.template_parameters[0].name, "T")
+        self.assertEqual(len(function_template.declaration.parameters), 2)
+        self.assertEqual(function_template.declaration.parameters[0].name, "left")
+        self.assertEqual(function_template.declaration.parameters[1].name, "right")
+        self.assertEqual(result.skipped_kind_counts, {})
+
+    def test_parse_headers_materialize_member_operator_templates_with_operator_metadata(self) -> None:
+        source = """
+namespace demo {
+
+struct Widget {
+    template <class T>
+    T operator()(T value) const;
+};
+
+}
+"""
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        widget = result.module.declarations.namespaces[0].declarations.classes[0]
+        function_template = widget.declarations.function_templates[0]
+
+        self.assertEqual(function_template.name, "operator()")
+        self.assertEqual(function_template.qualified_name, "demo::Widget::operator()")
+        self.assertEqual(function_template.declaration.cpp.operator.kind, "symbolic")
+        self.assertEqual(function_template.declaration.cpp.operator.symbol, "()")
+        self.assertTrue(function_template.declaration.cpp.is_const)
+        self.assertEqual(len(function_template.declaration.cpp.template_parameters), 1)
+        self.assertIsInstance(function_template.declaration.cpp.template_parameters[0], CppTypeTemplateParameter)
+        self.assertEqual(function_template.declaration.cpp.template_parameters[0].name, "T")
+        self.assertIsInstance(function_template.declaration.cpp.return_type, NamedCppType)
+        self.assertEqual(function_template.declaration.cpp.return_type.name, "T")
+        self.assertEqual(len(function_template.declaration.parameters), 1)
+        self.assertEqual(function_template.declaration.parameters[0].name, "value")
+
+    def test_parse_headers_leave_user_defined_literal_operators_unclassified(self) -> None:
+        source = """
+namespace demo {
+
+struct Widget {
+    int value {};
+};
+
+Widget operator""_omen(unsigned long long value);
+
+}
+"""
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        literal_operator = next(
+            function
+            for function in namespace.declarations.functions
+            if function.name == 'operator""_omen'
+        )
+
+        self.assertIsNone(literal_operator.cpp.operator)
+        self.assertEqual(len(literal_operator.parameters), 1)
+        self.assertEqual(literal_operator.parameters[0].name, "value")
+        self.assertEqual(result.skipped_kind_counts, {})
+
     def test_parse_headers_enriches_defaulted_redeclarations_without_warning(self) -> None:
         source = """
 namespace demo {

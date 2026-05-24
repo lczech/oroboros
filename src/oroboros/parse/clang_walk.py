@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, Any, Iterable
 
 from clang.cindex import CursorKind
 
-from ..model import CppElement
-from .cursor_data import cursor_is_from_active_header, cursor_kind_name, is_base_specifier_cursor
+from ..model import CppClassTemplate, CppElement, CppModule, CppNamespace
+from .cursor_data import cursor_is_from_active_header, cursor_kind_name, cursor_usr, is_base_specifier_cursor
 from .merge_declarations import merge_common_cpp_fields, merge_cpp_scalar
 from .element_registry import ensure_namespace
 from .process_declarations import (
@@ -123,11 +123,19 @@ def _visit_declaration_cursor(
         process_function_template_cursor(cursor, owner, context)
         return
 
+    if _cursor_kind_matches(cursor, CursorKind.FRIEND_DECL):
+        _visit_friend_cursor(cursor, owner, context)
+        return
+
     if _cursor_kind_matches(cursor, CursorKind.TYPE_ALIAS_DECL, CursorKind.TYPEDEF_DECL):
         process_alias_cursor(cursor, owner, context)
         return
 
     if _cursor_kind_matches(cursor, CursorKind.CXX_METHOD):
+        process_method_cursor(cursor, owner, context)
+        return
+
+    if _cursor_kind_matches(cursor, CursorKind.CONVERSION_FUNCTION):
         process_method_cursor(cursor, owner, context)
         return
 
@@ -157,6 +165,21 @@ def _record_skipped_cursor_kind(cursor: Any, context: BuildContext) -> None:
     """Record one unsupported cursor kind in the parser summary."""
 
     context.skipped_kind_counts[cursor_kind_name(cursor)] += 1
+
+
+def _visit_friend_cursor(
+    cursor: Any,
+    owner: CppElement,
+    context: BuildContext,
+) -> None:
+    """Visit the child declarations nested under one friend wrapper cursor."""
+
+    for child_cursor in cursor.get_children():
+        visit_cursor(
+            child_cursor,
+            _semantic_owner_for_cursor(child_cursor, owner, context),
+            context,
+        )
 
 
 # ==================================================================================================
@@ -191,7 +214,11 @@ def _is_reference_cursor(cursor: Any) -> bool:
 def _is_ignored_cursor(cursor: Any) -> bool:
     """Return whether one cursor is intentionally ignored outside declaration dispatch."""
 
-    return _is_reference_cursor(cursor) or is_base_specifier_cursor(cursor)
+    return (
+        _is_reference_cursor(cursor)
+        or is_base_specifier_cursor(cursor)
+        or _cursor_kind_matches(cursor, CursorKind.COMPOUND_STMT)
+    )
 
 
 def _is_ignored_declaration_cursor(cursor: Any) -> bool:
@@ -218,3 +245,57 @@ _IGNORED_DECLARATION_KINDS = frozenset({
 })
 
 _CLASS_CURSOR_KINDS = frozenset({CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL})
+
+
+def _semantic_owner_for_cursor(
+    cursor: Any,
+    fallback_owner: CppElement,
+    context: BuildContext,
+) -> CppElement:
+    """Resolve the semantic owner that should receive one visited child cursor."""
+
+    semantic_parent = getattr(cursor, "semantic_parent", None)
+    semantic_parent_usr = cursor_usr(semantic_parent)
+    if semantic_parent_usr is not None:
+        semantic_owner = context.usr_to_element.get(semantic_parent_usr)
+        if isinstance(semantic_owner, CppClassTemplate):
+            return semantic_owner.declaration
+        if semantic_owner is not None:
+            return semantic_owner
+
+    matched_ancestor = _matching_owner_ancestor(semantic_parent, fallback_owner)
+    if matched_ancestor is not None:
+        return matched_ancestor
+
+    return fallback_owner
+
+
+def _matching_owner_ancestor(
+    semantic_parent: Any,
+    owner: CppElement,
+) -> CppElement | None:
+    """Find one already-materialized ancestor matching a child cursor semantic parent."""
+
+    current: CppElement | None = owner
+    while current is not None:
+        if _element_matches_semantic_parent(current, semantic_parent):
+            return current
+        current = current.parent
+    return None
+
+
+def _element_matches_semantic_parent(
+    element: CppElement,
+    semantic_parent: Any,
+) -> bool:
+    """Return whether one semantic element corresponds to one clang semantic parent."""
+
+    parent_kind = getattr(semantic_parent, "kind", None)
+    if parent_kind == CursorKind.TRANSLATION_UNIT:
+        return isinstance(element, CppModule)
+
+    parent_name = getattr(semantic_parent, "spelling", None)
+    if parent_kind == CursorKind.NAMESPACE:
+        return isinstance(element, CppNamespace) and element.name == parent_name
+
+    return getattr(element, "name", None) == parent_name
