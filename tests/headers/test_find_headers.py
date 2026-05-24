@@ -7,7 +7,7 @@ import unittest
 from oroboros.headers import HeaderFile, HeaderSelection, discover_headers, find_all_headers, find_included_headers
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class FindHeadersTest(unittest.TestCase):

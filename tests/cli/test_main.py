@@ -8,7 +8,7 @@ import unittest
 from oroboros.__main__ import main
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class MainTest(unittest.TestCase):

@@ -3,15 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import unittest
 
-from oroboros.model import (
-    CppClass,
-    CppFunction,
-    CppMethod,
-    CppModule,
-    CppNamespace,
-    CppParameter,
-    CppVariable,
-)
+from oroboros.model import *
 from oroboros.model.inspect import format_element, format_tree, summarize_tree
 from oroboros.parse import ParseResult, ParserDiagnostic
 from oroboros.parse.inspect import format_diagnostics, format_parse_result, summarize_parse_result

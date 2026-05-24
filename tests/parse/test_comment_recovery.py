@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import tempfile
+from textwrap import dedent
 import unittest
 
 from oroboros.headers import HeaderFile, HeaderSelection
@@ -647,7 +648,7 @@ def _parse_headers_from_sources(
         headers: list[Path] = []
         for name in ordered_names:
             header = temp_path / name
-            header.write_text(sources[name])
+            header.write_text(dedent(sources[name]))
             headers.append(header)
 
         known_project_headers = None

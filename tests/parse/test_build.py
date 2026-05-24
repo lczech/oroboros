@@ -6,23 +6,7 @@ import unittest
 
 from clang.cindex import CursorKind, TypeKind
 
-from oroboros.model import (
-    BuiltinCppType,
-    CppAlias,
-    CppClass,
-    CppMethod,
-    CppNonTypeTemplateArgument,
-    CppNonTypeTemplateParameter,
-    CppTemplateTemplateArgument,
-    CppTemplateTemplateParameter,
-    CppTypeTemplateArgument,
-    CppTypeTemplateParameter,
-    CppVisibility,
-    LValueReferenceCppType,
-    NamedCppType,
-    PointerCppType,
-    TemplateInstanceCppType,
-)
+from oroboros.model import *
 from oroboros.parse import ParserConfig
 from oroboros.parse.build_model import build_module_from_clang
 from oroboros.parse.types import build_cpp_type
