@@ -30,6 +30,7 @@ class CppMethodCppFacet(CppFunctionCppFacet):
     is_static: bool = False
     is_virtual: bool = False
     is_pure_virtual: bool = False
+    is_defaulted: bool = False
     visibility: CppVisibility | None = None
 
 
@@ -60,6 +61,8 @@ class CppConstructorCppFacet:
     template_parameters: list["CppTemplateParameter"] = field(default_factory=list)
     is_explicit: bool = False
     is_noexcept: bool = False
+    is_deleted: bool = False
+    is_defaulted: bool = False
     visibility: CppVisibility | None = None
 
 

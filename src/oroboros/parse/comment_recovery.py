@@ -22,7 +22,7 @@ from clang.cindex import TokenKind
 
 from ..model import SourceLocation
 from .comment_structure import comment_preference_key, parse_cpp_doc
-from .cursor_data import cursor_raw_comment, cursor_source_location, cursor_usr
+from .cursor_data import CursorTokenInfo, cursor_raw_comment, cursor_source_location, cursor_usr, file_cursor_tokens
 
 if TYPE_CHECKING:
     from .build_model import BuildContext
@@ -55,25 +55,6 @@ class CursorCommentResolution:
     selected_doc: Any = None
     selection_reason: str = "missing"
     mismatch_warning: str | None = None
-
-
-@dataclass(slots=True)
-class _CursorToken:
-    """Store one token plus the source positions needed for comment recovery."""
-
-    kind: TokenKind
-    spelling: str
-    start_line: int
-    start_column: int
-    start_offset: int
-    end_line: int
-    end_column: int
-    end_offset: int
-
-
-# ==================================================================================================
-#     Public Recovery API
-# ==================================================================================================
 
 
 def resolve_cursor_comment(cursor: Any, context: BuildContext | None) -> CursorCommentResolution:
@@ -126,7 +107,7 @@ def recover_comment_candidates(cursor: Any, context: BuildContext) -> list[Recov
         return []
 
     file_path = Path(file_name).resolve()
-    tokens = _tokens_for_file(file_path, context)
+    tokens = file_cursor_tokens(file_path, context)
     if not tokens:
         return []
 
@@ -246,7 +227,7 @@ def _raw_comment_is_detached(cursor: Any, context: BuildContext, raw_comment: st
         return False
 
     file_path = Path(file_name).resolve()
-    tokens = _tokens_for_file(file_path, context)
+    tokens = file_cursor_tokens(file_path, context)
     if not tokens:
         return False
 
@@ -293,71 +274,8 @@ def _raw_comment_is_detached(cursor: Any, context: BuildContext, raw_comment: st
     return _comment_has_code_before_same_line(tokens, preceding_index) or token.end_line < start_line - 1
 
 
-# ==================================================================================================
-#     Token Cache
-# ==================================================================================================
-
-
-def _tokens_for_file(file_path: Path, context: BuildContext) -> list[_CursorToken]:
-    """Return cached file tokens for one source file."""
-
-    cached = context.file_tokens_by_path.get(file_path)
-    if cached is not None:
-        return cached
-
-    translation_unit = context.translation_unit
-    if translation_unit is None:
-        return []
-
-    line_count = _count_source_lines(file_path)
-    extent = translation_unit.get_extent(str(file_path), ((1, 1), (line_count + 1, 1)))
-    tokens: list[_CursorToken] = []
-    for token in translation_unit.get_tokens(extent=extent):
-        token_location = getattr(token, "location", None)
-        file_object = getattr(token_location, "file", None)
-        file_name = getattr(file_object, "name", None)
-        if file_name is None or Path(file_name).resolve() != file_path:
-            continue
-
-        token_extent = getattr(token, "extent", None)
-        if token_extent is None:
-            continue
-
-        start = token_extent.start
-        end = token_extent.end
-        token_kind = getattr(token, "kind", None)
-        if token_kind is None:
-            continue
-        tokens.append(
-            _CursorToken(
-                kind=token_kind,
-                spelling=str(getattr(token, "spelling", "")),
-                start_line=int(getattr(start, "line", 0)),
-                start_column=int(getattr(start, "column", 0)),
-                start_offset=int(getattr(start, "offset", 0)),
-                end_line=int(getattr(end, "line", 0)),
-                end_column=int(getattr(end, "column", 0)),
-                end_offset=int(getattr(end, "offset", 0)),
-            )
-        )
-
-    context.file_tokens_by_path[file_path] = tokens
-    return tokens
-
-
-def _count_source_lines(file_path: Path) -> int:
-    """Return the source-file line count used to build a token extent."""
-
-    return file_path.read_text(encoding="utf-8", errors="ignore").count("\n") + 1
-
-
-# ==================================================================================================
-#     Token-Based Attachment Recovery
-# ==================================================================================================
-
-
 def _recover_trailing_comment(
-    tokens: list[_CursorToken],
+    tokens: list[CursorTokenInfo],
     *,
     end_line: int,
     end_offset: int,
@@ -385,7 +303,7 @@ def _recover_trailing_comment(
 
 
 def _recover_leading_comment_group(
-    tokens: list[_CursorToken],
+    tokens: list[CursorTokenInfo],
     *,
     start_line: int,
     start_offset: int,
@@ -445,7 +363,7 @@ def _recover_leading_comment_group(
     )
 
 
-def _comment_has_code_before_same_line(tokens: list[_CursorToken], index: int) -> bool:
+def _comment_has_code_before_same_line(tokens: list[CursorTokenInfo], index: int) -> bool:
     """Return whether one comment token is trailing after code on the same line."""
 
     comment_line = tokens[index].start_line

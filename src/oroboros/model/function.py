@@ -67,6 +67,7 @@ class CppFunctionCppFacet:
     doc: CppDoc | None = None
     overload_index: int | None = None
     is_noexcept: bool = False
+    is_deleted: bool = False
 
 
 @dataclass(slots=True)

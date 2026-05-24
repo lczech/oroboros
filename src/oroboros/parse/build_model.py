@@ -13,6 +13,7 @@ from .clang_walk import visit_cursor
 
 if TYPE_CHECKING:
     from .comment_recovery import CursorCommentResolution
+    from .cursor_data import CursorTokenInfo
 
 
 # ==================================================================================================
@@ -73,8 +74,8 @@ class BuildContext:
     usr_to_element: dict[str, CppElement] = field(default_factory=dict)
     # Parser-local per-cursor comment resolutions grouped by declaration USR when available.
     usr_to_comments: dict[str, list[CursorCommentResolution]] = field(default_factory=dict)
-    # Token cache grouped by source file for comment recovery.
-    file_tokens_by_path: dict[Path, list[Any]] = field(default_factory=dict)
+    # Token cache grouped by source file for comment recovery and local syntax recovery.
+    file_tokens_by_path: dict[Path, list[CursorTokenInfo]] = field(default_factory=dict)
     # Parsed clang translation unit used for token-based comment recovery.
     translation_unit: Any | None = None
     # Deferred named-type declaration links to resolve after the clang walk.

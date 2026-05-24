@@ -41,6 +41,7 @@ from .build_templates import build_template_parameters
 from .merge_declarations import (
     merge_callable_parameter_children,
     merge_class_bases,
+    merge_cpp_bool_enrichment,
     merge_common_cpp_fields,
     merge_cpp_scalar,
     merge_template_parameters,
@@ -194,6 +195,7 @@ def process_function_cursor(
             values_equivalent=cpp_types_equivalent,
         )
         merge_cpp_scalar(existing, "is_noexcept", candidate_cpp.is_noexcept, context, cursor)
+        merge_cpp_bool_enrichment(existing, "is_deleted", candidate_cpp.is_deleted)
         merge_callable_parameter_children(
             existing,
             child_cursors,
@@ -262,6 +264,7 @@ def process_function_template_cursor(
             values_equivalent=cpp_types_equivalent,
         )
         merge_cpp_scalar(declaration, "is_noexcept", candidate_cpp.is_noexcept, context, cursor)
+        merge_cpp_bool_enrichment(declaration, "is_deleted", candidate_cpp.is_deleted)
         merge_cpp_scalar(declaration, "is_const", candidate_cpp.is_const, context, cursor)
         merge_cpp_scalar(declaration, "is_static", candidate_cpp.is_static, context, cursor)
         merge_cpp_scalar(declaration, "is_virtual", candidate_cpp.is_virtual, context, cursor)
@@ -314,7 +317,10 @@ def process_constructor_cursor(
     if existing is not None:
         child_cursors = list(cursor.get_children())
         merge_common_cpp_fields(existing, candidate_cpp, context, cursor)
+        merge_cpp_bool_enrichment(existing, "is_explicit", candidate_cpp.is_explicit)
         merge_cpp_scalar(existing, "is_noexcept", candidate_cpp.is_noexcept, context, cursor)
+        merge_cpp_bool_enrichment(existing, "is_deleted", candidate_cpp.is_deleted)
+        merge_cpp_bool_enrichment(existing, "is_defaulted", candidate_cpp.is_defaulted)
         merge_cpp_scalar(existing, "visibility", candidate_cpp.visibility, context, cursor)
         merge_callable_parameter_children(
             existing,
@@ -356,6 +362,9 @@ def process_templated_constructor_cursor(
             template_cursor,
         )
         merge_cpp_scalar(existing, "is_noexcept", candidate_cpp.is_noexcept, context, template_cursor)
+        merge_cpp_bool_enrichment(existing, "is_explicit", candidate_cpp.is_explicit)
+        merge_cpp_bool_enrichment(existing, "is_deleted", candidate_cpp.is_deleted)
+        merge_cpp_bool_enrichment(existing, "is_defaulted", candidate_cpp.is_defaulted)
         merge_cpp_scalar(existing, "visibility", candidate_cpp.visibility, context, template_cursor)
         register_element_for_cursor(template_cursor, existing, context)
         merge_callable_parameter_children(
@@ -400,10 +409,12 @@ def process_method_cursor(
             values_equivalent=cpp_types_equivalent,
         )
         merge_cpp_scalar(existing, "is_noexcept", candidate_cpp.is_noexcept, context, cursor)
+        merge_cpp_bool_enrichment(existing, "is_deleted", candidate_cpp.is_deleted)
         merge_cpp_scalar(existing, "is_const", candidate_cpp.is_const, context, cursor)
         merge_cpp_scalar(existing, "is_static", candidate_cpp.is_static, context, cursor)
         merge_cpp_scalar(existing, "is_virtual", candidate_cpp.is_virtual, context, cursor)
         merge_cpp_scalar(existing, "is_pure_virtual", candidate_cpp.is_pure_virtual, context, cursor)
+        merge_cpp_bool_enrichment(existing, "is_defaulted", candidate_cpp.is_defaulted)
         merge_cpp_scalar(existing, "visibility", candidate_cpp.visibility, context, cursor)
         merge_callable_parameter_children(
             existing,

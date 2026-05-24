@@ -74,7 +74,7 @@ Helper make_helper(Helper value);
             )
 
         namespace = result.module.declarations.namespaces[0]
-        widget = namespace.declarations.classes[0]
+        widget = next(class_ for class_ in namespace.declarations.classes if class_.name == "Widget")
         make_helper = namespace.declarations.functions[0]
 
         self.assertEqual([cls.name for cls in namespace.declarations.classes], ["Widget"])
@@ -1063,6 +1063,98 @@ private:
         self.assertEqual(constructor.cpp.original_name, "MyClass")
         self.assertEqual(len(constructor.parameters), 1)
         self.assertEqual(constructor.parameters[0].name, "value")
+        self.assertTrue(constructor.cpp.is_explicit)
+
+    def test_parse_headers_populates_parameter_default_values_across_callables(self) -> None:
+        source = """
+namespace demo {
+
+enum class Mode {
+    fast,
+};
+
+struct Config {};
+
+Config make_config();
+
+template <class T>
+struct Box {};
+
+Mode make_mode(
+    Mode mode = Mode::fast,
+    Config cfg = make_config()
+);
+
+template <class T>
+T make_value(T value = T{});
+
+struct Widget {
+    explicit Widget(Box<int> box = Box<int>{});
+
+    void run(
+        int count = -1,
+        void* ptr = nullptr
+    );
+
+    template <class U>
+    explicit Widget(
+        U value = U{},
+        Mode mode = Mode::fast
+    );
+};
+
+}
+"""
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        free_function = namespace.declarations.functions[1]
+        function_template = namespace.declarations.function_templates[0]
+        widget = next(class_ for class_ in namespace.declarations.classes if class_.name == "Widget")
+        constructor = widget.declarations.constructors[0]
+        method = widget.declarations.methods[0]
+        templated_constructor = widget.declarations.constructors[1]
+
+        self.assertEqual(free_function.name, "make_mode")
+        self.assertEqual(free_function.parameters[0].cpp.default_value, "Mode::fast")
+        self.assertEqual(free_function.parameters[1].cpp.default_value, "make_config()")
+
+        self.assertEqual(function_template.declaration.parameters[0].cpp.default_value, "T{}")
+
+        self.assertEqual(constructor.parameters[0].cpp.default_value, "Box<int>{}")
+        self.assertTrue(constructor.cpp.is_explicit)
+
+        self.assertEqual(method.parameters[0].cpp.default_value, "-1")
+        self.assertEqual(method.parameters[1].cpp.default_value, "nullptr")
+
+        self.assertEqual(templated_constructor.parameters[0].cpp.default_value, "U{}")
+        self.assertEqual(templated_constructor.parameters[1].cpp.default_value, "Mode::fast")
+        self.assertTrue(templated_constructor.cpp.is_explicit)
+
+    def test_parse_headers_treats_explicit_expression_specifiers_as_explicit(self) -> None:
+        source = """
+namespace demo {
+
+struct Widget {
+    explicit Widget(int value);
+    explicit(true) Widget(char value);
+    explicit(false) Widget(short value);
+    explicit(sizeof(int) == 4) Widget(double value);
+};
+
+}
+"""
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        constructors = result.module.declarations.namespaces[0].declarations.classes[0].declarations.constructors
+
+        self.assertEqual(len(constructors), 4)
+        self.assertTrue(constructors[0].cpp.is_explicit)
+        self.assertTrue(constructors[1].cpp.is_explicit)
+        self.assertFalse(constructors[2].cpp.is_explicit)
+        self.assertTrue(constructors[3].cpp.is_explicit)
 
     def test_parse_headers_materializes_templated_constructors_as_constructors(self) -> None:
         source = """
@@ -1143,6 +1235,93 @@ private:
         self.assertEqual(len(templated_constructor.cpp.template_parameters), 1)
         self.assertIsInstance(templated_constructor.cpp.template_parameters[0], CppTypeTemplateParameter)
         self.assertEqual(templated_constructor.cpp.template_parameters[0].name, "U")
+
+    def test_parse_headers_populates_deleted_and_defaulted_callable_flags(self) -> None:
+        source = """
+namespace demo {
+
+struct Widget {
+    Widget() = default;
+    Widget(int value) = delete;
+    Widget(Widget const&) = default;
+
+    Widget& operator=(Widget&&) = default;
+    void run() = delete;
+};
+
+void make(int value) = delete;
+
+}
+"""
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        widget = namespace.declarations.classes[0]
+        constructors = widget.declarations.constructors
+        methods = widget.declarations.methods
+        free_function = namespace.declarations.functions[0]
+
+        default_constructor = next(constructor for constructor in constructors if len(constructor.parameters) == 0)
+        deleted_constructor = next(
+            constructor
+            for constructor in constructors
+            if len(constructor.parameters) == 1
+            and isinstance(constructor.parameters[0].cpp.type, BuiltinCppType)
+            and constructor.parameters[0].cpp.type.kind == "int"
+        )
+        copy_constructor = next(
+            constructor
+            for constructor in constructors
+            if len(constructor.parameters) == 1
+            and isinstance(constructor.parameters[0].cpp.type, LValueReferenceCppType)
+            and isinstance(constructor.parameters[0].cpp.type.referred, NamedCppType)
+            and constructor.parameters[0].cpp.type.referred.name == "Widget"
+        )
+        deleted_method = next(method for method in methods if method.name == "run")
+        defaulted_assignment = next(method for method in methods if method.name == "operator=")
+
+        self.assertTrue(default_constructor.cpp.is_defaulted)
+        self.assertFalse(default_constructor.cpp.is_deleted)
+
+        self.assertTrue(deleted_constructor.cpp.is_deleted)
+        self.assertFalse(deleted_constructor.cpp.is_defaulted)
+
+        self.assertTrue(copy_constructor.cpp.is_defaulted)
+        self.assertFalse(copy_constructor.cpp.is_deleted)
+
+        self.assertTrue(defaulted_assignment.cpp.is_defaulted)
+        self.assertFalse(defaulted_assignment.cpp.is_deleted)
+
+        self.assertTrue(deleted_method.cpp.is_deleted)
+        self.assertFalse(deleted_method.cpp.is_defaulted)
+
+        self.assertTrue(free_function.cpp.is_deleted)
+
+    def test_parse_headers_enriches_defaulted_redeclarations_without_warning(self) -> None:
+        source = """
+namespace demo {
+
+struct Widget {
+    Widget();
+    void run(int value = 7);
+};
+
+Widget::Widget() = default;
+
+void Widget::run(int value) {}
+
+}
+"""
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        constructor = result.module.declarations.namespaces[0].declarations.classes[0].declarations.constructors[0]
+        method = result.module.declarations.namespaces[0].declarations.classes[0].declarations.methods[0]
+
+        self.assertTrue(constructor.cpp.is_defaulted)
+        self.assertEqual(method.parameters[0].cpp.default_value, "7")
+        self.assertFalse(any("is_defaulted" in warning for warning in result.warnings))
 
     def test_parse_headers_materializes_out_of_line_templated_constructors_as_constructors(self) -> None:
         source = """

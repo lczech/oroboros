@@ -2,12 +2,32 @@ from __future__ import annotations
 
 """Low-level libclang cursor data helpers used by the parse stage."""
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from clang.cindex import CursorKind
+from clang.cindex import CursorKind, TokenKind
 
 from ..model import CppVisibility, SourceLocation
+
+
+# ==================================================================================================
+#     Token Data
+# ==================================================================================================
+
+
+@dataclass(slots=True)
+class CursorTokenInfo:
+    """Store one token plus the source positions needed for local syntax recovery."""
+
+    kind: TokenKind
+    spelling: str
+    start_line: int
+    start_column: int
+    start_offset: int
+    end_line: int
+    end_column: int
+    end_offset: int
 
 
 # ==================================================================================================
@@ -242,6 +262,92 @@ def cursor_enum_value_spelling(cursor: Any) -> str | None:
     return str(enum_value)
 
 
+def cursor_parameter_default_value(cursor: Any) -> str | None:
+    """Return one normalized parameter default expression from cursor tokens."""
+
+    token_spellings = cursor_token_spellings(cursor)
+    if "=" not in token_spellings:
+        return None
+
+    default_tokens = token_spellings[token_spellings.index("=") + 1 :]
+    if not default_tokens:
+        return None
+
+    rendered = normalize_token_spellings(default_tokens)
+    return rendered or None
+
+
+def cursor_has_explicit_specifier(cursor: Any) -> bool:
+    """Return whether one constructor cursor is preceded by an `explicit` specifier."""
+
+    token_spellings = cursor_token_spellings(cursor)
+    if "explicit" not in token_spellings:
+        return False
+
+    explicit_index = token_spellings.index("explicit")
+    spelling = getattr(cursor, "spelling", None)
+    if spelling and spelling in token_spellings:
+        spelling_index = token_spellings.index(spelling)
+        if explicit_index >= spelling_index:
+            return False
+
+        # Regular explicit specifier: `explicit` appears before the constructor name.
+        if explicit_index + 1 >= spelling_index or token_spellings[explicit_index + 1] != "(":
+            return True
+
+        # C++20 abbreviated function template syntax with specifier `explicit(...)`
+        parenthesis_depth = 0
+        inner_tokens: list[str] = []
+        for token in token_spellings[explicit_index + 1 : spelling_index]:
+            if token == "(":
+                if parenthesis_depth > 0:
+                    inner_tokens.append(token)
+                parenthesis_depth += 1
+                continue
+            if token == ")":
+                parenthesis_depth -= 1
+                if parenthesis_depth > 0:
+                    inner_tokens.append(token)
+                continue
+            if parenthesis_depth > 0:
+                inner_tokens.append(token)
+
+        normalized_inner = normalize_token_spellings(inner_tokens)
+        if normalized_inner == "false":
+            return False
+        if normalized_inner == "true":
+            return True
+
+        return True
+    return True
+
+
+def cursor_callable_is_deleted(cursor: Any, *, context: Any | None = None) -> bool:
+    """Return whether one callable declaration is marked `= delete`."""
+
+    if cursor_bool_method(cursor, "is_deleted_method"):
+        return True
+
+    if _has_token_suffix_sequence(cursor_token_spellings(cursor), ["=", "delete"]):
+        return True
+
+    following_tokens = cursor_following_token_spellings(cursor, context=context, max_tokens=2)
+    return following_tokens[:2] == ["=", "delete"]
+
+
+def cursor_callable_is_defaulted(cursor: Any, *, context: Any | None = None) -> bool:
+    """Return whether one callable declaration is marked `= default`."""
+
+    if cursor_bool_method(cursor, "is_default_method"):
+        return True
+
+    if _has_token_suffix_sequence(cursor_token_spellings(cursor), ["=", "default"]):
+        return True
+
+    following_tokens = cursor_following_token_spellings(cursor, context=context, max_tokens=2)
+    return following_tokens[:2] == ["=", "default"]
+
+
 # ==================================================================================================
 #     Cursor Shape Helpers
 # ==================================================================================================
@@ -271,3 +377,144 @@ def is_base_specifier_cursor(cursor: Any) -> bool:
     """Return whether one cursor is a class-base specifier helper cursor."""
 
     return getattr(cursor, "kind", None) == CursorKind.CXX_BASE_SPECIFIER
+
+
+# ==================================================================================================
+#     Token Helpers
+# ==================================================================================================
+
+
+def file_cursor_tokens(file_path: Path, context: Any | None) -> list[CursorTokenInfo]:
+    """Return cached clang tokens for one source file when a translation unit is available."""
+
+    if context is None:
+        return []
+
+    cached = getattr(context, "file_tokens_by_path", {}).get(file_path)
+    if cached is not None:
+        return cached
+
+    translation_unit = getattr(context, "translation_unit", None)
+    get_extent = getattr(translation_unit, "get_extent", None)
+    get_tokens = getattr(translation_unit, "get_tokens", None)
+    if not callable(get_extent) or not callable(get_tokens):
+        return []
+
+    line_count = _count_source_lines(file_path)
+    extent = get_extent(str(file_path), ((1, 1), (line_count + 1, 1)))
+    tokens: list[CursorTokenInfo] = []
+    for token in get_tokens(extent=extent):
+        token_location = getattr(token, "location", None)
+        file_object = getattr(token_location, "file", None)
+        file_name = getattr(file_object, "name", None)
+        if file_name is None or Path(file_name).resolve() != file_path:
+            continue
+
+        token_extent = getattr(token, "extent", None)
+        if token_extent is None:
+            continue
+
+        token_kind = getattr(token, "kind", None)
+        if token_kind is None:
+            continue
+
+        start = token_extent.start
+        end = token_extent.end
+        tokens.append(
+            CursorTokenInfo(
+                kind=token_kind,
+                spelling=str(getattr(token, "spelling", "")),
+                start_line=int(getattr(start, "line", 0)),
+                start_column=int(getattr(start, "column", 0)),
+                start_offset=int(getattr(start, "offset", 0)),
+                end_line=int(getattr(end, "line", 0)),
+                end_column=int(getattr(end, "column", 0)),
+                end_offset=int(getattr(end, "offset", 0)),
+            )
+        )
+
+    getattr(context, "file_tokens_by_path", {})[file_path] = tokens
+    return tokens
+
+
+def cursor_following_token_spellings(
+    cursor: Any,
+    *,
+    context: Any | None = None,
+    max_tokens: int | None = None,
+) -> list[str]:
+    """Return normalized token spellings immediately following one cursor extent."""
+
+    file_path = _cursor_file_path(cursor)
+    cursor_extent = getattr(cursor, "extent", None)
+    if file_path is None or cursor_extent is None:
+        return []
+
+    tokens = file_cursor_tokens(file_path, context)
+    if not tokens:
+        return []
+
+    end = cursor_extent.end
+    end_offset = int(getattr(end, "offset", 0))
+    following_spellings: list[str] = []
+    for token in tokens:
+        if token.start_offset < end_offset:
+            continue
+        if token.kind == TokenKind.COMMENT:
+            continue
+        if token.spelling == ";":
+            break
+        following_spellings.append(token.spelling)
+        if max_tokens is not None and len(following_spellings) >= max_tokens:
+            break
+    return following_spellings
+
+
+def normalize_token_spellings(token_spellings: list[str]) -> str:
+    """Render one token sequence into a compact normalized spelling."""
+
+    if not token_spellings:
+        return ""
+
+    glued_punctuation: set[str] = {
+        "::", ".", "->", "->*",
+        "(", ")", "[", "]", "{", "}", "<", ">",
+        ",", ";", ":", "?", "!", "~",
+        "+", "-", "*", "/", "%", "^", "&", "&&", "|", "||",
+        "=", "==", "!=", "<=", ">=", "<<", ">>",
+        "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=",
+    }
+
+    rendered = token_spellings[0]
+    previous = token_spellings[0]
+    for current in token_spellings[1:]:
+        if previous not in glued_punctuation and current not in glued_punctuation:
+            rendered += " "
+        rendered += current
+        previous = current
+    return rendered
+
+
+def _has_token_suffix_sequence(token_spellings: list[str], suffix: list[str]) -> bool:
+    """Return whether one token spelling sequence ends with a given suffix."""
+
+    if len(token_spellings) < len(suffix):
+        return False
+    return token_spellings[-len(suffix) :] == suffix
+
+
+def _cursor_file_path(cursor: Any) -> Path | None:
+    """Return the resolved source file path for one cursor when available."""
+
+    location = getattr(cursor, "location", None)
+    file_object = getattr(location, "file", None)
+    file_name = getattr(file_object, "name", None)
+    if file_name is None:
+        return None
+    return Path(file_name).resolve()
+
+
+def _count_source_lines(file_path: Path) -> int:
+    """Return the source-file line count used to build a file token extent."""
+
+    return file_path.read_text(encoding="utf-8", errors="ignore").count("\n") + 1

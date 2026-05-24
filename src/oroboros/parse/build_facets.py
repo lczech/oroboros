@@ -11,13 +11,17 @@ from .cursor_data import (
     cursor_alias_kind,
     cursor_alias_target_type,
     cursor_bool_method,
+    cursor_callable_is_defaulted,
+    cursor_callable_is_deleted,
     cursor_class_kind,
     cursor_enum_underlying_type,
     cursor_enum_value_spelling,
+    cursor_has_explicit_specifier,
     cursor_is_definition,
     cursor_is_noexcept,
     cursor_is_scoped_enum,
     cursor_linkage,
+    cursor_parameter_default_value,
     cursor_source_location,
     cursor_storage_class,
     cursor_tls_kind,
@@ -195,6 +199,7 @@ def build_function_cpp_facet(
         comment=raw_comment,
         doc=doc,
         is_noexcept=cursor_is_noexcept(cursor),
+        is_deleted=cursor_callable_is_deleted(cursor, context=context),
     )
 
 
@@ -219,6 +224,7 @@ def build_function_template_declaration_cpp_facet(
         comment=raw_comment,
         doc=doc,
         is_noexcept=cursor_is_noexcept(cursor),
+        is_deleted=cursor_callable_is_deleted(cursor, context=context),
         template_parameters=build_template_parameters(cursor, context=context),
         is_const=cursor_bool_method(cursor, "is_const_method"),
         is_static=cursor_bool_method(cursor, "is_static_method"),
@@ -248,10 +254,12 @@ def build_method_cpp_facet(
         comment=raw_comment,
         doc=doc,
         is_noexcept=cursor_is_noexcept(cursor),
+        is_deleted=cursor_callable_is_deleted(cursor, context=context),
         is_const=cursor_bool_method(cursor, "is_const_method"),
         is_static=cursor_bool_method(cursor, "is_static_method"),
         is_virtual=cursor_bool_method(cursor, "is_virtual_method"),
         is_pure_virtual=cursor_bool_method(cursor, "is_pure_virtual_method"),
+        is_defaulted=cursor_callable_is_defaulted(cursor, context=context),
         visibility=cursor_visibility(cursor),
     )
 
@@ -271,7 +279,10 @@ def build_constructor_cpp_facet(
         location=build_location_info(cursor),
         comment=raw_comment,
         doc=doc,
+        is_explicit=cursor_has_explicit_specifier(cursor),
         is_noexcept=cursor_is_noexcept(cursor),
+        is_deleted=cursor_callable_is_deleted(cursor, context=context),
+        is_defaulted=cursor_callable_is_defaulted(cursor, context=context),
         visibility=cursor_visibility(cursor),
     )
 
@@ -322,6 +333,7 @@ def build_parameter_cpp_facet(
             context=context,
             source_cursor=cursor,
         ),
+        default_value=cursor_parameter_default_value(cursor),
         location=build_location_info(cursor),
     )
 

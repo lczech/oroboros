@@ -81,6 +81,23 @@ def merge_cpp_scalar(
     )
 
 
+def merge_cpp_bool_enrichment(
+    element: CppElement,
+    field_name: str,
+    new_value: bool,
+) -> None:
+    """Merge one boolean parsed field where `True` enriches earlier `False` values."""
+
+    if not new_value:
+        return
+
+    current_value = bool(getattr(element.cpp, field_name, False))
+    if current_value:
+        return
+
+    setattr(element.cpp, field_name, True)
+
+
 def merge_class_bases(
     element: Any,
     new_bases: list[Any],
@@ -188,6 +205,13 @@ def merge_callable_parameter_children(
             context,
             parameter_cursor,
             values_equivalent=cpp_types_equivalent,
+        )
+        merge_cpp_scalar(
+            existing_parameter,
+            "default_value",
+            candidate_cpp.default_value,
+            context,
+            parameter_cursor,
         )
 
 
