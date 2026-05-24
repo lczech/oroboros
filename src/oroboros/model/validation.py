@@ -558,9 +558,20 @@ def _validate_method_like_flags(
             f"{path}.cpp marks the callable as pure virtual, but not virtual."
         )
 
+    ref_qualifier = getattr(cpp_facet, "ref_qualifier", None)
+    if ref_qualifier not in {None, "&", "&&"}:
+        errors.append(
+            f"{path}.cpp.ref_qualifier must be one of None, '&', or '&&'."
+        )
+
     if getattr(cpp_facet, "is_static", False) and cpp_facet.is_virtual:
         errors.append(
             f"{path}.cpp marks the callable as both static and virtual."
+        )
+
+    if getattr(cpp_facet, "is_static", False) and ref_qualifier is not None:
+        errors.append(
+            f"{path}.cpp marks the callable as both static and ref-qualified."
         )
 
 

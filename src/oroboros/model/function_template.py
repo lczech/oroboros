@@ -28,6 +28,7 @@ class CppFunctionTemplateDeclarationCppFacet(CppFunctionCppFacet):
 
     template_parameters: list[CppTemplateParameter] = dataclass_field(default_factory=list)
     observed_instances: list[CppObservedTemplateInstance] = dataclass_field(default_factory=list)
+    ref_qualifier: str | None = None
     is_const: bool = False
     is_static: bool = False
     is_virtual: bool = False

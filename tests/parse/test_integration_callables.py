@@ -264,6 +264,83 @@ class ParseIntegrationCallableTest(unittest.TestCase):
 
         self.assertTrue(free_function.cpp.is_deleted)
 
+    def test_parse_headers_populates_method_ref_qualifiers(self) -> None:
+        source = """
+            namespace demo {
+
+            struct Widget {
+                void touch() &;
+                void consume() &&;
+                int value() const &;
+                int operator()(int count) &;
+                Widget operator++(int) &&;
+                explicit operator bool() &&;
+
+                template <class T>
+                T convert(T item) &&;
+            };
+
+            void Widget::touch() & {}
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        widget = result.module.declarations.namespaces[0].declarations.classes[0]
+        methods = widget.declarations.methods
+
+        touch = next(method for method in methods if method.name == "touch")
+        consume = next(method for method in methods if method.name == "consume")
+        value = next(method for method in methods if method.name == "value")
+        call = next(method for method in methods if method.name == "operator()")
+        postfix_increment = next(
+            method for method in methods if method.name == "operator++" and len(method.parameters) == 1
+        )
+        conversion = next(method for method in methods if method.name == "operator bool")
+        function_template = widget.declarations.function_templates[0]
+
+        self.assertEqual(touch.cpp.ref_qualifier, "&")
+        self.assertEqual(len(touch.cpp.location.declarations), 2)
+        self.assertEqual(consume.cpp.ref_qualifier, "&&")
+        self.assertEqual(value.cpp.ref_qualifier, "&")
+        self.assertTrue(value.cpp.is_const)
+        self.assertEqual(call.cpp.ref_qualifier, "&")
+        self.assertEqual(postfix_increment.cpp.ref_qualifier, "&&")
+        self.assertTrue(postfix_increment.cpp.operator.is_postfix)
+        self.assertEqual(conversion.cpp.ref_qualifier, "&&")
+        self.assertEqual(conversion.cpp.operator.kind, "conversion")
+        self.assertEqual(function_template.declaration.cpp.ref_qualifier, "&&")
+
+    def test_parse_headers_do_not_confuse_other_ampersands_with_ref_qualifiers(self) -> None:
+        source = """
+            namespace demo {
+
+            struct Widget {
+                int& data();
+                void take(int&& value);
+                bool operator&&(Widget const& other) const;
+
+                friend Widget operator&(Widget const& left, Widget const& right);
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        widget = namespace.declarations.classes[0]
+        data = next(method for method in widget.declarations.methods if method.name == "data")
+        take = next(method for method in widget.declarations.methods if method.name == "take")
+        logical_and = next(method for method in widget.declarations.methods if method.name == "operator&&")
+        bitwise_and = next(function for function in namespace.declarations.functions if function.name == "operator&")
+
+        self.assertIsNone(data.cpp.ref_qualifier)
+        self.assertIsNone(take.cpp.ref_qualifier)
+        self.assertIsNone(logical_and.cpp.ref_qualifier)
+        self.assertFalse(hasattr(bitwise_and.cpp, "ref_qualifier"))
+
     def test_parse_headers_populates_structured_operator_metadata(self) -> None:
         source = """
             namespace demo {
@@ -576,4 +653,3 @@ class ParseIntegrationCallableTest(unittest.TestCase):
         self.assertEqual(method_overloads[1].parameters[0].cpp.type.kind, "int")
         self.assertIsInstance(method_overloads[2].parameters[0].cpp.type, BuiltinCppType)
         self.assertEqual(method_overloads[2].parameters[0].cpp.type.kind, "double")
-

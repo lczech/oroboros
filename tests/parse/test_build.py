@@ -162,6 +162,54 @@ class ParseBuildTest(unittest.TestCase):
         self.assertTrue(destructor.cpp.is_defaulted)
         self.assertEqual(destructor.cpp.visibility, CppVisibility.PUBLIC)
 
+    def test_build_module_from_clang_populates_method_ref_qualifiers_from_tokens(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        translation_unit = SimpleNamespace(
+            cursor=_fake_cursor(
+                "TRANSLATION_UNIT",
+                "",
+                file=active_header,
+                children=[
+                    _fake_cursor(
+                        "NAMESPACE",
+                        "demo",
+                        file=active_header,
+                        children=[
+                            _fake_cursor(
+                                "CLASS_DECL",
+                                "Widget",
+                                file=active_header,
+                                children=[
+                                    _fake_cursor(
+                                        "CXX_METHOD",
+                                        "invoke",
+                                        file=active_header,
+                                        result_type=_fake_type("VOID", "void"),
+                                        tokens=["void", "invoke", "(", ")", "const", "&"],
+                                        methods={"is_const_method": True},
+                                    ),
+                                    _fake_cursor(
+                                        "CXX_METHOD",
+                                        "consume",
+                                        file=active_header,
+                                        result_type=_fake_type("VOID", "void"),
+                                        tokens=["void", "consume", "(", ")", "&&"],
+                                    ),
+                                ],
+                            )
+                        ],
+                    )
+                ],
+            )
+        )
+
+        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
+        methods = build_result.module.declarations.namespaces[0].declarations.classes[0].declarations.methods
+
+        self.assertEqual(methods[0].cpp.ref_qualifier, "&")
+        self.assertTrue(methods[0].cpp.is_const)
+        self.assertEqual(methods[1].cpp.ref_qualifier, "&&")
+
     def test_build_module_from_clang_populates_types_bases_and_flags(self) -> None:
         active_header = Path("/tmp/project/demo.hpp")
         base_specifier = _fake_cursor(
@@ -1169,6 +1217,7 @@ def _fake_cursor(
     storage_class: str | None = None,
     linkage: str | None = None,
     tls_kind: str | None = None,
+    tokens: list[str] | None = None,
     methods: dict[str, object] | None = None,
 ) -> SimpleNamespace:
     cursor = SimpleNamespace(
@@ -1194,6 +1243,7 @@ def _fake_cursor(
             column=column,
         ),
         get_children=lambda: list(children or []),
+        get_tokens=lambda: [SimpleNamespace(spelling=token) for token in (tokens or [])],
         get_usr=lambda: usr,
     )
     for method_name, method_result in (methods or {}).items():

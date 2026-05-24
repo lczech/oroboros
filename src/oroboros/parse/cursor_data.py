@@ -383,6 +383,22 @@ def cursor_callable_is_defaulted(cursor: Any, *, context: Any | None = None) -> 
     return following_tokens[:2] == ["=", "default"]
 
 
+def cursor_ref_qualifier(cursor: Any) -> str | None:
+    """Return one member-callable ref-qualifier token, when the declaration uses one."""
+
+    token_spellings = cursor_token_spellings(cursor)
+    if not token_spellings:
+        return None
+
+    for close_index in _top_level_parenthesis_close_indices(token_spellings):
+        qualifier = _cursor_ref_qualifier_after_parenthesis_close(token_spellings, close_index)
+        if qualifier is _INVALID_REF_QUALIFIER_CANDIDATE:
+            continue
+        return qualifier
+
+    return None
+
+
 def cursor_operator(cursor: Any) -> CppOperator | None:
     """Return structured operator metadata for one callable cursor when applicable."""
 
@@ -581,6 +597,51 @@ def _has_token_suffix_sequence(token_spellings: list[str], suffix: list[str]) ->
     return token_spellings[-len(suffix) :] == suffix
 
 
+def _top_level_parenthesis_close_indices(token_spellings: list[str]) -> list[int]:
+    """Return indices of `)` tokens that close one top-level parenthesized sequence."""
+
+    depth = 0
+    close_indices: list[int] = []
+    for index, token in enumerate(token_spellings):
+        if token == "(":
+            depth += 1
+            continue
+        if token != ")" or depth <= 0:
+            continue
+        depth -= 1
+        if depth == 0:
+            close_indices.append(index)
+    return close_indices
+
+
+def _cursor_ref_qualifier_after_parenthesis_close(
+    token_spellings: list[str],
+    close_index: int,
+) -> str | None | object:
+    """Return one trailing ref-qualifier after a candidate declarator `)` token."""
+
+    index = close_index + 1
+    while index < len(token_spellings):
+        token = token_spellings[index]
+
+        if token in {"const", "volatile", "override", "final"}:
+            index += 1
+            continue
+
+        if token in {"&", "&&"}:
+            return token
+
+        if token in {"noexcept", "requires", "->", ";", "{", "=", ":"}:
+            return None
+
+        if token == "(":
+            return _INVALID_REF_QUALIFIER_CANDIDATE
+
+        return _INVALID_REF_QUALIFIER_CANDIDATE
+
+    return None
+
+
 _SYMBOLIC_OPERATOR_SPELLINGS = frozenset({
     "+", "-", "*", "/", "%",
     "^", "&", "|", "~",
@@ -696,3 +757,6 @@ def _count_source_lines(file_path: Path) -> int:
     """Return the source-file line count used to build a file token extent."""
 
     return file_path.read_text(encoding="utf-8", errors="ignore").count("\n") + 1
+
+
+_INVALID_REF_QUALIFIER_CANDIDATE = object()

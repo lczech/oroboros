@@ -110,7 +110,7 @@ Actionable backlog only. Keep long-term design intent and invariants in
 ## Missing or thin parsed facts
 
 - Richer exception specifications beyond `is_noexcept`
-- Richer method qualifiers such as ref-qualifiers
+- Additional method qualifiers such as `volatile`, if a real binding need appears
 - `constexpr` / `consteval` metadata
 - More structured template specialization behavior if a real binding need justifies it
 - Classification for currently unclassified operator forms such as user-defined literal operators, if a concrete binding need appears

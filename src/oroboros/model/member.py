@@ -26,6 +26,7 @@ from .visibility import CppVisibility
 class CppMethodCppFacet(CppFunctionCppFacet):
     """Store parsed C++ details for one class method."""
 
+    ref_qualifier: str | None = None
     is_const: bool = False
     is_static: bool = False
     is_virtual: bool = False

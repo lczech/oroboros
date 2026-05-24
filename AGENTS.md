@@ -186,6 +186,7 @@ The parser/model currently materializes:
 - visibility where clang exposes it
 - callable flags:
   - `const`
+  - method/function-template ref-qualifiers `&` / `&&`
   - `virtual`
   - `noexcept`
   - constructor `explicit`
@@ -236,7 +237,7 @@ The parser/model currently materializes:
 Highest-value remaining parser gaps:
 
 - unions
-- richer callable qualifiers beyond current coverage
+- richer callable qualifiers beyond current coverage, if a real binding need appears
 - fuller redeclaration enrichment where later declarations add useful facts
 - more structured template behavior if a concrete binding need justifies it
 

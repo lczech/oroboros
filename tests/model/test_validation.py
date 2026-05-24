@@ -111,10 +111,25 @@ class ModelValidationTest(unittest.TestCase):
         static_virtual.cpp.is_static = True
         static_virtual.cpp.is_virtual = True
 
+        static_ref_qualified = CppMethod(name="zap")
+        static_ref_qualified.cpp.is_static = True
+        static_ref_qualified.cpp.ref_qualifier = "&"
+
         cls = make_class(
             name="Widget",
-            methods=[pure_virtual_only, static_virtual],
+            methods=[pure_virtual_only, static_virtual, static_ref_qualified],
         )
+        namespace = make_namespace(name="demo", classes=[cls])
+        module = make_module(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_invalid_ref_qualifier_values(self) -> None:
+        method = CppMethod(name="foo")
+        method.cpp.ref_qualifier = "value-ish"
+
+        cls = make_class(name="Widget", methods=[method])
         namespace = make_namespace(name="demo", classes=[cls])
         module = make_module(name="bindings", namespaces=[namespace])
 
@@ -489,4 +504,3 @@ class ModelValidationTest(unittest.TestCase):
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
-
