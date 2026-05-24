@@ -99,6 +99,9 @@ def _root_access_path(root: CppElement) -> str:
 
     root_names = {
         "CppAlias": "alias",
+        "CppAliasTemplate": "alias_template",
+        "CppAliasTemplateDeclaration": "alias_template_declaration",
+        "CppAliasTemplateInstance": "alias_template_instance",
         "CppClass": "class_",
         "CppClassTemplate": "class_template",
         "CppClassTemplateDeclaration": "class_template_declaration",
@@ -335,6 +338,7 @@ def _validate_duplicate_child_names(
     duplicate_checked_fields = [
         "namespaces",
         "classes",
+        "alias_templates",
         "class_templates",
         "enums",
         "variables",
@@ -382,6 +386,11 @@ def _validate_owner_kind(
     """Validate that selected element kinds appear only under valid owners."""
 
     from .alias import CppAlias
+    from .alias_template import (
+        CppAliasTemplate,
+        CppAliasTemplateDeclaration,
+        CppAliasTemplateInstance,
+    )
     from .class_ import CppClassMembers
     from .enum import CppEnumerator
     from .function import CppFunction, CppParameter
@@ -467,7 +476,7 @@ def _validate_owner_kind(
             f"the module root, a namespace, or a class-like declaration."
         )
 
-    if isinstance(element, (CppClassTemplate, CppFunctionTemplate)) and not isinstance(
+    if isinstance(element, (CppAliasTemplate, CppClassTemplate, CppFunctionTemplate)) and not isinstance(
         owner,
         (CppModule, CppNamespace, CppClassMembers),
     ):
@@ -476,10 +485,22 @@ def _validate_owner_kind(
             f"owned by the module root, a namespace, or a class-like declaration."
         )
 
+    if isinstance(element, CppAliasTemplateDeclaration) and not isinstance(owner, CppAliasTemplate):
+        errors.append(
+            f"{path} is owned by {owner._describe_element()}, but alias-template declarations "
+            f"must be owned by alias-template families."
+        )
+
     if isinstance(element, CppClassTemplateDeclaration) and not isinstance(owner, CppClassTemplate):
         errors.append(
             f"{path} is owned by {owner._describe_element()}, but class-template declarations "
             f"must be owned by class-template families."
+        )
+
+    if isinstance(element, CppAliasTemplateInstance) and not isinstance(owner, CppAliasTemplate):
+        errors.append(
+            f"{path} is owned by {owner._describe_element()}, but alias-template instances "
+            f"must be owned by alias-template families."
         )
 
     if isinstance(element, CppClassTemplateInstance) and not isinstance(owner, CppClassTemplate):
@@ -583,8 +604,9 @@ def _validate_alias_target(
     """Validate that alias declarations carry a usable target type."""
 
     from .alias import CppAlias
+    from .alias_template import CppAliasTemplateDeclaration
 
-    if not isinstance(element, CppAlias):
+    if not isinstance(element, (CppAlias, CppAliasTemplateDeclaration)):
         return
 
     if element.cpp.target is None:
@@ -598,11 +620,12 @@ def _validate_template_family(
 ) -> None:
     """Validate wrapper/declaration/instance consistency of template families."""
 
+    from .alias_template import CppAliasTemplate
     from .class_template import CppClassTemplate
     from .function_template import CppFunctionTemplate
     from .template_ import _validate_template_arguments
 
-    if not isinstance(element, (CppClassTemplate, CppFunctionTemplate)):
+    if not isinstance(element, (CppAliasTemplate, CppClassTemplate, CppFunctionTemplate)):
         return
 
     declaration = element.declaration
@@ -889,12 +912,15 @@ def _is_valid_named_type_declaration(declaration: CppElement) -> bool:
     """Check whether one declaration element may be referenced by a named type."""
 
     from .alias import CppAlias
+    from .alias_template import CppAliasTemplateDeclaration, CppAliasTemplateInstance
     from .class_template import CppClassTemplateDeclaration, CppClassTemplateInstance
 
     return isinstance(
         declaration,
         (
             CppAlias,
+            CppAliasTemplateDeclaration,
+            CppAliasTemplateInstance,
             CppClass,
             CppEnum,
             CppClassTemplateDeclaration,

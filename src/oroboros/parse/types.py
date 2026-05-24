@@ -6,7 +6,7 @@ from copy import deepcopy
 import re
 from typing import TYPE_CHECKING, Any
 
-from clang.cindex import TypeKind
+from clang.cindex import CursorKind, TypeKind
 
 from ..model import (
     ArrayCppType,
@@ -748,6 +748,18 @@ def _record_one_observed_template_instance(
     """Record one concrete template instance at the current type node only."""
 
     template_cursor = _specialized_template_cursor(clang_type)
+    source_template_cursor = _template_cursor_from_source_reference(
+        cpp_type,
+        source_cursor=source_cursor,
+    )
+    if (
+        source_template_cursor is not None
+        and (
+            template_cursor is None
+            or not _template_cursor_matches_spelled_name(template_cursor, cpp_type)
+        )
+    ):
+        template_cursor = source_template_cursor
     if template_cursor is None:
         return
 
@@ -786,6 +798,43 @@ def _record_one_observed_template_instance(
             locations=[] if observation_location is None else [observation_location],
         )
     )
+
+
+def _template_cursor_from_source_reference(
+    cpp_type: TemplateInstanceCppType,
+    *,
+    source_cursor: Any | None,
+) -> Any | None:
+    """Recover one template cursor from declaration-surface `TEMPLATE_REF` children."""
+
+    if source_cursor is None:
+        return None
+
+    template_terminal_name = cpp_type.template_name.split("::")[-1].strip()
+    for child_cursor in _call_optional_method(source_cursor, "get_children", []):
+        if getattr(child_cursor, "kind", None) != CursorKind.TEMPLATE_REF:
+            continue
+        if child_cursor.spelling != template_terminal_name:
+            continue
+        referenced_cursor = getattr(child_cursor, "referenced", None)
+        if getattr(referenced_cursor, "kind", None) in {
+            CursorKind.TYPE_ALIAS_TEMPLATE_DECL,
+            CursorKind.CLASS_TEMPLATE,
+            CursorKind.FUNCTION_TEMPLATE,
+        }:
+            return referenced_cursor
+    return None
+
+
+def _template_cursor_matches_spelled_name(
+    template_cursor: Any,
+    cpp_type: TemplateInstanceCppType,
+) -> bool:
+    """Return whether one template cursor matches the source-spelled template name."""
+
+    cursor_name = getattr(template_cursor, "spelling", "").strip()
+    type_terminal_name = cpp_type.template_name.split("::")[-1].strip()
+    return bool(cursor_name) and cursor_name == type_terminal_name
 
 
 def _record_observed_template_instances_in_type(

@@ -413,6 +413,7 @@ def _named_child_accessor(field_name: str) -> str | None:
 
     accessors = {
         "aliases": "alias",
+        "alias_templates": "alias_template",
         "class_templates": "class_template",
         "classes": "class_",
         "constructors": "constructor",

@@ -16,7 +16,6 @@ Actionable backlog only. Keep long-term design intent and invariants in
 ### Missing declaration coverage
 
 - Unions
-- Alias templates
 
 ### Areas that still need refinement
 

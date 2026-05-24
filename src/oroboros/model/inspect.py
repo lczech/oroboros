@@ -40,6 +40,14 @@ def format_element(element: CppElement) -> str:
 
     if type_name == "CppNamespace":
         return f"namespace {name}"
+    if type_name == "CppAlias":
+        return f"alias {name}"
+    if type_name == "CppAliasTemplate":
+        return f"alias template {name}"
+    if type_name == "CppAliasTemplateDeclaration":
+        return f"alias template declaration {name}"
+    if type_name == "CppAliasTemplateInstance":
+        return f"alias template instance {name}"
     if type_name == "CppClass":
         kind = getattr(getattr(element, "cpp", None), "kind", "class")
         return f"{kind} {name}"
@@ -109,14 +117,18 @@ def summarize_tree(root: CppElement) -> str:
     summary_order = (
         ("CppNamespace", "namespaces"),
         ("CppClass", "classes"),
-        ("CppFunction", "functions"),
+        ("CppClassTemplate", "class templates"),
         ("CppMethod", "methods"),
         ("CppConstructor", "constructors"),
         ("CppDestructor", "destructors"),
         ("CppVariable", "variables"),
+        ("CppFunction", "functions"),
+        ("CppFunctionTemplate", "function templates"),
+        ("CppParameter", "parameters"),
         ("CppEnum", "enums"),
         ("CppEnumerator", "enumerators"),
-        ("CppParameter", "parameters"),
+        ("CppAlias", "aliases"),
+        ("CppAliasTemplate", "alias templates"),
     )
 
     for type_name, label in summary_order:

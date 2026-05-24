@@ -8,6 +8,8 @@ from clang.cindex import CursorKind
 
 from ..model import (
     CppAlias,
+    CppAliasTemplate,
+    CppAliasTemplateDeclaration,
     CppClass,
     CppClassMembers,
     CppClassTemplate,
@@ -27,6 +29,7 @@ from ..model import (
 from ..model.type import cpp_types_equivalent
 from .build_facets import (
     build_alias_cpp_facet,
+    build_alias_template_declaration_cpp_facet,
     build_class_cpp_facet,
     build_class_template_declaration_cpp_facet,
     build_constructor_cpp_facet,
@@ -600,6 +603,48 @@ def process_alias_cursor(
 
     alias = CppAlias(name=cursor.spelling, cpp=candidate_cpp)
     attached = attach_element(owner, "add_alias", alias)
+    if attached is not None:
+        register_element_for_cursor(cursor, attached, context)
+
+
+def process_alias_template_cursor(
+    cursor: Any,
+    owner: CppElement,
+    context: BuildContext,
+) -> None:
+    """Create or enrich one alias-template family."""
+
+    candidate_cpp = build_alias_template_declaration_cpp_facet(cursor, context=context)
+    existing = lookup_registered_element(cursor, context, CppAliasTemplate)
+    if existing is not None:
+        declaration = existing.declaration
+        merge_common_cpp_fields(declaration, candidate_cpp, context, cursor)
+        merge_cpp_scalar(
+            declaration,
+            "target",
+            candidate_cpp.target,
+            context,
+            cursor,
+            values_equivalent=cpp_types_equivalent,
+        )
+        merge_cpp_scalar(declaration, "visibility", candidate_cpp.visibility, context, cursor)
+        merge_cpp_scalar(declaration, "kind", candidate_cpp.kind, context, cursor)
+        merge_template_parameters(
+            declaration.cpp.template_parameters,
+            candidate_cpp.template_parameters,
+            context,
+            cursor,
+        )
+        return
+
+    template = CppAliasTemplate(
+        name=cursor.spelling,
+        declaration=CppAliasTemplateDeclaration(
+            name=cursor.spelling,
+            cpp=candidate_cpp,
+        ),
+    )
+    attached = attach_element(owner, "add_alias_template", template)
     if attached is not None:
         register_element_for_cursor(cursor, attached, context)
 

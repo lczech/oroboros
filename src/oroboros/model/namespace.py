@@ -12,6 +12,7 @@ from .location import CppLocationInfo
 
 if TYPE_CHECKING:
     from .alias import CppAlias
+    from .alias_template import CppAliasTemplate
     from .class_ import CppClass, CppClassBindFacet
     from .enum import CppEnum, CppEnumBindFacet
     from .function import CppFunction, CppFunctionBindFacet
@@ -56,13 +57,30 @@ class CppNamespacePyFacet:
 class CppNamespaceDefaults:
     """Store descendant defaults for one namespace scope."""
 
-    namespace: CppNamespaceBindFacet = field(default_factory=CppNamespaceBindFacet)
-    class_: "CppClassBindFacet" = field(default_factory=lambda: _make_class_bind_facet())
-    class_template: "CppTemplateBindFacet" = field(default_factory=lambda: _make_template_bind_facet())
-    function: "CppFunctionBindFacet" = field(default_factory=lambda: _make_function_bind_facet())
-    function_template: "CppTemplateBindFacet" = field(default_factory=lambda: _make_template_bind_facet())
-    variable: "CppVariableBindFacet" = field(default_factory=lambda: _make_variable_bind_facet())
-    enum: "CppEnumBindFacet" = field(default_factory=lambda: _make_enum_bind_facet())
+    namespace: CppNamespaceBindFacet = field(
+        default_factory=CppNamespaceBindFacet
+    )
+    class_: "CppClassBindFacet" = field(
+        default_factory=lambda: _make_class_bind_facet()
+    )
+    class_template: "CppTemplateBindFacet" = field(
+        default_factory=lambda: _make_template_bind_facet()
+    )
+    function: "CppFunctionBindFacet" = field(
+        default_factory=lambda: _make_function_bind_facet()
+    )
+    function_template: "CppTemplateBindFacet" = field(
+        default_factory=lambda: _make_template_bind_facet()
+    )
+    variable: "CppVariableBindFacet" = field(
+        default_factory=lambda: _make_variable_bind_facet()
+    )
+    enum: "CppEnumBindFacet" = field(
+        default_factory=lambda: _make_enum_bind_facet()
+    )
+    alias_template: "CppTemplateBindFacet" = field(
+        default_factory=lambda: _make_template_bind_facet()
+    )
 
 
 def _make_class_bind_facet() -> "CppClassBindFacet":
@@ -132,6 +150,8 @@ class CppScopeDeclarations:
     enums: list["CppEnum"] = field(default_factory=list)
     # Aliases declared directly inside this scope.
     aliases: list["CppAlias"] = field(default_factory=list)
+    # Alias template families declared directly inside this scope.
+    alias_templates: list["CppAliasTemplate"] = field(default_factory=list)
 
 
 # ==================================================================================================
@@ -166,6 +186,7 @@ class CppNamespace(CppElement):
             self.declarations.variables,
             self.declarations.enums,
             self.declarations.aliases,
+            self.declarations.alias_templates,
         ):
             self._adopt_children(declaration_list)
 
@@ -208,6 +229,11 @@ class CppNamespace(CppElement):
         """Attach one alias declared directly in this namespace."""
 
         return self._append_child(self.declarations.aliases, alias)
+
+    def add_alias_template(self, template: "CppAliasTemplate") -> "CppAliasTemplate":
+        """Attach one alias template family declared directly in this namespace."""
+
+        return self._append_child(self.declarations.alias_templates, template)
 
     @property
     def namespace(self):
@@ -256,3 +282,9 @@ class CppNamespace(CppElement):
         """Return a name-indexed view over aliases declared in this namespace."""
 
         return make_named_child_view(self, self.declarations, "aliases")
+
+    @property
+    def alias_template(self):
+        """Return a name-indexed view over alias templates declared in this namespace."""
+
+        return make_named_child_view(self, self.declarations, "alias_templates")

@@ -206,6 +206,9 @@ def _element_label(type_name: str) -> str:
 
     labels = {
         "CppAlias": "alias",
+        "CppAliasTemplate": "alias_template",
+        "CppAliasTemplateDeclaration": "alias_template_declaration",
+        "CppAliasTemplateInstance": "alias_template_instance",
         "CppClass": "class",
         "CppClassTemplate": "class_template",
         "CppClassTemplateDeclaration": "class_template_declaration",

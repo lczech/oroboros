@@ -164,8 +164,31 @@ class ModelValidationTest(unittest.TestCase):
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
 
+    def test_validate_semantics_rejects_duplicate_alias_template_names_in_one_scope(self) -> None:
+        first = CppAliasTemplate(name="Vec")
+        first.declaration.cpp.target = TemplateInstanceCppType(
+            template_name="Box",
+            arguments=[CppTypeTemplateArgument(type=NamedCppType(name="T"))],
+        )
+        second = CppAliasTemplate(name="Vec")
+        second.declaration.cpp.target = PointerCppType(
+            pointee=NamedCppType(name="T"),
+        )
+        namespace = make_namespace(name="demo", alias_templates=[first, second])
+        module = make_module(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
     def test_validate_semantics_rejects_aliases_without_target_types(self) -> None:
         namespace = make_namespace(name="demo", aliases=[CppAlias(name="Index")])
+        module = make_module(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_alias_templates_without_target_types(self) -> None:
+        namespace = make_namespace(name="demo", alias_templates=[CppAliasTemplate(name="Vec")])
         module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):
@@ -191,6 +214,26 @@ class ModelValidationTest(unittest.TestCase):
         )
         instance.cpp.template_arguments = [CppNonTypeTemplateArgument(value="4")]
         namespace = make_namespace(name="demo", function_templates=[function_template])
+        module = make_module(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_invalid_alias_template_instance_arguments(self) -> None:
+        alias_template = CppAliasTemplate(name="Vec")
+        alias_template.declaration.cpp.template_parameters.append(
+            CppTypeTemplateParameter(name="T")
+        )
+        alias_template.declaration.cpp.target = TemplateInstanceCppType(
+            template_name="Box",
+            arguments=[CppTypeTemplateArgument(type=NamedCppType(name="T"))],
+        )
+        instance = add_alias_template_instance(
+            alias_template,
+            [CppTypeTemplateArgument(type=NamedCppType(name="int"))],
+        )
+        instance.cpp.template_arguments = [CppNonTypeTemplateArgument(value="4")]
+        namespace = make_namespace(name="demo", alias_templates=[alias_template])
         module = make_module(name="bindings", namespaces=[namespace])
 
         with self.assertRaises(ModelSemanticValidationError):

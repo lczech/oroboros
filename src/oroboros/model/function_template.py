@@ -82,25 +82,37 @@ class CppFunctionTemplateInstance(CppElement):
     """Represent one selected function template instantiation as a binding target."""
 
     # Selected template arguments for this concrete function template instance.
-    cpp: CppFunctionTemplateInstanceCppFacet = dataclass_field(default_factory=CppFunctionTemplateInstanceCppFacet)
+    cpp: CppFunctionTemplateInstanceCppFacet = dataclass_field(
+        default_factory=CppFunctionTemplateInstanceCppFacet
+    )
     # Binding settings attached directly to this selected instance.
-    bind: CppFunctionBindFacet = dataclass_field(default_factory=CppFunctionBindFacet)
+    bind: CppFunctionBindFacet = dataclass_field(
+        default_factory=CppFunctionBindFacet
+    )
     # Python-facing choices attached directly to this selected instance.
-    py: CppFunctionPyFacet = dataclass_field(default_factory=CppFunctionPyFacet)
+    py: CppFunctionPyFacet = dataclass_field(
+        default_factory=CppFunctionPyFacet
+    )
 
 
 @dataclass(slots=True)
 class CppFunctionTemplate(CppElement):
     """Group one generic function template declaration with its selected instances."""
 
-    # Binding policy attached to this template family wrapper itself.
-    bind: CppTemplateBindFacet = dataclass_field(default_factory=CppTemplateBindFacet)
     # Parsed generic function template declaration, including observed instances.
     declaration: CppFunctionTemplateDeclaration | None = None
     # Selected concrete instantiations to bind for this template family.
-    instances: list[CppFunctionTemplateInstance] = dataclass_field(default_factory=list)
+    instances: list[CppFunctionTemplateInstance] = dataclass_field(
+        default_factory=list
+    )
+    # Binding policy attached to this template family wrapper itself.
+    bind: CppTemplateBindFacet = dataclass_field(
+        default_factory=CppTemplateBindFacet
+    )
     # Defaults applied to selected instances of this template family.
-    defaults: CppFunctionTemplateDefaults = dataclass_field(default_factory=CppFunctionTemplateDefaults)
+    defaults: CppFunctionTemplateDefaults = dataclass_field(
+        default_factory=CppFunctionTemplateDefaults
+    )
 
     @property
     def scope_name(self) -> str | None:

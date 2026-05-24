@@ -13,6 +13,7 @@ from .namespace import CppScopeDeclarations
 
 if TYPE_CHECKING:
     from .alias import CppAlias
+    from .alias_template import CppAliasTemplate
     from .class_ import CppClass, CppClassBindFacet
     from .enum import CppEnum, CppEnumBindFacet
     from .function import CppFunction, CppFunctionBindFacet
@@ -54,13 +55,30 @@ class CppModulePyFacet:
 class CppModuleDefaults:
     """Store descendant defaults for the semantic module root."""
 
-    namespace: "CppNamespaceBindFacet" = field(default_factory=lambda: _make_namespace_bind_facet())
-    class_: "CppClassBindFacet" = field(default_factory=lambda: _make_class_bind_facet())
-    class_template: "CppTemplateBindFacet" = field(default_factory=lambda: _make_template_bind_facet())
-    function: "CppFunctionBindFacet" = field(default_factory=lambda: _make_function_bind_facet())
-    function_template: "CppTemplateBindFacet" = field(default_factory=lambda: _make_template_bind_facet())
-    variable: "CppVariableBindFacet" = field(default_factory=lambda: _make_variable_bind_facet())
-    enum: "CppEnumBindFacet" = field(default_factory=lambda: _make_enum_bind_facet())
+    namespace: "CppNamespaceBindFacet" = field(
+        default_factory=lambda: _make_namespace_bind_facet()
+    )
+    class_: "CppClassBindFacet" = field(
+        default_factory=lambda: _make_class_bind_facet()
+    )
+    class_template: "CppTemplateBindFacet" = field(
+        default_factory=lambda: _make_template_bind_facet()
+    )
+    function: "CppFunctionBindFacet" = field(
+        default_factory=lambda: _make_function_bind_facet()
+    )
+    function_template: "CppTemplateBindFacet" = field(
+        default_factory=lambda: _make_template_bind_facet()
+    )
+    variable: "CppVariableBindFacet" = field(
+        default_factory=lambda: _make_variable_bind_facet()
+    )
+    enum: "CppEnumBindFacet" = field(
+        default_factory=lambda: _make_enum_bind_facet()
+    )
+    alias_template: "CppTemplateBindFacet" = field(
+        default_factory=lambda: _make_template_bind_facet()
+    )
 
 
 def _make_namespace_bind_facet() -> "CppNamespaceBindFacet":
@@ -144,6 +162,7 @@ class CppModule(CppElement):
             self.declarations.namespaces,
             self.declarations.classes,
             self.declarations.class_templates,
+            self.declarations.alias_templates,
             self.declarations.functions,
             self.declarations.function_templates,
             self.declarations.variables,
@@ -166,6 +185,11 @@ class CppModule(CppElement):
         """Attach one top-level class template family to this semantic module."""
 
         return self._append_child(self.declarations.class_templates, template)
+
+    def add_alias_template(self, template: "CppAliasTemplate") -> "CppAliasTemplate":
+        """Attach one top-level alias template family to this semantic module."""
+
+        return self._append_child(self.declarations.alias_templates, template)
 
     def add_function(self, function: "CppFunction") -> "CppFunction":
         """Attach one top-level free function to this semantic module."""
@@ -209,6 +233,12 @@ class CppModule(CppElement):
         """Return a name-indexed view over top-level class templates."""
 
         return make_named_child_view(self, self.declarations, "class_templates")
+
+    @property
+    def alias_template(self):
+        """Return a name-indexed view over top-level alias templates."""
+
+        return make_named_child_view(self, self.declarations, "alias_templates")
 
     @property
     def function(self):

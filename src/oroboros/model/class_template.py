@@ -112,12 +112,12 @@ class CppClassTemplateInstance(CppElement):
 class CppClassTemplate(CppElement):
     """Group one generic class template declaration with its selected instances."""
 
-    # Binding policy attached to this template family wrapper itself.
-    bind: CppTemplateBindFacet = dataclass_field(default_factory=CppTemplateBindFacet)
     # Parsed generic class template declaration, including observed instances.
     declaration: CppClassTemplateDeclaration | None = None
     # Selected concrete instantiations to bind for this template family.
     instances: list[CppClassTemplateInstance] = dataclass_field(default_factory=list)
+    # Binding policy attached to this template family wrapper itself.
+    bind: CppTemplateBindFacet = dataclass_field(default_factory=CppTemplateBindFacet)
     # Defaults applied to selected instances and their descendants.
     defaults: CppClassTemplateDefaults = dataclass_field(default_factory=CppClassTemplateDefaults)
 

@@ -168,7 +168,7 @@ The parser/model currently materializes:
 
 - namespaces
 - classes and structs
-- class and function template declarations
+- class, function, and alias template declarations
 - enums and enumerators
 - aliases and typedefs
 - free functions

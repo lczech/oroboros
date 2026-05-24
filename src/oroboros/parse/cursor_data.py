@@ -137,6 +137,24 @@ def cursor_alias_kind(cursor: Any) -> str | None:
     return None
 
 
+def cursor_alias_template_target_cursor(cursor: Any) -> Any | None:
+    """Return the nested `TYPE_ALIAS_DECL` child that carries one alias-template target."""
+
+    for child_cursor in cursor.get_children():
+        if getattr(child_cursor, "kind", None) == CursorKind.TYPE_ALIAS_DECL:
+            return child_cursor
+    return None
+
+
+def cursor_alias_template_target_type(cursor: Any) -> Any:
+    """Return one alias-template cursor's underlying target type when clang exposes it."""
+
+    target_cursor = cursor_alias_template_target_cursor(cursor)
+    if target_cursor is None:
+        return None
+    return cursor_alias_target_type(target_cursor)
+
+
 def cursor_raw_comment(cursor: Any) -> str | None:
     """Return one raw clang comment block when libclang exposes it."""
 

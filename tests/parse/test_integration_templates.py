@@ -11,6 +11,115 @@ from tests.support.parse_helpers import parse_headers_from_sources as _parse_hea
 
 
 class ParseIntegrationTemplateTest(unittest.TestCase):
+    def test_parse_headers_materializes_alias_template_declarations_without_duplicate_plain_aliases(self) -> None:
+        source = """
+            namespace demo {
+
+            template <class T>
+            struct Box {
+                T value {};
+            };
+
+            template <class T>
+            using Vec = Box<T>;
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+
+        self.assertEqual(len(namespace.declarations.aliases), 0)
+        self.assertEqual(len(namespace.declarations.alias_templates), 1)
+
+        alias_template = namespace.declarations.alias_templates[0]
+        self.assertIsInstance(alias_template, CppAliasTemplate)
+        self.assertEqual(alias_template.name, "Vec")
+        self.assertEqual(alias_template.qualified_name, "demo::Vec")
+        self.assertEqual(alias_template.declaration.qualified_name, "demo::Vec")
+        self.assertEqual(len(alias_template.declaration.cpp.template_parameters), 1)
+        self.assertIsInstance(
+            alias_template.declaration.cpp.template_parameters[0],
+            CppTypeTemplateParameter,
+        )
+        self.assertEqual(alias_template.declaration.cpp.template_parameters[0].name, "T")
+        self.assertIsInstance(alias_template.declaration.cpp.target, TemplateInstanceCppType)
+        self.assertEqual(alias_template.declaration.cpp.target.template_name, "Box")
+        self.assertEqual(len(alias_template.declaration.cpp.target.arguments), 1)
+        self.assertIsInstance(alias_template.declaration.cpp.target.arguments[0], CppTypeTemplateArgument)
+        self.assertIsInstance(alias_template.declaration.cpp.target.arguments[0].type, NamedCppType)
+        self.assertEqual(alias_template.declaration.cpp.target.arguments[0].type.name, "T")
+        self.assertEqual(alias_template.declaration.cpp.kind, "using")
+
+    def test_parse_headers_materializes_class_scoped_alias_templates_with_docs_and_visibility(self) -> None:
+        source = """
+            namespace demo {
+
+            struct Vault {
+            protected:
+                /// Handle alias for the vault contents.
+                template <class T>
+                using Handle = T*;
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        vault = namespace.declarations.classes[0]
+
+        self.assertEqual(len(vault.declarations.aliases), 0)
+        self.assertEqual(len(vault.declarations.alias_templates), 1)
+        alias_template = vault.declarations.alias_templates[0]
+        self.assertIsInstance(alias_template, CppAliasTemplate)
+        self.assertEqual(alias_template.qualified_name, "demo::Vault::Handle")
+        self.assertEqual(alias_template.declaration.cpp.visibility, CppVisibility.PROTECTED)
+        self.assertIn("Handle alias for the vault contents.", alias_template.declaration.cpp.comment)
+        self.assertIsNotNone(alias_template.declaration.cpp.doc)
+        self.assertIsInstance(alias_template.declaration.cpp.target, PointerCppType)
+        self.assertIsInstance(alias_template.declaration.cpp.target.pointee, NamedCppType)
+        self.assertEqual(alias_template.declaration.cpp.target.pointee.name, "T")
+
+    def test_parse_headers_collects_observed_alias_template_instances_from_declaration_types(self) -> None:
+        source = """
+            namespace demo {
+
+            struct RelicInfo {};
+
+            template <class T>
+            struct Box {
+                T value {};
+            };
+
+            template <class T>
+            using Vec = Box<T>;
+
+            using RelicVec = Vec<RelicInfo>;
+
+            struct Holder {
+                Vec<RelicInfo> primary;
+            };
+
+            Vec<RelicInfo> make_vec();
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        alias_template = namespace.declarations.alias_templates[0]
+        observed_instances = alias_template.declaration.cpp.observed_instances
+
+        self.assertEqual(len(observed_instances), 1)
+        self.assertEqual(len(observed_instances[0].locations), 3)
+        self.assertIsInstance(observed_instances[0].arguments[0], CppTypeTemplateArgument)
+        self.assertIsInstance(observed_instances[0].arguments[0].type, NamedCppType)
+        self.assertEqual(observed_instances[0].arguments[0].type.name, "RelicInfo")
+
     def test_parse_headers_materializes_real_template_declarations(self) -> None:
         source = """
             namespace demo {

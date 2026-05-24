@@ -12,6 +12,7 @@ from .merge_declarations import merge_common_cpp_fields, merge_cpp_scalar
 from .element_registry import ensure_namespace
 from .process_declarations import (
     process_alias_cursor,
+    process_alias_template_cursor,
     process_class_cursor,
     process_class_template_cursor,
     process_constructor_cursor,
@@ -126,6 +127,10 @@ def _visit_declaration_cursor(
 
     if _cursor_kind_matches(cursor, CursorKind.FRIEND_DECL):
         _visit_friend_cursor(cursor, owner, context)
+        return
+
+    if _cursor_kind_matches(cursor, CursorKind.TYPE_ALIAS_TEMPLATE_DECL):
+        process_alias_template_cursor(cursor, owner, context)
         return
 
     if _cursor_kind_matches(cursor, CursorKind.TYPE_ALIAS_DECL, CursorKind.TYPEDEF_DECL):

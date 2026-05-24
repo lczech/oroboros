@@ -369,6 +369,17 @@ from .class_template import (  # noqa: E402
     CppClassTemplateInstanceCppFacet,
     add_class_template_instance,
 )
+from .class_ import CppClassMembers  # noqa: E402
+from .module import CppModule  # noqa: E402
+from .namespace import CppNamespace  # noqa: E402
+from .alias_template import (  # noqa: E402
+    CppAliasTemplate,
+    CppAliasTemplateDeclaration,
+    CppAliasTemplateDeclarationCppFacet,
+    CppAliasTemplateInstance,
+    CppAliasTemplateInstanceCppFacet,
+    add_alias_template_instance,
+)
 from .function_template import (  # noqa: E402
     CppFunctionTemplate,
     CppFunctionTemplateDeclaration,
@@ -385,16 +396,18 @@ from .function_template import (  # noqa: E402
 # ==================================================================================================
 
 
-TemplateFamily = CppClassTemplate | CppFunctionTemplate
+TemplateFamily = CppAliasTemplate | CppClassTemplate | CppFunctionTemplate
 TemplateScope = CppElement
 
 
 def add_template_instance(
     template: TemplateFamily,
     arguments: list[CppTemplateArgument],
-) -> CppClassTemplateInstance | CppFunctionTemplateInstance:
+) -> CppAliasTemplateInstance | CppClassTemplateInstance | CppFunctionTemplateInstance:
     """Create or return one concrete template instance under a template family."""
 
+    if isinstance(template, CppAliasTemplate):
+        return add_alias_template_instance(template, arguments)
     if isinstance(template, CppClassTemplate):
         return add_class_template_instance(template, arguments)
     if isinstance(template, CppFunctionTemplate):
@@ -405,6 +418,7 @@ def add_template_instance(
 def add_observed_template_instances(
     scope: TemplateScope,
     *,
+    include_alias_templates: bool = True,
     include_class_templates: bool = True,
     include_function_templates: bool = True,
     recurse: bool = True,
@@ -417,6 +431,17 @@ def add_observed_template_instances(
     """
 
     created_instances: list[CppElement] = []
+
+    for alias_template in _iter_alias_templates(scope, recurse=recurse):
+        if not include_alias_templates:
+            continue
+        for observed_instance in alias_template.declaration.cpp.observed_instances:
+            created_instances.append(
+                add_alias_template_instance(
+                    alias_template,
+                    observed_instance.arguments,
+                )
+            )
 
     for class_template in _iter_class_templates(scope, recurse=recurse):
         if not include_class_templates:
@@ -446,6 +471,7 @@ def add_observed_template_instances(
 def add_enabled_observed_template_instances(
     scope: TemplateScope,
     *,
+    include_alias_templates: bool = True,
     include_class_templates: bool = True,
     include_function_templates: bool = True,
     recurse: bool = True,
@@ -453,6 +479,11 @@ def add_enabled_observed_template_instances(
     """Materialize only the observed template instances enabled by effective bind policy."""
 
     created_instances: list[CppElement] = []
+
+    for alias_template in _iter_alias_templates(scope, recurse=recurse):
+        if not include_alias_templates or not _template_materializes_observed_instances(alias_template):
+            continue
+        created_instances.extend(alias_template.add_observed_instances())
 
     for class_template in _iter_class_templates(scope, recurse=recurse):
         if not include_class_templates or not _template_materializes_observed_instances(class_template):
@@ -477,8 +508,10 @@ def _iter_class_templates(
     templates: list[CppClassTemplate] = []
     if isinstance(scope, CppClassTemplate):
         templates.append(scope)
+    elif _is_supported_template_scope(scope):
+        templates.extend(_template_scope_declarations(scope).class_templates)
     else:
-        templates.extend(getattr(getattr(scope, "declarations", None), "class_templates", []))
+        raise TypeError(f"Unsupported template scope type: {type(scope)!r}")
 
     if not recurse:
         return templates
@@ -486,6 +519,30 @@ def _iter_class_templates(
     nested_scopes = _iter_nested_template_scopes(scope)
     for nested_scope in nested_scopes:
         templates.extend(_iter_class_templates(nested_scope, recurse=True))
+    return templates
+
+
+def _iter_alias_templates(
+    scope: TemplateScope,
+    *,
+    recurse: bool,
+) -> list[CppAliasTemplate]:
+    """Collect alias template families below one scope."""
+
+    templates: list[CppAliasTemplate] = []
+    if isinstance(scope, CppAliasTemplate):
+        templates.append(scope)
+    elif _is_supported_template_scope(scope):
+        templates.extend(_template_scope_declarations(scope).alias_templates)
+    else:
+        raise TypeError(f"Unsupported template scope type: {type(scope)!r}")
+
+    if not recurse:
+        return templates
+
+    nested_scopes = _iter_nested_template_scopes(scope)
+    for nested_scope in nested_scopes:
+        templates.extend(_iter_alias_templates(nested_scope, recurse=True))
     return templates
 
 
@@ -499,8 +556,10 @@ def _iter_function_templates(
     templates: list[CppFunctionTemplate] = []
     if isinstance(scope, CppFunctionTemplate):
         templates.append(scope)
+    elif _is_supported_template_scope(scope):
+        templates.extend(_template_scope_declarations(scope).function_templates)
     else:
-        templates.extend(getattr(getattr(scope, "declarations", None), "function_templates", []))
+        raise TypeError(f"Unsupported template scope type: {type(scope)!r}")
 
     if not recurse:
         return templates
@@ -516,8 +575,10 @@ def _iter_nested_template_scopes(scope: TemplateScope) -> list[CppElement]:
 
     if isinstance(scope, CppClassTemplate):
         return [scope.declaration]
+    if not _is_supported_template_scope(scope):
+        raise TypeError(f"Unsupported template scope type: {type(scope)!r}")
 
-    declarations = getattr(scope, "declarations", None)
+    declarations = _template_scope_declarations(scope)
     nested_scopes = list(getattr(declarations, "namespaces", [])) + list(getattr(declarations, "classes", []))
     nested_scopes.extend(
         template.declaration for template in getattr(declarations, "class_templates", [])
@@ -532,7 +593,14 @@ def _template_materializes_observed_instances(template: TemplateFamily) -> bool:
     if direct_setting is not None:
         return direct_setting
 
-    default_bucket_name = "class_template" if isinstance(template, CppClassTemplate) else "function_template"
+    if isinstance(template, CppAliasTemplate):
+        default_bucket_name = "alias_template"
+    elif isinstance(template, CppClassTemplate):
+        default_bucket_name = "class_template"
+    elif isinstance(template, CppFunctionTemplate):
+        default_bucket_name = "function_template"
+    else:
+        raise TypeError(f"Unsupported template family type: {type(template)!r}")
 
     current: CppElement | None = template.owner
     while current is not None:
@@ -544,3 +612,23 @@ def _template_materializes_observed_instances(template: TemplateFamily) -> bool:
         current = current.owner
 
     return False
+
+
+def _is_supported_template_scope(scope: TemplateScope) -> bool:
+    """Return whether one element kind can own template-family declarations."""
+
+    return isinstance(scope, (CppModule, CppNamespace, CppClassMembers))
+
+
+def _template_scope_declarations(scope: TemplateScope) -> object:
+    """Return the declaration container for one supported template-owning scope."""
+
+    if not _is_supported_template_scope(scope):
+        raise TypeError(f"Unsupported template scope type: {type(scope)!r}")
+
+    declarations = getattr(scope, "declarations", None)
+    if declarations is None:
+        raise TypeError(
+            f"Supported template scope {type(scope).__name__} does not expose declarations."
+        )
+    return declarations

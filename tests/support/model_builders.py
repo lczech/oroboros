@@ -15,6 +15,7 @@ def make_class(*, declarations: CppClassDeclarations | None = None, **kwargs) ->
         "variables",
         "static_variables",
         "aliases",
+        "alias_templates",
         "enums",
         "class_templates",
         "function_templates",
@@ -48,6 +49,7 @@ def make_class_template_declaration(
         "variables",
         "static_variables",
         "aliases",
+        "alias_templates",
         "enums",
         "class_templates",
         "function_templates",
@@ -72,6 +74,7 @@ def make_namespace(*, declarations: CppScopeDeclarations | None = None, **kwargs
     for key in (
         "namespaces",
         "classes",
+        "alias_templates",
         "class_templates",
         "functions",
         "function_templates",
@@ -96,6 +99,7 @@ def make_module(*, declarations: CppScopeDeclarations | None = None, **kwargs) -
     for key in (
         "namespaces",
         "classes",
+        "alias_templates",
         "class_templates",
         "functions",
         "function_templates",
