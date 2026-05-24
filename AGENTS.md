@@ -81,12 +81,15 @@ helpers can sit on top.
 
 ### Facets
 
-Each semantic element exposes:
+Most semantic elements expose:
 
 - `.cpp`: parsed C++ facts, read-mostly
 - `.bind`: binding-generation policy for that element
 - `.py`: Python-facing exposure choices
 - `.defaults`: inherited defaults for descendants
+
+Non-bindable structural elements may intentionally expose only the facets that
+make sense. Today, destructors are modeled as parsed C++ facts only.
 
 ### Types
 
@@ -171,6 +174,7 @@ The parser/model currently materializes:
 - free functions
 - methods
 - constructors
+- destructors
 - conversion functions
 - variables
   - namespace/free variables
@@ -231,7 +235,6 @@ The parser/model currently materializes:
 
 Highest-value remaining parser gaps:
 
-- destructors
 - unions
 - richer callable qualifiers beyond current coverage
 - fuller redeclaration enrichment where later declarations add useful facts

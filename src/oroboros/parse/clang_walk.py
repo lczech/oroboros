@@ -15,6 +15,7 @@ from .process_declarations import (
     process_class_cursor,
     process_class_template_cursor,
     process_constructor_cursor,
+    process_destructor_cursor,
     process_enum_cursor,
     process_enumerator_cursor,
     process_field_cursor,
@@ -141,6 +142,10 @@ def _visit_declaration_cursor(
 
     if _cursor_kind_matches(cursor, CursorKind.CONSTRUCTOR):
         process_constructor_cursor(cursor, owner, context)
+        return
+
+    if _cursor_kind_matches(cursor, CursorKind.DESTRUCTOR):
+        process_destructor_cursor(cursor, owner, context)
         return
 
     if _cursor_kind_matches(cursor, CursorKind.FIELD_DECL):

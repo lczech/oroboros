@@ -16,7 +16,13 @@ from .visibility import CppVisibility
 if TYPE_CHECKING:
     from .alias import CppAlias
     from .enum import CppEnum, CppEnumBindFacet
-    from .member import CppConstructor, CppConstructorBindFacet, CppMethod, CppMethodBindFacet
+    from .member import (
+        CppConstructor,
+        CppConstructorBindFacet,
+        CppDestructor,
+        CppMethod,
+        CppMethodBindFacet,
+    )
     from .template_ import CppClassTemplate, CppFunctionTemplate, CppTemplateBindFacet
 
 
@@ -154,6 +160,8 @@ class CppClassDeclarations:
     classes: list["CppClass"] = dataclass_field(default_factory=list)
     # Constructors declared directly inside this class scope.
     constructors: list["CppConstructor"] = dataclass_field(default_factory=list)
+    # Destructor declared directly inside this class scope, when present.
+    destructor: "CppDestructor | None" = None
     # Methods declared directly inside this class scope.
     methods: list["CppMethod"] = dataclass_field(default_factory=list)
     # Non-static instance variables declared directly inside this class scope.
@@ -197,6 +205,8 @@ class CppClassMembers(CppElement):
             self.declarations.function_templates,
         ):
             self._adopt_children(declaration_list)
+        if self.declarations.destructor is not None:
+            self._adopt_child(self.declarations.destructor)
 
     def add_class(self, class_: "CppClass") -> "CppClass":
         """Attach one nested class to this class scope."""
@@ -207,6 +217,18 @@ class CppClassMembers(CppElement):
         """Attach one constructor to this class scope."""
 
         return self._append_child(self.declarations.constructors, constructor)
+
+    def add_destructor(self, destructor: "CppDestructor") -> "CppDestructor":
+        """Attach one destructor to this class scope."""
+
+        existing = self.declarations.destructor
+        if existing is not None and existing is not destructor:
+            raise ValueError(
+                f"{self._describe_element()} already has a destructor named {existing.name!r}."
+            )
+        self._adopt_child(destructor)
+        self.declarations.destructor = destructor
+        return destructor
 
     def add_method(self, method: "CppMethod") -> "CppMethod":
         """Attach one method to this class scope."""
@@ -254,6 +276,12 @@ class CppClassMembers(CppElement):
         """Return a name-indexed view over constructors declared in this class."""
 
         return make_named_child_view(self, self.declarations, "constructors", return_many=True)
+
+    @property
+    def destructor(self):
+        """Return the destructor declared in this class, when present."""
+
+        return self.declarations.destructor
 
     @property
     def method(self):

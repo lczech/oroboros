@@ -79,6 +79,26 @@ class CppConstructorPyFacet:
     sig: str | None = None
 
 
+# ------------------------------------------------------------------------------
+#     Destructor Facets
+# ------------------------------------------------------------------------------
+
+
+@dataclass(slots=True)
+class CppDestructorCppFacet:
+    """Store parsed C++ details for one destructor."""
+
+    original_name: str | None = None
+    location: CppLocationInfo = field(default_factory=CppLocationInfo)
+    comment: str | None = None
+    doc: CppDoc | None = None
+    is_virtual: bool = False
+    is_pure_virtual: bool = False
+    is_deleted: bool = False
+    is_defaulted: bool = False
+    visibility: CppVisibility | None = None
+
+
 # ==================================================================================================
 #     Elements
 # ==================================================================================================
@@ -134,3 +154,10 @@ class CppConstructor(CppElement):
         """Return a name-indexed view over this constructor's parameters."""
 
         return make_named_child_view(self, self, "parameters")
+
+
+@dataclass(slots=True)
+class CppDestructor(CppElement):
+    """Represent one destructor owned by a class."""
+
+    cpp: CppDestructorCppFacet = field(default_factory=CppDestructorCppFacet)

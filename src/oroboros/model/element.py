@@ -211,6 +211,7 @@ def _element_label(type_name: str) -> str:
         "CppClassTemplateDeclaration": "class_template_declaration",
         "CppClassTemplateInstance": "class_template_instance",
         "CppConstructor": "constructor",
+        "CppDestructor": "destructor",
         "CppEnum": "enum",
         "CppEnumerator": "enumerator",
         "CppVariable": "variable",

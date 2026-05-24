@@ -13,6 +13,7 @@ from ..model import (
     CppClassTemplate,
     CppClassTemplateDeclaration,
     CppConstructor,
+    CppDestructor,
     CppElement,
     CppEnum,
     CppEnumerator,
@@ -29,6 +30,7 @@ from .build_facets import (
     build_class_cpp_facet,
     build_class_template_declaration_cpp_facet,
     build_constructor_cpp_facet,
+    build_destructor_cpp_facet,
     build_enum_cpp_facet,
     build_enumerator_cpp_facet,
     build_variable_cpp_facet,
@@ -391,6 +393,34 @@ def process_templated_constructor_cursor(
         apply_parameter_docs(attached)
 
 
+def process_destructor_cursor(
+    cursor: Any,
+    owner: CppElement,
+    context: BuildContext,
+) -> None:
+    """Create or enrich one destructor declaration."""
+
+    candidate_cpp = build_destructor_cpp_facet(cursor, context=context)
+    destructor_name = _destructor_name_for_owner(owner, cursor)
+    candidate_cpp.original_name = destructor_name
+    existing = lookup_registered_element(cursor, context, CppDestructor)
+    if existing is not None:
+        merge_common_cpp_fields(existing, candidate_cpp, context, cursor)
+        merge_cpp_scalar(existing, "is_virtual", candidate_cpp.is_virtual, context, cursor)
+        merge_cpp_scalar(existing, "is_pure_virtual", candidate_cpp.is_pure_virtual, context, cursor)
+        merge_cpp_bool_enrichment(existing, "is_deleted", candidate_cpp.is_deleted)
+        merge_cpp_bool_enrichment(existing, "is_defaulted", candidate_cpp.is_defaulted)
+        merge_cpp_scalar(existing, "visibility", candidate_cpp.visibility, context, cursor)
+        visit_non_parameter_children(cursor.get_children(), existing, context)
+        return
+
+    destructor = CppDestructor(name=destructor_name, cpp=candidate_cpp)
+    attached = attach_element(owner, "add_destructor", destructor)
+    if attached is not None:
+        register_element_for_cursor(cursor, attached, context)
+        visit_non_parameter_children(cursor.get_children(), attached, context)
+
+
 def process_method_cursor(
     cursor: Any,
     owner: CppElement,
@@ -594,6 +624,19 @@ def _constructor_name_for_owner(
     if owner_name:
         return owner_name
     return cursor.spelling
+
+
+def _destructor_name_for_owner(
+    owner: CppElement,
+    cursor: Any,
+) -> str:
+    """Normalize one destructor name against the owning class-like declaration."""
+
+    owner_name = getattr(owner, "name", "")
+    if owner_name:
+        return f"~{owner_name}"
+    spelling = cursor.spelling or ""
+    return spelling
 
 
 def _variable_attach_method_name(owner: CppElement) -> str | None:

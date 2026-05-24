@@ -291,6 +291,8 @@ def _collect_direct_child_elements(
 
         field_value = getattr(value, field_name)
         field_path = f"{path}.{field_name}"
+        if getattr(value, "_is_child_container", False):
+            field_path = f"{path}.declarations.{field_name}"
         if isinstance(field_value, CppElement):
             children.append((field_path, field_value))
             continue

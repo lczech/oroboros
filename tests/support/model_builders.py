@@ -10,6 +10,7 @@ def make_class(*, declarations: CppClassDeclarations | None = None, **kwargs) ->
     for key in (
         "classes",
         "constructors",
+        "destructor",
         "methods",
         "variables",
         "static_variables",
@@ -23,6 +24,9 @@ def make_class(*, declarations: CppClassDeclarations | None = None, **kwargs) ->
 
     declaration_container = declarations if declarations is not None else CppClassDeclarations()
     for key, value in declaration_kwargs.items():
+        if key == "destructor":
+            setattr(declaration_container, key, value)
+            continue
         setattr(declaration_container, key, list(value))
 
     return CppClass(declarations=declaration_container, **kwargs)
@@ -39,6 +43,7 @@ def make_class_template_declaration(
     for key in (
         "classes",
         "constructors",
+        "destructor",
         "methods",
         "variables",
         "static_variables",
@@ -52,6 +57,9 @@ def make_class_template_declaration(
 
     declaration_container = declarations if declarations is not None else CppClassDeclarations()
     for key, value in declaration_kwargs.items():
+        if key == "destructor":
+            setattr(declaration_container, key, value)
+            continue
         setattr(declaration_container, key, list(value))
 
     return CppClassTemplateDeclaration(declarations=declaration_container, **kwargs)

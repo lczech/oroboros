@@ -53,6 +53,8 @@ def format_element(element: CppElement) -> str:
         return f"method {name}"
     if type_name == "CppConstructor":
         return f"constructor {name}"
+    if type_name == "CppDestructor":
+        return f"destructor {name}"
     if type_name == "CppVariable":
         kind = getattr(getattr(element, "cpp", None), "kind", "variable")
         if kind == "member_variable":
@@ -110,6 +112,7 @@ def summarize_tree(root: CppElement) -> str:
         ("CppFunction", "functions"),
         ("CppMethod", "methods"),
         ("CppConstructor", "constructors"),
+        ("CppDestructor", "destructors"),
         ("CppVariable", "variables"),
         ("CppEnum", "enums"),
         ("CppEnumerator", "enumerators"),

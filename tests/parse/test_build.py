@@ -116,6 +116,52 @@ class ParseBuildTest(unittest.TestCase):
         self.assertEqual(len(module.declarations.functions[0].parameters), 1)
         self.assertEqual(module.declarations.functions[0].parameters[0].name, "value")
 
+    def test_build_module_from_clang_materializes_destructors(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        translation_unit = SimpleNamespace(
+            cursor=_fake_cursor(
+                "TRANSLATION_UNIT",
+                "",
+                file=active_header,
+                children=[
+                    _fake_cursor(
+                        "NAMESPACE",
+                        "demo",
+                        file=active_header,
+                        children=[
+                            _fake_cursor(
+                                "CLASS_DECL",
+                                "Widget",
+                                file=active_header,
+                                children=[
+                                    _fake_cursor(
+                                        "DESTRUCTOR",
+                                        "~Widget",
+                                        file=active_header,
+                                        access_specifier="PUBLIC",
+                                        methods={
+                                            "is_virtual_method": True,
+                                            "is_default_method": True,
+                                        },
+                                    )
+                                ],
+                            )
+                        ],
+                    )
+                ],
+            )
+        )
+
+        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
+        cls = build_result.module.declarations.namespaces[0].declarations.classes[0]
+        destructor = cls.declarations.destructor
+
+        self.assertIsNotNone(destructor)
+        self.assertEqual(destructor.name, "~Widget")
+        self.assertTrue(destructor.cpp.is_virtual)
+        self.assertTrue(destructor.cpp.is_defaulted)
+        self.assertEqual(destructor.cpp.visibility, CppVisibility.PUBLIC)
+
     def test_build_module_from_clang_populates_types_bases_and_flags(self) -> None:
         active_header = Path("/tmp/project/demo.hpp")
         base_specifier = _fake_cursor(

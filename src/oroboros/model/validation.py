@@ -104,6 +104,7 @@ def _root_access_path(root: CppElement) -> str:
         "CppClassTemplateDeclaration": "class_template_declaration",
         "CppClassTemplateInstance": "class_template_instance",
         "CppConstructor": "constructor",
+        "CppDestructor": "destructor",
         "CppEnum": "enum_",
         "CppEnumerator": "enumerator",
         "CppFunction": "function",
@@ -302,6 +303,7 @@ def _validate_cpp_name_sanity(
         path,
         errors,
         allow_operator_names=_allows_operator_name(element),
+        allow_destructor_names=_allows_destructor_name(element),
     )
 
 
@@ -389,7 +391,7 @@ def _validate_owner_kind(
         CppFunctionTemplateInstance,
     )
     from .module import CppModule
-    from .member import CppConstructor, CppMethod
+    from .member import CppConstructor, CppDestructor, CppMethod
     from .namespace import CppNamespace
     from .class_template import (
         CppClassTemplate,
@@ -429,7 +431,10 @@ def _validate_owner_kind(
             f"by function-like declarations."
         )
 
-    if isinstance(element, (CppMethod, CppConstructor)) and not isinstance(owner, CppClassMembers):
+    if isinstance(element, (CppMethod, CppConstructor, CppDestructor)) and not isinstance(
+        owner,
+        CppClassMembers,
+    ):
         errors.append(
             f"{path} is owned by {owner._describe_element()}, but this member kind must be "
             f"owned by a class-like declaration."
@@ -501,21 +506,22 @@ def _validate_constructor_name(
     path: str,
     errors: list[str],
 ) -> None:
-    """Validate that constructor names match their owning class-like declaration."""
+    """Validate that special-member names match their owning class-like declaration."""
 
-    from .member import CppConstructor
+    from .member import CppConstructor, CppDestructor
 
-    if not isinstance(element, CppConstructor):
+    if not isinstance(element, (CppConstructor, CppDestructor)):
         return
 
     owner = element.owner
     if owner is None:
         return
 
-    if element.name != owner.name:
+    expected_name = owner.name if isinstance(element, CppConstructor) else f"~{owner.name}"
+    if element.name != expected_name:
         errors.append(
             f"{path} is named {element.name!r}, but its owning class-like declaration is "
-            f"named {owner.name!r}."
+            f"named {owner.name!r}, so the expected member name is {expected_name!r}."
         )
 
 
@@ -528,7 +534,7 @@ def _validate_method_like_flags(
 
     from .class_ import CppClassMembers
     from .function_template import CppFunctionTemplateDeclaration, CppFunctionTemplateInstance
-    from .member import CppMethod
+    from .member import CppDestructor, CppMethod
 
     cpp_facet = getattr(element, "cpp", None)
     if cpp_facet is None:
@@ -539,7 +545,7 @@ def _validate_method_like_flags(
 
     if not isinstance(
         element,
-        (CppMethod, CppFunctionTemplateDeclaration, CppFunctionTemplateInstance),
+        (CppMethod, CppDestructor, CppFunctionTemplateDeclaration, CppFunctionTemplateInstance),
     ):
         return
 
@@ -552,7 +558,7 @@ def _validate_method_like_flags(
             f"{path}.cpp marks the callable as pure virtual, but not virtual."
         )
 
-    if cpp_facet.is_static and cpp_facet.is_virtual:
+    if getattr(cpp_facet, "is_static", False) and cpp_facet.is_virtual:
         errors.append(
             f"{path}.cpp marks the callable as both static and virtual."
         )
@@ -789,6 +795,7 @@ def _validate_cpp_name(
     errors: list[str],
     *,
     allow_operator_names: bool = False,
+    allow_destructor_names: bool = False,
 ) -> None:
     """Validate lexical sanity of one local C++ declaration-style name."""
 
@@ -804,6 +811,9 @@ def _validate_cpp_name(
         return
 
     if allow_operator_names and name.startswith("operator"):
+        return
+
+    if allow_destructor_names and name.startswith("~") and _is_cpp_identifier(name[1:]):
         return
 
     if not _is_cpp_identifier(name):
@@ -839,6 +849,12 @@ def _allows_operator_name(element: CppElement) -> bool:
 
     cpp_facet = getattr(element, "cpp", None)
     return getattr(cpp_facet, "operator", None) is not None or element.name.startswith("operator")
+
+
+def _allows_destructor_name(element: CppElement) -> bool:
+    """Return whether one element kind may legitimately use a destructor spelling."""
+
+    return type(element).__name__ == "CppDestructor" or element.name.startswith("~")
 
 
 def _is_cpp_identifier(name: str) -> bool:

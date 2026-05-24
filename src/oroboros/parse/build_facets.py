@@ -295,6 +295,29 @@ def build_constructor_cpp_facet(
     )
 
 
+def build_destructor_cpp_facet(
+    cursor: Any,
+    *,
+    context: BuildContext | None = None,
+) -> Any:
+    """Build one parsed destructor facet from one clang cursor."""
+
+    from ..model import CppDestructorCppFacet
+    raw_comment, doc = _comment_and_doc(cursor, context=context)
+
+    return CppDestructorCppFacet(
+        original_name=cursor.spelling or None,
+        location=build_location_info(cursor),
+        comment=raw_comment,
+        doc=doc,
+        is_virtual=cursor_bool_method(cursor, "is_virtual_method"),
+        is_pure_virtual=cursor_bool_method(cursor, "is_pure_virtual_method"),
+        is_deleted=cursor_callable_is_deleted(cursor, context=context),
+        is_defaulted=cursor_callable_is_defaulted(cursor, context=context),
+        visibility=cursor_visibility(cursor),
+    )
+
+
 def build_variable_cpp_facet(
     cursor: Any,
     *,

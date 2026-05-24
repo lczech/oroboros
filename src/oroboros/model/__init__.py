@@ -45,6 +45,8 @@ from .lookup import (
 from .member import (
     CppConstructor,
     CppConstructorBindFacet,
+    CppDestructor,
+    CppDestructorCppFacet,
     CppMethod,
     CppMethodBindFacet,
     CppConstructorCppFacet,
@@ -145,6 +147,8 @@ __all__ = [
     "CppConstructorBindFacet",
     "CppConstructorCppFacet",
     "CppConstructorPyFacet",
+    "CppDestructor",
+    "CppDestructorCppFacet",
     "CppDoc",
     "CppElement",
     "CppEnum",

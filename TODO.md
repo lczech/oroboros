@@ -15,7 +15,6 @@ Actionable backlog only. Keep long-term design intent and invariants in
 
 ### Missing declaration coverage
 
-- Destructors
 - Unions
 - Alias templates
 
