@@ -114,6 +114,156 @@ class ParseIntegrationDeclarationTest(unittest.TestCase):
         self.assertEqual(function.name, "make_widget")
         self.assertTrue(function.cpp.is_noexcept)
 
+    def test_parse_headers_materializes_unions_via_the_class_path(self) -> None:
+        source = """
+            namespace demo {
+
+            union Storage {
+                int count;
+                double weight;
+
+                Storage() : count(0) {}
+                ~Storage() = default;
+                int active_count() const { return count; }
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        union_ = namespace.declarations.classes[0]
+
+        self.assertEqual(union_.name, "Storage")
+        self.assertEqual(union_.cpp.kind, "union")
+        self.assertEqual(len(union_.declarations.variables), 2)
+        self.assertEqual([variable.name for variable in union_.declarations.variables], ["count", "weight"])
+        self.assertEqual(len(union_.declarations.constructors), 1)
+        self.assertIsNotNone(union_.declarations.destructor)
+        self.assertEqual(len(union_.declarations.methods), 1)
+        self.assertEqual(union_.declarations.methods[0].name, "active_count")
+        self.assertTrue(union_.declarations.methods[0].cpp.is_const)
+
+    def test_parse_headers_preserves_union_comments_and_nested_union_structure(self) -> None:
+        source = """
+            namespace demo {
+
+            struct Wrapper {
+                /// Store one active payload variant.
+                union Storage {
+                    /// Current element count.
+                    int count;
+                    /// Current floating payload.
+                    double weight;
+                };
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        wrapper = result.module.declarations.namespaces[0].declarations.classes[0]
+        union_ = wrapper.declarations.classes[0]
+
+        self.assertEqual(union_.cpp.kind, "union")
+        self.assertIsNotNone(union_.cpp.comment)
+        self.assertIn("Store one active payload variant.", union_.cpp.comment)
+        self.assertIsNotNone(union_.cpp.doc)
+        self.assertEqual(union_.cpp.doc.brief, "Store one active payload variant.")
+        self.assertEqual([variable.name for variable in union_.declarations.variables], ["count", "weight"])
+        self.assertIn("Current element count.", union_.declarations.variables[0].cpp.comment)
+        self.assertIn("Current floating payload.", union_.declarations.variables[1].cpp.comment)
+
+    def test_parse_headers_materialize_union_templates_as_class_templates(self) -> None:
+        source = """
+            namespace demo {
+
+            template <class T>
+            union Storage {
+                T value;
+                int tag;
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        union_template = namespace.declarations.class_templates[0]
+
+        self.assertEqual(union_template.name, "Storage")
+        self.assertEqual(union_template.declaration.cpp.kind, "union")
+        self.assertEqual(len(union_template.declaration.cpp.template_parameters), 1)
+        self.assertIsInstance(union_template.declaration.cpp.template_parameters[0], CppTypeTemplateParameter)
+        self.assertEqual(union_template.declaration.cpp.template_parameters[0].name, "T")
+        self.assertEqual(
+            [variable.name for variable in union_template.declaration.declarations.variables],
+            ["value", "tag"],
+        )
+
+    def test_parse_headers_merge_union_declarations_with_out_of_line_members(self) -> None:
+        source = """
+            namespace demo {
+
+            union Storage {
+                Storage();
+                int active_count() const;
+                int count;
+            };
+
+            Storage::Storage() : count(0) {}
+
+            int Storage::active_count() const {
+                return count;
+            }
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        union_ = namespace.declarations.classes[0]
+        constructor = union_.declarations.constructors[0]
+        method = union_.declarations.methods[0]
+
+        self.assertEqual(union_.cpp.kind, "union")
+        self.assertEqual(len(namespace.declarations.classes), 1)
+        self.assertEqual(len(union_.declarations.constructors), 1)
+        self.assertEqual(len(union_.declarations.methods), 1)
+        self.assertEqual(constructor.name, "Storage")
+        self.assertIsNotNone(constructor.cpp.location.definition)
+        self.assertEqual(method.name, "active_count")
+        self.assertTrue(method.cpp.is_const)
+        self.assertIsNotNone(method.cpp.location.definition)
+
+    def test_parse_headers_preserve_nested_union_visibility(self) -> None:
+        source = """
+            namespace demo {
+
+            class Vault {
+            protected:
+                union Storage {
+                    int count;
+                };
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        vault = result.module.declarations.namespaces[0].declarations.classes[0]
+        union_ = vault.declarations.classes[0]
+
+        self.assertEqual(union_.cpp.kind, "union")
+        self.assertEqual(union_.cpp.visibility, CppVisibility.PROTECTED)
+        self.assertEqual(union_.name, "Storage")
+        self.assertEqual(len(union_.declarations.variables), 1)
+
     def test_parse_headers_links_named_types_and_bases_end_to_end(self) -> None:
         source = """
             namespace demo {

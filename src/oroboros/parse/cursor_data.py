@@ -469,17 +469,27 @@ def is_struct_cursor(cursor: Any) -> bool:
     return getattr(cursor, "kind", None) == CursorKind.STRUCT_DECL
 
 
+def is_union_cursor(cursor: Any) -> bool:
+    """Return whether one cursor is specifically a union declaration."""
+
+    return getattr(cursor, "kind", None) == CursorKind.UNION_DECL
+
+
 def cursor_class_kind(cursor: Any) -> str:
-    """Return whether one class-like cursor uses `class` or `struct` syntax."""
+    """Return whether one class-like cursor uses `class`, `struct`, or `union` syntax."""
 
     if is_struct_cursor(cursor):
         return "struct"
+    if is_union_cursor(cursor):
+        return "union"
     if getattr(cursor, "kind", None) == CursorKind.CLASS_DECL:
         return "class"
 
     # Real libclang cursors should normally be enough here, but keep the token
     # fallback for odd synthetic/test cursors where only the spelled keyword is available.
     token_spellings = cursor_token_spellings(cursor)
+    if "union" in token_spellings:
+        return "union"
     if "struct" in token_spellings:
         return "struct"
     return "class"

@@ -254,7 +254,7 @@ _IGNORED_DECLARATION_KINDS = frozenset({
     CursorKind.TEMPLATE_TYPE_PARAMETER,
 })
 
-_CLASS_CURSOR_KINDS = frozenset({CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL})
+_CLASS_CURSOR_KINDS = frozenset({CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL, CursorKind.UNION_DECL})
 
 
 def _semantic_owner_for_cursor(

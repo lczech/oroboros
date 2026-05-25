@@ -184,6 +184,18 @@ def _validate_element_semantics(
     _validate_overload_indices(element, path, errors)
 
     if isinstance(element, CppClass):
+        _validate_class_like_kind_rules(element, path, errors)
+        for index, base in enumerate(element.cpp.bases):
+            _validate_class_base(
+                base.type,
+                f"{path}.cpp.bases[{index}].type",
+                errors,
+            )
+
+    from .class_template import CppClassTemplateDeclaration
+
+    if isinstance(element, CppClassTemplateDeclaration):
+        _validate_class_like_kind_rules(element, path, errors)
         for index, base in enumerate(element.cpp.bases):
             _validate_class_base(
                 base.type,
@@ -290,6 +302,51 @@ def _validate_class_base(
             f"{path} uses {declaration._describe_element()} as a base, but class bases "
             f"must refer to class-like declarations."
         )
+
+
+def _validate_class_like_kind_rules(
+    element: CppElement,
+    path: str,
+    errors: list[str],
+) -> None:
+    """Validate semantic rules that differ between classes, structs, and unions."""
+
+    from .class_ import CppClassMembers
+
+    cpp_facet = getattr(element, "cpp", None)
+    if cpp_facet is None or getattr(cpp_facet, "kind", None) != "union":
+        return
+
+    if getattr(cpp_facet, "bases", []):
+        errors.append(
+            f"{path}.cpp.kind is 'union', so {path}.cpp.bases must be empty."
+        )
+
+    if not isinstance(element, CppClassMembers):
+        return
+
+    for index, method in enumerate(element.declarations.methods):
+        if method.cpp.is_virtual:
+            errors.append(
+                f"{path}.methods[{index}].cpp marks a union method as virtual."
+            )
+        if method.cpp.is_pure_virtual:
+            errors.append(
+                f"{path}.methods[{index}].cpp marks a union method as pure virtual."
+            )
+
+    for index, method_template in enumerate(element.declarations.method_templates):
+        declaration = method_template.declaration
+        if declaration is None:
+            continue
+        if declaration.cpp.is_virtual:
+            errors.append(
+                f"{path}.method_templates[{index}].declaration.cpp marks a union method template as virtual."
+            )
+        if declaration.cpp.is_pure_virtual:
+            errors.append(
+                f"{path}.method_templates[{index}].declaration.cpp marks a union method template as pure virtual."
+            )
 
 
 def _validate_cpp_name_sanity(

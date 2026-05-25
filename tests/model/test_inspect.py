@@ -13,6 +13,8 @@ class ModelInspectTest(unittest.TestCase):
     def test_format_element_describes_supported_node_kinds(self) -> None:
         namespace = CppNamespace(name="demo")
         class_ = CppClass(name="Widget")
+        union_ = CppClass(name="Storage")
+        union_.cpp.kind = "union"
         function = CppFunction(name="make_widget")
         method = CppMethod(name="size")
         parameter = CppParameter(name="value")
@@ -24,6 +26,7 @@ class ModelInspectTest(unittest.TestCase):
 
         self.assertEqual(format_element(namespace), "namespace demo")
         self.assertEqual(format_element(class_), "class Widget")
+        self.assertEqual(format_element(union_), "union Storage")
         self.assertEqual(format_element(function), "function make_widget")
         self.assertEqual(format_element(method), "method size")
         self.assertEqual(format_element(parameter), "parameter value")

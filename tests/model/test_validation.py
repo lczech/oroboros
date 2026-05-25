@@ -125,6 +125,85 @@ class ModelValidationTest(unittest.TestCase):
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
 
+    def test_validate_semantics_rejects_union_bases_and_virtual_methods(self) -> None:
+        base = make_class(name="Base")
+        union_ = make_class(name="Storage")
+        union_.cpp.kind = "union"
+        union_.cpp.bases.append(
+            CppClassBase(type=NamedCppType(name="Base", declaration=base))
+        )
+        union_method = CppMethod(name="visit")
+        union_method.cpp.is_virtual = True
+        union_.add_method(union_method)
+        namespace = make_namespace(name="demo", classes=[base, union_])
+        module = make_module(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_pure_virtual_union_methods(self) -> None:
+        union_ = make_class(name="Storage")
+        union_.cpp.kind = "union"
+        union_method = CppMethod(name="visit")
+        union_method.cpp.is_virtual = True
+        union_method.cpp.is_pure_virtual = True
+        union_.add_method(union_method)
+        namespace = make_namespace(name="demo", classes=[union_])
+        module = make_module(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_virtual_union_method_templates(self) -> None:
+        union_ = make_class(name="Storage")
+        union_.cpp.kind = "union"
+        method_template = CppMethodTemplate(name="convert")
+        method_template.declaration.cpp.is_virtual = True
+        union_.add_method_template(method_template)
+        namespace = make_namespace(name="demo", classes=[union_])
+        module = make_module(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_rejects_pure_virtual_union_method_templates(self) -> None:
+        union_ = make_class(name="Storage")
+        union_.cpp.kind = "union"
+        method_template = CppMethodTemplate(name="convert")
+        method_template.declaration.cpp.is_virtual = True
+        method_template.declaration.cpp.is_pure_virtual = True
+        union_.add_method_template(method_template)
+        namespace = make_namespace(name="demo", classes=[union_])
+        module = make_module(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
+    def test_validate_semantics_accepts_non_virtual_unions(self) -> None:
+        union_ = make_class(name="Storage")
+        union_.cpp.kind = "union"
+        union_.add_method(CppMethod(name="active_count"))
+        namespace = make_namespace(name="demo", classes=[union_])
+        module = make_module(name="bindings", namespaces=[namespace])
+
+        module.validate_semantics()
+
+    def test_validate_semantics_rejects_union_class_template_bases_and_virtual_methods(self) -> None:
+        base = make_class(name="Base")
+        union_template = CppClassTemplate(name="Storage")
+        union_template.declaration.cpp.kind = "union"
+        union_template.declaration.cpp.bases.append(
+            CppClassBase(type=NamedCppType(name="Base", declaration=base))
+        )
+        method = CppMethod(name="visit")
+        method.cpp.is_virtual = True
+        union_template.declaration.add_method(method)
+        namespace = make_namespace(name="demo", classes=[base], class_templates=[union_template])
+        module = make_module(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
     def test_validate_semantics_rejects_invalid_ref_qualifier_values(self) -> None:
         method = CppMethod(name="foo")
         method.cpp.ref_qualifier = "value-ish"

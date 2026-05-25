@@ -55,7 +55,7 @@ class CppClassCppFacet:
     location: CppLocationInfo = dataclass_field(default_factory=CppLocationInfo)
     comment: str | None = None
     doc: CppDoc | None = None
-    kind: Literal["class", "struct"] = "class"
+    kind: Literal["class", "struct", "union"] = "class"
     visibility: CppVisibility | None = None
     bases: list[CppClassBase] = dataclass_field(default_factory=list)
 

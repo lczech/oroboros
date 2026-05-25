@@ -13,10 +13,6 @@ Actionable backlog only. Keep long-term design intent and invariants in
 
 ## Remaining Parser Work
 
-### Missing declaration coverage
-
-- Unions
-
 ### Areas that still need refinement
 
 - Redeclaration enrichment beyond the current conservative first pass

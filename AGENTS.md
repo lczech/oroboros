@@ -168,6 +168,7 @@ The parser/model currently materializes:
 
 - namespaces
 - classes and structs
+- unions
 - class, function, method, and alias template declarations
 - enums and enumerators
 - aliases and typedefs
@@ -236,7 +237,6 @@ The parser/model currently materializes:
 
 Highest-value remaining parser gaps:
 
-- unions
 - richer callable qualifiers beyond current coverage, if a real binding need appears
 - fuller redeclaration enrichment where later declarations add useful facts
 - more structured template behavior if a concrete binding need justifies it

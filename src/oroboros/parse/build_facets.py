@@ -117,7 +117,7 @@ def build_class_cpp_facet(
         location=build_location_info(cursor),
         comment=raw_comment,
         doc=doc,
-        kind="struct" if is_struct_cursor(cursor) else "class",
+        kind=cursor_class_kind(cursor),
         visibility=cursor_visibility(cursor),
         bases=build_class_bases(cursor, context=context),
     )

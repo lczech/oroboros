@@ -994,7 +994,7 @@ class ParseBuildTest(unittest.TestCase):
             any("repeated enumerator declaration" in warning for warning in build_result.warnings)
         )
 
-    def test_build_module_from_clang_tracks_unsupported_cursor_kinds(self) -> None:
+    def test_build_module_from_clang_materializes_union_declarations(self) -> None:
         active_header = Path("/tmp/project/demo.hpp")
         translation_unit = SimpleNamespace(
             cursor=_fake_cursor(
@@ -1016,13 +1016,13 @@ class ParseBuildTest(unittest.TestCase):
         )
 
         build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
+        namespace = build_result.module.declarations.namespaces[0]
+        union_ = namespace.declarations.classes[0]
 
-        self.assertEqual(
-            build_result.skipped_kind_counts,
-            {
-                "UNION_DECL": 1,
-            },
-        )
+        self.assertEqual(build_result.skipped_kind_counts, {})
+        self.assertEqual(len(namespace.declarations.classes), 1)
+        self.assertEqual(union_.name, "Storage")
+        self.assertEqual(union_.cpp.kind, "union")
 
     def test_build_module_from_clang_prefers_longer_conflicting_comment_by_default(self) -> None:
         active_header = Path("/tmp/project/demo.hpp")
