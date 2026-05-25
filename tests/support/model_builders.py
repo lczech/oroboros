@@ -12,13 +12,13 @@ def make_class(*, declarations: CppClassDeclarations | None = None, **kwargs) ->
         "constructors",
         "destructor",
         "methods",
+        "method_templates",
         "variables",
         "static_variables",
         "aliases",
         "alias_templates",
         "enums",
         "class_templates",
-        "function_templates",
     ):
         if key in kwargs:
             declaration_kwargs[key] = kwargs.pop(key)
@@ -46,13 +46,13 @@ def make_class_template_declaration(
         "constructors",
         "destructor",
         "methods",
+        "method_templates",
         "variables",
         "static_variables",
         "aliases",
         "alias_templates",
         "enums",
         "class_templates",
-        "function_templates",
     ):
         if key in kwargs:
             declaration_kwargs[key] = kwargs.pop(key)

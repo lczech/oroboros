@@ -23,6 +23,8 @@ from ..model import (
     CppFunctionTemplate,
     CppFunctionTemplateDeclaration,
     CppMethod,
+    CppMethodTemplate,
+    CppMethodTemplateDeclaration,
     CppParameter,
     CppVariable,
 )
@@ -40,6 +42,7 @@ from .build_facets import (
     build_function_cpp_facet,
     build_function_template_declaration_cpp_facet,
     build_method_cpp_facet,
+    build_method_template_declaration_cpp_facet,
     build_parameter_cpp_facet,
 )
 from .build_templates import build_template_parameters
@@ -480,6 +483,15 @@ def process_function_template_cursor(
         )
         return
 
+    method_template_owner = _templated_method_owner(cursor, owner, context)
+    if method_template_owner is not None:
+        process_method_template_cursor(
+            cursor,
+            method_template_owner,
+            context,
+        )
+        return
+
     candidate_cpp = build_function_template_declaration_cpp_facet(cursor, context=context)
     existing = lookup_registered_element(cursor, context, CppFunctionTemplate)
     if existing is not None:
@@ -496,11 +508,6 @@ def process_function_template_cursor(
         merge_cpp_scalar(declaration, "operator", candidate_cpp.operator, context, cursor)
         merge_cpp_scalar(declaration, "is_noexcept", candidate_cpp.is_noexcept, context, cursor)
         merge_cpp_bool_enrichment(declaration, "is_deleted", candidate_cpp.is_deleted)
-        merge_cpp_scalar(declaration, "is_const", candidate_cpp.is_const, context, cursor)
-        merge_cpp_scalar(declaration, "ref_qualifier", candidate_cpp.ref_qualifier, context, cursor)
-        merge_cpp_scalar(declaration, "is_static", candidate_cpp.is_static, context, cursor)
-        merge_cpp_scalar(declaration, "is_virtual", candidate_cpp.is_virtual, context, cursor)
-        merge_cpp_scalar(declaration, "is_pure_virtual", candidate_cpp.is_pure_virtual, context, cursor)
         merge_template_parameters(
             declaration.cpp.template_parameters,
             candidate_cpp.template_parameters,
@@ -525,6 +532,70 @@ def process_function_template_cursor(
         ),
     )
     attached = attach_element(owner, "add_function_template", template)
+    if attached is not None:
+        register_element_for_cursor(cursor, attached, context)
+        visit_non_template_parameter_children(
+            child_cursors,
+            attached.declaration,
+            context,
+        )
+        apply_parameter_docs(attached.declaration)
+
+
+def process_method_template_cursor(
+    cursor: Any,
+    owner: CppClassMembers,
+    context: BuildContext,
+) -> None:
+    """Create or enrich one method-template family and recurse into its declaration."""
+
+    child_cursors = list(cursor.get_children())
+    candidate_cpp = build_method_template_declaration_cpp_facet(cursor, context=context)
+    existing = lookup_registered_element(cursor, context, CppMethodTemplate)
+    if existing is not None:
+        declaration = existing.declaration
+        merge_common_cpp_fields(declaration, candidate_cpp, context, cursor)
+        merge_cpp_scalar(
+            declaration,
+            "return_type",
+            candidate_cpp.return_type,
+            context,
+            cursor,
+            values_equivalent=cpp_types_equivalent,
+        )
+        merge_cpp_scalar(declaration, "operator", candidate_cpp.operator, context, cursor)
+        merge_cpp_scalar(declaration, "is_noexcept", candidate_cpp.is_noexcept, context, cursor)
+        merge_cpp_bool_enrichment(declaration, "is_deleted", candidate_cpp.is_deleted)
+        merge_cpp_scalar(declaration, "is_const", candidate_cpp.is_const, context, cursor)
+        merge_cpp_scalar(declaration, "ref_qualifier", candidate_cpp.ref_qualifier, context, cursor)
+        merge_cpp_scalar(declaration, "is_static", candidate_cpp.is_static, context, cursor)
+        merge_cpp_scalar(declaration, "is_virtual", candidate_cpp.is_virtual, context, cursor)
+        merge_cpp_scalar(declaration, "is_pure_virtual", candidate_cpp.is_pure_virtual, context, cursor)
+        merge_cpp_scalar(declaration, "visibility", candidate_cpp.visibility, context, cursor)
+        merge_template_parameters(
+            declaration.cpp.template_parameters,
+            candidate_cpp.template_parameters,
+            context,
+            cursor,
+        )
+        merge_callable_parameter_children(
+            declaration,
+            child_cursors,
+            context,
+            register_element_for_cursor=register_element_for_cursor,
+        )
+        visit_non_template_parameter_children(child_cursors, declaration, context)
+        apply_parameter_docs(declaration)
+        return
+
+    template = CppMethodTemplate(
+        name=cursor.spelling,
+        declaration=CppMethodTemplateDeclaration(
+            name=cursor.spelling,
+            cpp=candidate_cpp,
+        ),
+    )
+    attached = attach_element(owner, "add_method_template", template)
     if attached is not None:
         register_element_for_cursor(cursor, attached, context)
         visit_non_template_parameter_children(
@@ -761,6 +832,26 @@ def _templated_constructor_owner(
         return None
 
     if _looks_like_templated_constructor(cursor, semantic_owner):
+        return semantic_owner
+
+    return None
+
+
+def _templated_method_owner(
+    cursor: Any,
+    owner: CppElement,
+    context: BuildContext,
+) -> CppClassMembers | None:
+    """Resolve the owning class-like element when one function-template cursor is a method."""
+
+    if isinstance(owner, CppClassMembers) and not _looks_like_templated_constructor(cursor, owner):
+        return owner
+
+    semantic_owner = _lookup_semantic_owner_for_cursor(cursor, context)
+    if semantic_owner is None:
+        return None
+
+    if not _looks_like_templated_constructor(cursor, semantic_owner):
         return semantic_owner
 
     return None

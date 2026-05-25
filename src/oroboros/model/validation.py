@@ -115,6 +115,9 @@ def _root_access_path(root: CppElement) -> str:
         "CppFunctionTemplateDeclaration": "function_template_declaration",
         "CppFunctionTemplateInstance": "function_template_instance",
         "CppMethod": "method",
+        "CppMethodTemplate": "method_template",
+        "CppMethodTemplateDeclaration": "method_template_declaration",
+        "CppMethodTemplateInstance": "method_template_instance",
         "CppModule": "module",
         "CppNamespace": "namespace",
         "CppParameter": "parameter",
@@ -399,6 +402,11 @@ def _validate_owner_kind(
         CppFunctionTemplateDeclaration,
         CppFunctionTemplateInstance,
     )
+    from .method_template import (
+        CppMethodTemplate,
+        CppMethodTemplateDeclaration,
+        CppMethodTemplateInstance,
+    )
     from .module import CppModule
     from .member import CppConstructor, CppDestructor, CppMethod
     from .namespace import CppNamespace
@@ -433,7 +441,13 @@ def _validate_owner_kind(
 
     if isinstance(element, CppParameter) and not isinstance(
         owner,
-        (CppFunction, CppMethod, CppConstructor, CppFunctionTemplateDeclaration),
+        (
+            CppFunction,
+            CppMethod,
+            CppConstructor,
+            CppFunctionTemplateDeclaration,
+            CppMethodTemplateDeclaration,
+        ),
     ):
         errors.append(
             f"{path} is owned by {owner._describe_element()}, but parameters must be owned "
@@ -476,7 +490,7 @@ def _validate_owner_kind(
             f"the module root, a namespace, or a class-like declaration."
         )
 
-    if isinstance(element, (CppAliasTemplate, CppClassTemplate, CppFunctionTemplate)) and not isinstance(
+    if isinstance(element, (CppAliasTemplate, CppClassTemplate, CppFunctionTemplate, CppMethodTemplate)) and not isinstance(
         owner,
         (CppModule, CppNamespace, CppClassMembers),
     ):
@@ -521,6 +535,18 @@ def _validate_owner_kind(
             f"must be owned by function-template families."
         )
 
+    if isinstance(element, CppMethodTemplateDeclaration) and not isinstance(owner, CppMethodTemplate):
+        errors.append(
+            f"{path} is owned by {owner._describe_element()}, but method-template declarations "
+            f"must be owned by method-template families."
+        )
+
+    if isinstance(element, CppMethodTemplateInstance) and not isinstance(owner, CppMethodTemplate):
+        errors.append(
+            f"{path} is owned by {owner._describe_element()}, but method-template instances "
+            f"must be owned by method-template families."
+        )
+
 
 def _validate_constructor_name(
     element: CppElement,
@@ -554,7 +580,8 @@ def _validate_method_like_flags(
     """Validate method-like flag invariants for class member callables."""
 
     from .class_ import CppClassMembers
-    from .function_template import CppFunctionTemplateDeclaration, CppFunctionTemplateInstance
+    from .function_template import CppFunctionTemplateDeclaration
+    from .method_template import CppMethodTemplateDeclaration, CppMethodTemplateInstance
     from .member import CppDestructor, CppMethod
 
     cpp_facet = getattr(element, "cpp", None)
@@ -566,7 +593,7 @@ def _validate_method_like_flags(
 
     if not isinstance(
         element,
-        (CppMethod, CppDestructor, CppFunctionTemplateDeclaration, CppFunctionTemplateInstance),
+        (CppMethod, CppDestructor, CppMethodTemplateDeclaration, CppMethodTemplateInstance),
     ):
         return
 
@@ -623,9 +650,10 @@ def _validate_template_family(
     from .alias_template import CppAliasTemplate
     from .class_template import CppClassTemplate
     from .function_template import CppFunctionTemplate
+    from .method_template import CppMethodTemplate
     from .template_ import _validate_template_arguments
 
-    if not isinstance(element, (CppAliasTemplate, CppClassTemplate, CppFunctionTemplate)):
+    if not isinstance(element, (CppAliasTemplate, CppClassTemplate, CppFunctionTemplate, CppMethodTemplate)):
         return
 
     declaration = element.declaration
@@ -719,6 +747,14 @@ def _validate_overload_indices(
         _validate_overload_index_collection(
             [template.declaration for template in function_templates if getattr(template, "declaration", None) is not None],
             f"{path}.function_templates",
+            errors,
+        )
+
+    method_templates = _direct_declaration_collection(element, "method_templates")
+    if method_templates is not None:
+        _validate_overload_index_collection(
+            [template.declaration for template in method_templates if getattr(template, "declaration", None) is not None],
+            f"{path}.method_templates",
             errors,
         )
 

@@ -155,7 +155,7 @@ class ModelFacetTest(unittest.TestCase):
         self.assertIsInstance(class_defaults.constructor, CppConstructorBindFacet)
         self.assertIsInstance(class_defaults.variable, CppVariableBindFacet)
         self.assertIsInstance(class_defaults.static_variable, CppVariableBindFacet)
-        self.assertIsInstance(class_defaults.function_template, CppTemplateBindFacet)
+        self.assertIsInstance(class_defaults.method_template, CppTemplateBindFacet)
         self.assertIsInstance(class_defaults.enum, CppEnumBindFacet)
         self.assertIsInstance(class_template_defaults.instance, CppClassBindFacet)
         self.assertIsInstance(class_template_defaults.class_, CppClassBindFacet)
@@ -165,6 +165,7 @@ class ModelFacetTest(unittest.TestCase):
         self.assertIsInstance(class_template_defaults.static_variable, CppVariableBindFacet)
         self.assertIsInstance(class_template_defaults.enum, CppEnumBindFacet)
         self.assertIsInstance(function_template_defaults.instance, CppFunctionBindFacet)
+        self.assertIsInstance(CppMethodTemplateDefaults().instance, CppMethodBindFacet)
 
     def test_method_and_constructor_bind_facets_keep_semantic_distinction(self) -> None:
         method = CppMethod(name="size")
@@ -234,4 +235,3 @@ class ModelFacetTest(unittest.TestCase):
         self.assertFalse(variable.bind.active)
         self.assertTrue(enum_.bind.active)
         self.assertFalse(enumerator.bind.active)
-

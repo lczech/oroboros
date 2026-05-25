@@ -298,7 +298,7 @@ class ParseIntegrationCallableTest(unittest.TestCase):
             method for method in methods if method.name == "operator++" and len(method.parameters) == 1
         )
         conversion = next(method for method in methods if method.name == "operator bool")
-        function_template = widget.declarations.function_templates[0]
+        method_template = widget.declarations.method_templates[0]
 
         self.assertEqual(touch.cpp.ref_qualifier, "&")
         self.assertEqual(len(touch.cpp.location.declarations), 2)
@@ -310,7 +310,7 @@ class ParseIntegrationCallableTest(unittest.TestCase):
         self.assertTrue(postfix_increment.cpp.operator.is_postfix)
         self.assertEqual(conversion.cpp.ref_qualifier, "&&")
         self.assertEqual(conversion.cpp.operator.kind, "conversion")
-        self.assertEqual(function_template.declaration.cpp.ref_qualifier, "&&")
+        self.assertEqual(method_template.declaration.cpp.ref_qualifier, "&&")
 
     def test_parse_headers_do_not_confuse_other_ampersands_with_ref_qualifiers(self) -> None:
         source = """
@@ -525,7 +525,7 @@ class ParseIntegrationCallableTest(unittest.TestCase):
             if template.name == "operator=="
         )
 
-        self.assertEqual(widget.declarations.function_templates, [])
+        self.assertEqual(widget.declarations.method_templates, [])
         self.assertEqual(function_template.qualified_name, "demo::operator==")
         self.assertEqual(function_template.declaration.cpp.operator.kind, "symbolic")
         self.assertEqual(function_template.declaration.cpp.operator.symbol, "==")
@@ -552,20 +552,21 @@ class ParseIntegrationCallableTest(unittest.TestCase):
         result = _parse_headers_from_sources({"demo.hpp": source})
 
         widget = result.module.declarations.namespaces[0].declarations.classes[0]
-        function_template = widget.declarations.function_templates[0]
+        method_template = widget.declarations.method_templates[0]
 
-        self.assertEqual(function_template.name, "operator()")
-        self.assertEqual(function_template.qualified_name, "demo::Widget::operator()")
-        self.assertEqual(function_template.declaration.cpp.operator.kind, "symbolic")
-        self.assertEqual(function_template.declaration.cpp.operator.symbol, "()")
-        self.assertTrue(function_template.declaration.cpp.is_const)
-        self.assertEqual(len(function_template.declaration.cpp.template_parameters), 1)
-        self.assertIsInstance(function_template.declaration.cpp.template_parameters[0], CppTypeTemplateParameter)
-        self.assertEqual(function_template.declaration.cpp.template_parameters[0].name, "T")
-        self.assertIsInstance(function_template.declaration.cpp.return_type, NamedCppType)
-        self.assertEqual(function_template.declaration.cpp.return_type.name, "T")
-        self.assertEqual(len(function_template.declaration.parameters), 1)
-        self.assertEqual(function_template.declaration.parameters[0].name, "value")
+        self.assertIsInstance(method_template, CppMethodTemplate)
+        self.assertEqual(method_template.name, "operator()")
+        self.assertEqual(method_template.qualified_name, "demo::Widget::operator()")
+        self.assertEqual(method_template.declaration.cpp.operator.kind, "symbolic")
+        self.assertEqual(method_template.declaration.cpp.operator.symbol, "()")
+        self.assertTrue(method_template.declaration.cpp.is_const)
+        self.assertEqual(len(method_template.declaration.cpp.template_parameters), 1)
+        self.assertIsInstance(method_template.declaration.cpp.template_parameters[0], CppTypeTemplateParameter)
+        self.assertEqual(method_template.declaration.cpp.template_parameters[0].name, "T")
+        self.assertIsInstance(method_template.declaration.cpp.return_type, NamedCppType)
+        self.assertEqual(method_template.declaration.cpp.return_type.name, "T")
+        self.assertEqual(len(method_template.declaration.parameters), 1)
+        self.assertEqual(method_template.declaration.parameters[0].name, "value")
 
     def test_parse_headers_leave_user_defined_literal_operators_unclassified(self) -> None:
         source = """

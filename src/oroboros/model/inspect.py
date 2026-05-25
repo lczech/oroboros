@@ -57,8 +57,12 @@ def format_element(element: CppElement) -> str:
         return f"enumerator {name}"
     if type_name == "CppFunction":
         return f"function {name}"
+    if type_name == "CppFunctionTemplate":
+        return f"function template {name}"
     if type_name == "CppMethod":
         return f"method {name}"
+    if type_name == "CppMethodTemplate":
+        return f"method template {name}"
     if type_name == "CppConstructor":
         return f"constructor {name}"
     if type_name == "CppDestructor":
@@ -119,6 +123,7 @@ def summarize_tree(root: CppElement) -> str:
         ("CppClass", "classes"),
         ("CppClassTemplate", "class templates"),
         ("CppMethod", "methods"),
+        ("CppMethodTemplate", "method templates"),
         ("CppConstructor", "constructors"),
         ("CppDestructor", "destructors"),
         ("CppVariable", "variables"),

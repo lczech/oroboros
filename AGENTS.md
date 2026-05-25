@@ -73,7 +73,7 @@ Use one semantic declaration tree:
 
 - module owns top-level namespaces and declarations
 - namespaces own nested namespaces, classes, enums, functions, variables, aliases
-- classes/structs own constructors, methods, variables, nested enums, nested classes
+- classes/structs own constructors, destructors, methods, method templates, variables, nested enums, nested classes
 - template-family nodes group one generic declaration with chosen instances
 
 The underlying storage should stay as ordered typed lists. Convenience lookup
@@ -168,7 +168,7 @@ The parser/model currently materializes:
 
 - namespaces
 - classes and structs
-- class, function, and alias template declarations
+- class, function, method, and alias template declarations
 - enums and enumerators
 - aliases and typedefs
 - free functions
@@ -265,5 +265,6 @@ Prefer explicit `Cpp...` model class names, for example:
 - `CppVariable`
 - `CppClassTemplate`
 - `CppFunctionTemplate`
+- `CppMethodTemplate`
 
 Use `model/` as the package name rather than `ir/` or `elements/`.

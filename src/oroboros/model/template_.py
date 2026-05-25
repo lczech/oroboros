@@ -389,6 +389,15 @@ from .function_template import (  # noqa: E402
     CppFunctionTemplateInstanceCppFacet,
     add_function_template_instance,
 )
+from .method_template import (  # noqa: E402
+    CppMethodTemplate,
+    CppMethodTemplateDeclaration,
+    CppMethodTemplateDeclarationCppFacet,
+    CppMethodTemplateDefaults,
+    CppMethodTemplateInstance,
+    CppMethodTemplateInstanceCppFacet,
+    add_method_template_instance,
+)
 
 
 # ==================================================================================================
@@ -396,14 +405,14 @@ from .function_template import (  # noqa: E402
 # ==================================================================================================
 
 
-TemplateFamily = CppAliasTemplate | CppClassTemplate | CppFunctionTemplate
+TemplateFamily = CppAliasTemplate | CppClassTemplate | CppFunctionTemplate | CppMethodTemplate
 TemplateScope = CppElement
 
 
 def add_template_instance(
     template: TemplateFamily,
     arguments: list[CppTemplateArgument],
-) -> CppAliasTemplateInstance | CppClassTemplateInstance | CppFunctionTemplateInstance:
+) -> CppAliasTemplateInstance | CppClassTemplateInstance | CppFunctionTemplateInstance | CppMethodTemplateInstance:
     """Create or return one concrete template instance under a template family."""
 
     if isinstance(template, CppAliasTemplate):
@@ -412,6 +421,8 @@ def add_template_instance(
         return add_class_template_instance(template, arguments)
     if isinstance(template, CppFunctionTemplate):
         return add_function_template_instance(template, arguments)
+    if isinstance(template, CppMethodTemplate):
+        return add_method_template_instance(template, arguments)
     raise TypeError(f"Unsupported template family type: {type(template)!r}")
 
 
@@ -421,6 +432,7 @@ def add_observed_template_instances(
     include_alias_templates: bool = True,
     include_class_templates: bool = True,
     include_function_templates: bool = True,
+    include_method_templates: bool = True,
     recurse: bool = True,
 ) -> list[CppElement]:
     """Materialize template instances previously observed in the parsed C++ subtree.
@@ -465,6 +477,17 @@ def add_observed_template_instances(
                 )
             )
 
+    for method_template in _iter_method_templates(scope, recurse=recurse):
+        if not include_method_templates:
+            continue
+        for observed_instance in method_template.declaration.cpp.observed_instances:
+            created_instances.append(
+                add_method_template_instance(
+                    method_template,
+                    observed_instance.arguments,
+                )
+            )
+
     return created_instances
 
 
@@ -474,6 +497,7 @@ def add_enabled_observed_template_instances(
     include_alias_templates: bool = True,
     include_class_templates: bool = True,
     include_function_templates: bool = True,
+    include_method_templates: bool = True,
     recurse: bool = True,
 ) -> list[CppElement]:
     """Materialize only the observed template instances enabled by effective bind policy."""
@@ -494,6 +518,11 @@ def add_enabled_observed_template_instances(
         if not include_function_templates or not _template_materializes_observed_instances(function_template):
             continue
         created_instances.extend(function_template.add_observed_instances())
+
+    for method_template in _iter_method_templates(scope, recurse=recurse):
+        if not include_method_templates or not _template_materializes_observed_instances(method_template):
+            continue
+        created_instances.extend(method_template.add_observed_instances())
 
     return created_instances
 
@@ -556,6 +585,8 @@ def _iter_function_templates(
     templates: list[CppFunctionTemplate] = []
     if isinstance(scope, CppFunctionTemplate):
         templates.append(scope)
+    elif isinstance(scope, CppClassMembers):
+        pass
     elif _is_supported_template_scope(scope):
         templates.extend(_template_scope_declarations(scope).function_templates)
     else:
@@ -567,6 +598,32 @@ def _iter_function_templates(
     nested_scopes = _iter_nested_template_scopes(scope)
     for nested_scope in nested_scopes:
         templates.extend(_iter_function_templates(nested_scope, recurse=True))
+    return templates
+
+
+def _iter_method_templates(
+    scope: TemplateScope,
+    *,
+    recurse: bool,
+) -> list[CppMethodTemplate]:
+    """Collect method template families below one scope."""
+
+    templates: list[CppMethodTemplate] = []
+    if isinstance(scope, CppMethodTemplate):
+        templates.append(scope)
+    elif isinstance(scope, CppClassMembers):
+        templates.extend(_template_scope_declarations(scope).method_templates)
+    elif _is_supported_template_scope(scope):
+        pass
+    else:
+        raise TypeError(f"Unsupported template scope type: {type(scope)!r}")
+
+    if not recurse:
+        return templates
+
+    nested_scopes = _iter_nested_template_scopes(scope)
+    for nested_scope in nested_scopes:
+        templates.extend(_iter_method_templates(nested_scope, recurse=True))
     return templates
 
 
@@ -599,6 +656,8 @@ def _template_materializes_observed_instances(template: TemplateFamily) -> bool:
         default_bucket_name = "class_template"
     elif isinstance(template, CppFunctionTemplate):
         default_bucket_name = "function_template"
+    elif isinstance(template, CppMethodTemplate):
+        default_bucket_name = "method_template"
     else:
         raise TypeError(f"Unsupported template family type: {type(template)!r}")
 

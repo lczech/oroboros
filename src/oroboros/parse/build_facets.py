@@ -312,11 +312,40 @@ def build_function_template_declaration_cpp_facet(
         is_noexcept=cursor_is_noexcept(cursor),
         is_deleted=cursor_callable_is_deleted(cursor, context=context),
         template_parameters=build_template_parameters(cursor, context=context),
+    )
+
+
+def build_method_template_declaration_cpp_facet(
+    cursor: Any,
+    *,
+    context: BuildContext | None = None,
+) -> Any:
+    """Build one parsed generic method-template declaration facet."""
+
+    from ..model import CppMethodTemplateDeclarationCppFacet
+    raw_comment, doc = _comment_and_doc(cursor, context=context)
+    return_type = build_cpp_type(
+        getattr(cursor, "result_type", None),
+        context=context,
+        source_cursor=cursor,
+    )
+
+    return CppMethodTemplateDeclarationCppFacet(
+        original_name=cursor.spelling or None,
+        operator=_build_operator_metadata(cursor, return_type),
+        return_type=return_type,
+        location=build_location_info(cursor),
+        comment=raw_comment,
+        doc=doc,
+        is_noexcept=cursor_is_noexcept(cursor),
+        is_deleted=cursor_callable_is_deleted(cursor, context=context),
         is_const=cursor_bool_method(cursor, "is_const_method"),
         ref_qualifier=cursor_ref_qualifier(cursor),
         is_static=cursor_bool_method(cursor, "is_static_method"),
         is_virtual=cursor_bool_method(cursor, "is_virtual_method"),
         is_pure_virtual=cursor_bool_method(cursor, "is_pure_virtual_method"),
+        template_parameters=build_template_parameters(cursor, context=context),
+        visibility=cursor_visibility(cursor),
     )
 
 

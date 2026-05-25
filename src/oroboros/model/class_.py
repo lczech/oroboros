@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from .alias import CppAlias
     from .alias_template import CppAliasTemplate
     from .enum import CppEnum, CppEnumBindFacet
+    from .method_template import CppMethodTemplate
     from .member import (
         CppConstructor,
         CppConstructorBindFacet,
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
         CppMethod,
         CppMethodBindFacet,
     )
-    from .template_ import CppClassTemplate, CppFunctionTemplate, CppTemplateBindFacet
+    from .template_ import CppClassTemplate, CppTemplateBindFacet
 
 
 # ==================================================================================================
@@ -94,20 +95,20 @@ class CppClassDefaults:
     class_template: "CppTemplateBindFacet" = dataclass_field(
         default_factory=lambda: _make_template_bind_facet()
     )
+    constructor: "CppConstructorBindFacet" = dataclass_field(
+        default_factory=lambda: _make_constructor_bind_facet()
+    )
     method: "CppMethodBindFacet" = dataclass_field(
         default_factory=lambda: _make_method_bind_facet()
     )
-    constructor: "CppConstructorBindFacet" = dataclass_field(
-        default_factory=lambda: _make_constructor_bind_facet()
+    method_template: "CppTemplateBindFacet" = dataclass_field(
+        default_factory=lambda: _make_template_bind_facet()
     )
     variable: CppVariableBindFacet = dataclass_field(
         default_factory=CppVariableBindFacet
     )
     static_variable: CppVariableBindFacet = dataclass_field(
         default_factory=CppVariableBindFacet
-    )
-    function_template: "CppTemplateBindFacet" = dataclass_field(
-        default_factory=lambda: _make_template_bind_facet()
     )
     enum: "CppEnumBindFacet" = dataclass_field(
         default_factory=lambda: _make_enum_bind_facet()
@@ -172,16 +173,16 @@ class CppClassDeclarations:
     variables: list["CppVariable"] = dataclass_field(default_factory=list)
     # Static variables declared directly inside this class scope.
     static_variables: list["CppVariable"] = dataclass_field(default_factory=list)
+    # Enums declared directly inside this class scope.
+    enums: list["CppEnum"] = dataclass_field(default_factory=list)
     # Aliases declared directly inside this class scope.
     aliases: list["CppAlias"] = dataclass_field(default_factory=list)
     # Alias template families declared directly inside this class scope.
     alias_templates: list["CppAliasTemplate"] = dataclass_field(default_factory=list)
-    # Enums declared directly inside this class scope.
-    enums: list["CppEnum"] = dataclass_field(default_factory=list)
     # Nested class template families declared inside this class scope.
     class_templates: list["CppClassTemplate"] = dataclass_field(default_factory=list)
-    # Nested function template families declared inside this class scope.
-    function_templates: list["CppFunctionTemplate"] = dataclass_field(default_factory=list)
+    # Method template families declared directly inside this class scope.
+    method_templates: list["CppMethodTemplate"] = dataclass_field(default_factory=list)
 
 
 # ==================================================================================================
@@ -209,7 +210,7 @@ class CppClassMembers(CppElement):
             self.declarations.alias_templates,
             self.declarations.enums,
             self.declarations.class_templates,
-            self.declarations.function_templates,
+            self.declarations.method_templates,
         ):
             self._adopt_children(declaration_list)
         if self.declarations.destructor is not None:
@@ -272,10 +273,10 @@ class CppClassMembers(CppElement):
 
         return self._append_child(self.declarations.class_templates, template)
 
-    def add_function_template(self, template: "CppFunctionTemplate") -> "CppFunctionTemplate":
-        """Attach one nested function template family to this class scope."""
+    def add_method_template(self, template: "CppMethodTemplate") -> "CppMethodTemplate":
+        """Attach one method template family to this class scope."""
 
-        return self._append_child(self.declarations.function_templates, template)
+        return self._append_child(self.declarations.method_templates, template)
 
     @property
     def class_(self):
@@ -338,10 +339,10 @@ class CppClassMembers(CppElement):
         return make_named_child_view(self, self.declarations, "class_templates")
 
     @property
-    def function_template(self):
-        """Return a name-indexed view over nested function templates."""
+    def method_template(self):
+        """Return a name-indexed view over method templates."""
 
-        return make_named_child_view(self, self.declarations, "function_templates", return_many=True)
+        return make_named_child_view(self, self.declarations, "method_templates", return_many=True)
 
 @dataclass(slots=True)
 class CppClass(CppClassMembers):

@@ -421,6 +421,7 @@ def _named_child_accessor(field_name: str) -> str | None:
         "enums": "enum",
         "function_templates": "function_template",
         "functions": "function",
+        "method_templates": "method_template",
         "methods": "method",
         "namespaces": "namespace",
         "parameters": "parameter",
@@ -437,6 +438,7 @@ def _child_view_returns_many(field_name: str) -> bool:
         "constructors",
         "function_templates",
         "functions",
+        "method_templates",
         "methods",
     }
 
@@ -530,12 +532,13 @@ def _all_overloadable(elements: list[CppElement]) -> bool:
 
     from .function import CppFunction
     from .function_template import CppFunctionTemplate
+    from .method_template import CppMethodTemplate
     from .member import CppConstructor, CppMethod
 
     if all(isinstance(element, CppConstructor) for element in elements):
         return True
 
     return all(
-        isinstance(element, (CppFunction, CppMethod, CppFunctionTemplate))
+        isinstance(element, (CppFunction, CppMethod, CppFunctionTemplate, CppMethodTemplate))
         for element in elements
     )

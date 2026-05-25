@@ -535,7 +535,7 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         class_template = result.module.declarations.namespaces[0].declarations.class_templates[0]
 
         self.assertEqual(class_template.name, "Range")
-        self.assertEqual(class_template.declaration.declarations.function_templates, [])
+        self.assertEqual(class_template.declaration.declarations.method_templates, [])
         self.assertEqual(len(class_template.declaration.declarations.constructors), 1)
 
         constructor = class_template.declaration.declarations.constructors[0]
@@ -572,7 +572,7 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
 
         class_template = result.module.declarations.namespaces[0].declarations.class_templates[0]
 
-        self.assertEqual(class_template.declaration.declarations.function_templates, [])
+        self.assertEqual(class_template.declaration.declarations.method_templates, [])
         self.assertEqual(len(class_template.declaration.declarations.constructors), 2)
 
         default_constructor = class_template.declaration.declarations.constructors[0]
@@ -616,7 +616,7 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
 
         class_template = result.module.declarations.namespaces[0].declarations.class_templates[0]
 
-        self.assertEqual(class_template.declaration.declarations.function_templates, [])
+        self.assertEqual(class_template.declaration.declarations.method_templates, [])
         self.assertEqual(len(class_template.declaration.declarations.constructors), 1)
 
         constructor = class_template.declaration.declarations.constructors[0]
@@ -628,7 +628,7 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         self.assertEqual(len(constructor.parameters), 1)
         self.assertEqual(constructor.parameters[0].name, "cont")
 
-    def test_parse_headers_keeps_out_of_line_member_function_templates_as_function_templates(self) -> None:
+    def test_parse_headers_keeps_out_of_line_member_function_templates_as_method_templates(self) -> None:
         source = """
             namespace demo {
 
@@ -653,18 +653,19 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         class_template = result.module.declarations.namespaces[0].declarations.class_templates[0]
 
         self.assertEqual(class_template.declaration.declarations.constructors, [])
-        self.assertEqual(len(class_template.declaration.declarations.function_templates), 1)
+        self.assertEqual(len(class_template.declaration.declarations.method_templates), 1)
 
-        function_template = class_template.declaration.declarations.function_templates[0]
-        self.assertEqual(function_template.name, "convert")
-        self.assertEqual(function_template.declaration.name, "convert")
-        self.assertEqual(len(function_template.declaration.cpp.template_parameters), 1)
-        self.assertIsInstance(function_template.declaration.cpp.template_parameters[0], CppTypeTemplateParameter)
-        self.assertEqual(function_template.declaration.cpp.template_parameters[0].name, "U")
-        self.assertEqual(len(function_template.declaration.parameters), 1)
-        self.assertEqual(function_template.declaration.parameters[0].name, "value")
+        method_template = class_template.declaration.declarations.method_templates[0]
+        self.assertIsInstance(method_template, CppMethodTemplate)
+        self.assertEqual(method_template.name, "convert")
+        self.assertEqual(method_template.declaration.name, "convert")
+        self.assertEqual(len(method_template.declaration.cpp.template_parameters), 1)
+        self.assertIsInstance(method_template.declaration.cpp.template_parameters[0], CppTypeTemplateParameter)
+        self.assertEqual(method_template.declaration.cpp.template_parameters[0].name, "U")
+        self.assertEqual(len(method_template.declaration.parameters), 1)
+        self.assertEqual(method_template.declaration.parameters[0].name, "value")
 
-    def test_parse_headers_keeps_member_function_templates_as_function_templates(self) -> None:
+    def test_parse_headers_keeps_member_function_templates_as_method_templates(self) -> None:
         source = """
             namespace demo {
 
@@ -686,18 +687,19 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
 
         self.assertEqual(class_template.name, "Box")
         self.assertEqual(class_template.declaration.declarations.constructors, [])
-        self.assertEqual(len(class_template.declaration.declarations.function_templates), 1)
+        self.assertEqual(len(class_template.declaration.declarations.method_templates), 1)
 
-        function_template = class_template.declaration.declarations.function_templates[0]
-        self.assertEqual(function_template.name, "convert")
-        self.assertEqual(function_template.declaration.name, "convert")
-        self.assertEqual(len(function_template.declaration.cpp.template_parameters), 1)
-        self.assertIsInstance(function_template.declaration.cpp.template_parameters[0], CppTypeTemplateParameter)
-        self.assertEqual(function_template.declaration.cpp.template_parameters[0].name, "U")
-        self.assertEqual(len(function_template.declaration.parameters), 1)
-        self.assertEqual(function_template.declaration.parameters[0].name, "value")
+        method_template = class_template.declaration.declarations.method_templates[0]
+        self.assertIsInstance(method_template, CppMethodTemplate)
+        self.assertEqual(method_template.name, "convert")
+        self.assertEqual(method_template.declaration.name, "convert")
+        self.assertEqual(len(method_template.declaration.cpp.template_parameters), 1)
+        self.assertIsInstance(method_template.declaration.cpp.template_parameters[0], CppTypeTemplateParameter)
+        self.assertEqual(method_template.declaration.cpp.template_parameters[0].name, "U")
+        self.assertEqual(len(method_template.declaration.parameters), 1)
+        self.assertEqual(method_template.declaration.parameters[0].name, "value")
 
-    def test_parse_headers_keeps_similarly_named_member_function_templates_as_function_templates(self) -> None:
+    def test_parse_headers_keeps_similarly_named_member_function_templates_as_method_templates(self) -> None:
         source = """
             namespace demo {
 
@@ -718,14 +720,15 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         class_template = result.module.declarations.namespaces[0].declarations.class_templates[0]
 
         self.assertEqual(class_template.declaration.declarations.constructors, [])
-        self.assertEqual(len(class_template.declaration.declarations.function_templates), 1)
+        self.assertEqual(len(class_template.declaration.declarations.method_templates), 1)
 
-        function_template = class_template.declaration.declarations.function_templates[0]
-        self.assertEqual(function_template.name, "Boxify")
-        self.assertEqual(function_template.declaration.name, "Boxify")
-        self.assertEqual(len(function_template.declaration.cpp.template_parameters), 1)
-        self.assertIsInstance(function_template.declaration.cpp.template_parameters[0], CppTypeTemplateParameter)
-        self.assertEqual(function_template.declaration.cpp.template_parameters[0].name, "U")
+        method_template = class_template.declaration.declarations.method_templates[0]
+        self.assertIsInstance(method_template, CppMethodTemplate)
+        self.assertEqual(method_template.name, "Boxify")
+        self.assertEqual(method_template.declaration.name, "Boxify")
+        self.assertEqual(len(method_template.declaration.cpp.template_parameters), 1)
+        self.assertIsInstance(method_template.declaration.cpp.template_parameters[0], CppTypeTemplateParameter)
+        self.assertEqual(method_template.declaration.cpp.template_parameters[0].name, "U")
 
     def test_parse_headers_merge_template_families_across_reopened_namespaces(self) -> None:
         result = _parse_headers_from_sources(
@@ -816,11 +819,11 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         self.assertEqual(len(declaration.cpp.location.declarations), 1)
         self.assertEqual(len(declaration.declarations.constructors), 1)
         self.assertEqual(declaration.declarations.constructors[0].name, "Box")
-        self.assertEqual(len(declaration.declarations.function_templates), 1)
-        self.assertEqual(declaration.declarations.function_templates[0].name, "convert")
-        self.assertIsNotNone(declaration.declarations.function_templates[0].declaration.cpp.location.definition)
-        self.assertEqual(len(declaration.declarations.function_templates[0].declaration.parameters), 1)
-        self.assertEqual(declaration.declarations.function_templates[0].declaration.parameters[0].name, "value")
+        self.assertEqual(len(declaration.declarations.method_templates), 1)
+        self.assertEqual(declaration.declarations.method_templates[0].name, "convert")
+        self.assertIsNotNone(declaration.declarations.method_templates[0].declaration.cpp.location.definition)
+        self.assertEqual(len(declaration.declarations.method_templates[0].declaration.parameters), 1)
+        self.assertEqual(declaration.declarations.method_templates[0].declaration.parameters[0].name, "value")
 
     def test_parse_headers_keeps_mixed_overload_groups_with_templates_across_reopened_namespaces(self) -> None:
         result = _parse_headers_from_sources(
