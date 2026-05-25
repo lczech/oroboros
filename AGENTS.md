@@ -204,7 +204,7 @@ The parser/model currently materializes:
 - selected instances are lightweight binding targets, not copied specialized trees
 - use-site template-instantiated types carry structured template arguments
 - observed class template instances can be collected from declaration-surface type uses
-- template parameter defaults exist in model shape but are not parsed yet
+- template parameter defaults are parsed into structured template arguments
 - use-site template-template arguments are still limited
 - block-scope function-body observations remain intentionally out of scope
 

@@ -174,6 +174,254 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         self.assertIsInstance(function_template.declaration.cpp.return_type, NamedCppType)
         self.assertEqual(function_template.declaration.cpp.return_type.name, "T")
 
+    def test_parse_headers_populates_template_parameter_defaults_across_template_kinds(self) -> None:
+        source = """
+            namespace demo {
+
+            template <class T>
+            struct Allocator {};
+
+            template <class T, class Alloc = Allocator<T>>
+            struct Vec {
+                T value {};
+            };
+
+            template <class T = int>
+            using Alias = Vec<T>;
+
+            template <class T = int, int N = 4>
+            T make_value();
+
+            struct Widget {
+                template <class T = int const*, class U = Allocator<T>>
+                U convert();
+            };
+
+            template <template <class> class Wrapper = Vec>
+            struct Holder {};
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        vec_template = namespace.declarations.class_templates[1]
+        alias_template = namespace.declarations.alias_templates[0]
+        function_template = namespace.declarations.function_templates[0]
+        widget = namespace.declarations.classes[0]
+        method_template = widget.declarations.method_templates[0]
+        holder_template = namespace.declarations.class_templates[2]
+
+        vec_allocator_parameter = vec_template.declaration.cpp.template_parameters[1]
+        self.assertIsInstance(vec_allocator_parameter.default, CppTypeTemplateArgument)
+        self.assertIsInstance(vec_allocator_parameter.default.type, TemplateInstanceCppType)
+        self.assertEqual(vec_allocator_parameter.default.type.template_name, "Allocator")
+        self.assertEqual(len(vec_allocator_parameter.default.type.arguments), 1)
+        self.assertIsInstance(vec_allocator_parameter.default.type.arguments[0], CppTypeTemplateArgument)
+        self.assertIsInstance(vec_allocator_parameter.default.type.arguments[0].type, NamedCppType)
+        self.assertEqual(vec_allocator_parameter.default.type.arguments[0].type.name, "T")
+
+        alias_parameter = alias_template.declaration.cpp.template_parameters[0]
+        self.assertIsInstance(alias_parameter.default, CppTypeTemplateArgument)
+        self.assertIsInstance(alias_parameter.default.type, BuiltinCppType)
+        self.assertEqual(alias_parameter.default.type.kind, "int")
+
+        function_type_parameter = function_template.declaration.cpp.template_parameters[0]
+        function_non_type_parameter = function_template.declaration.cpp.template_parameters[1]
+        self.assertIsInstance(function_type_parameter.default, CppTypeTemplateArgument)
+        self.assertIsInstance(function_type_parameter.default.type, BuiltinCppType)
+        self.assertEqual(function_type_parameter.default.type.kind, "int")
+        self.assertIsInstance(function_non_type_parameter.default, CppNonTypeTemplateArgument)
+        self.assertEqual(function_non_type_parameter.default.value, "4")
+
+        method_type_parameter = method_template.declaration.cpp.template_parameters[0]
+        method_allocator_parameter = method_template.declaration.cpp.template_parameters[1]
+        self.assertIsInstance(method_type_parameter.default, CppTypeTemplateArgument)
+        self.assertIsInstance(method_type_parameter.default.type, PointerCppType)
+        self.assertIsInstance(method_type_parameter.default.type.pointee, BuiltinCppType)
+        self.assertTrue(method_type_parameter.default.type.pointee.is_const)
+        self.assertEqual(method_type_parameter.default.type.pointee.kind, "int")
+        self.assertIsInstance(method_allocator_parameter.default, CppTypeTemplateArgument)
+        self.assertIsInstance(method_allocator_parameter.default.type, TemplateInstanceCppType)
+        self.assertEqual(method_allocator_parameter.default.type.template_name, "Allocator")
+        self.assertIsInstance(method_allocator_parameter.default.type.arguments[0], CppTypeTemplateArgument)
+        self.assertIsInstance(method_allocator_parameter.default.type.arguments[0].type, NamedCppType)
+        self.assertEqual(method_allocator_parameter.default.type.arguments[0].type.name, "T")
+
+        holder_parameter = holder_template.declaration.cpp.template_parameters[0]
+        self.assertIsInstance(holder_parameter.default, CppTemplateTemplateArgument)
+        self.assertEqual(holder_parameter.default.name, "Vec")
+        self.assertEqual(len(holder_parameter.default.parameters), 2)
+        self.assertIsInstance(holder_parameter.default.parameters[0], CppTypeTemplateParameter)
+        self.assertEqual(holder_parameter.default.parameters[0].name, "T")
+        self.assertIsInstance(holder_parameter.default.parameters[1], CppTypeTemplateParameter)
+        self.assertEqual(holder_parameter.default.parameters[1].name, "Alloc")
+
+    def test_parse_headers_preserve_dependent_typename_default_spellings(self) -> None:
+        source = """
+            namespace demo {
+
+            template <class T>
+            struct Traits {
+                using value_type = T;
+
+                template <class U>
+                struct Rebind {
+                    using type = U*;
+                };
+            };
+
+            template <class T, class U = typename Traits<T>::value_type>
+            struct ValueBox {};
+
+            template <class T, class U = typename Traits<T>::template Rebind<T>::type>
+            struct RebindBox {};
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        value_box = namespace.declarations.class_templates[1]
+        rebind_box = namespace.declarations.class_templates[2]
+
+        value_parameter = value_box.declaration.cpp.template_parameters[1]
+        rebind_parameter = rebind_box.declaration.cpp.template_parameters[1]
+
+        self.assertIsInstance(value_parameter.default, CppTypeTemplateArgument)
+        self.assertIsInstance(value_parameter.default.type, NamedCppType)
+        self.assertEqual(
+            value_parameter.default.type.render(),
+            "typename Traits<T>::value_type",
+        )
+
+        self.assertIsInstance(rebind_parameter.default, CppTypeTemplateArgument)
+        self.assertIsInstance(rebind_parameter.default.type, NamedCppType)
+        self.assertEqual(
+            rebind_parameter.default.type.render(),
+            "typename Traits<T>::template Rebind<T>::type",
+        )
+
+    def test_parse_headers_parsed_template_parameter_defaults_enable_instance_creation(self) -> None:
+        source = """
+            namespace demo {
+
+            template <class T>
+            struct Allocator {};
+
+            template <class T, class Alloc = Allocator<T>>
+            struct Vec {
+                T value {};
+            };
+
+            template <class T = int>
+            using Alias = Vec<T>;
+
+            template <class T, int N = 4>
+            T make_value();
+
+            struct Widget {
+                template <class T, int N = 4>
+                T convert();
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        vec_template = namespace.declarations.class_templates[1]
+        alias_template = namespace.declarations.alias_templates[0]
+        function_template = namespace.declarations.function_templates[0]
+        method_template = namespace.declarations.classes[0].declarations.method_templates[0]
+
+        vec_instance = add_class_template_instance(
+            vec_template,
+            [CppTypeTemplateArgument(type=BuiltinCppType(kind="int"))],
+        )
+        alias_instance = add_alias_template_instance(alias_template, [])
+        function_instance = add_function_template_instance(
+            function_template,
+            [CppTypeTemplateArgument(type=BuiltinCppType(kind="int"))],
+        )
+        method_instance = add_method_template_instance(
+            method_template,
+            [CppTypeTemplateArgument(type=BuiltinCppType(kind="int"))],
+        )
+
+        self.assertEqual(len(vec_instance.cpp.template_arguments), 1)
+        self.assertEqual(len(alias_instance.cpp.template_arguments), 0)
+        self.assertEqual(len(function_instance.cpp.template_arguments), 1)
+        self.assertEqual(len(method_instance.cpp.template_arguments), 1)
+
+    def test_parse_headers_complete_observed_instances_with_defaulted_non_type_arguments(self) -> None:
+        source = """
+            namespace demo {
+
+            template <class T, int N = 4>
+            struct Box {
+                T value {};
+            };
+
+            using IntBox = Box<int>;
+            using ExplicitIntBox = Box<int, 4>;
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        box_template = namespace.declarations.class_templates[0]
+        observed_instances = box_template.declaration.cpp.observed_instances
+
+        self.assertEqual(len(observed_instances), 1)
+        self.assertEqual(len(observed_instances[0].locations), 2)
+        self.assertEqual(len(observed_instances[0].arguments), 2)
+        self.assertIsInstance(observed_instances[0].arguments[0], CppTypeTemplateArgument)
+        self.assertIsInstance(observed_instances[0].arguments[0].type, BuiltinCppType)
+        self.assertEqual(observed_instances[0].arguments[0].type.kind, "int")
+        self.assertIsInstance(observed_instances[0].arguments[1], CppNonTypeTemplateArgument)
+        self.assertEqual(observed_instances[0].arguments[1].value, "4")
+
+    def test_parse_headers_complete_observed_instances_with_defaulted_template_template_arguments(self) -> None:
+        source = """
+            namespace demo {
+
+            template <class T>
+            struct Box {
+                T value {};
+            };
+
+            template <class T, template <class> class Wrapper = Box>
+            struct Holder {
+                Wrapper<T> value {};
+            };
+
+            using IntHolder = Holder<int>;
+            using ExplicitIntHolder = Holder<int, Box>;
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        holder_template = namespace.declarations.class_templates[1]
+        observed_instances = holder_template.declaration.cpp.observed_instances
+
+        self.assertEqual(len(observed_instances), 1)
+        self.assertEqual(len(observed_instances[0].locations), 2)
+        self.assertEqual(len(observed_instances[0].arguments), 2)
+        self.assertIsInstance(observed_instances[0].arguments[0], CppTypeTemplateArgument)
+        self.assertIsInstance(observed_instances[0].arguments[0].type, BuiltinCppType)
+        self.assertEqual(observed_instances[0].arguments[0].type.kind, "int")
+        self.assertIsInstance(observed_instances[0].arguments[1], CppTemplateTemplateArgument)
+        self.assertEqual(observed_instances[0].arguments[1].name, "Box")
+
     def test_parse_headers_materializes_structured_template_features_end_to_end(self) -> None:
         source = """
             #include <array>

@@ -13,6 +13,8 @@ from ..model import (
     BuiltinCppType,
     CppNonTypeTemplateArgument,
     CppObservedTemplateInstance,
+    CppTemplateTemplateArgument,
+    CppTemplateTemplateParameter,
     CppTypeTemplateParameter,
     CppTemplateArgument,
     CppTypeTemplateArgument,
@@ -397,12 +399,16 @@ def _enrich_fallback_template_argument_from_clang(
         return
 
     if isinstance(argument, CppNonTypeTemplateArgument):
-        argument.type = _build_cpp_type(
+        cpp_type = _build_cpp_type(
             clang_type,
             allow_canonical=True,
             context=context,
             source_cursor=None,
         )
+        if isinstance(cpp_type, NamedCppType) and not cpp_type.name and cpp_type.declaration is None and cpp_type.canonical is None:
+            argument.type = None
+            return
+        argument.type = cpp_type
 
 
 # ------------------------------------------------------------------------------
@@ -916,35 +922,64 @@ def _complete_observed_template_arguments_from_clang(
 ) -> list[CppTemplateArgument]:
     """Fill trailing observed type arguments from clang when source spelling omits defaults."""
 
-    complete_arguments = list(arguments)
-    clang_argument_types = _template_argument_types_with_canonical_fallback(clang_type)
-    if len(clang_argument_types) <= len(complete_arguments):
-        return complete_arguments
-
-    missing_parameters = parameters[len(complete_arguments):]
-    if len(missing_parameters) != len(clang_argument_types) - len(complete_arguments):
-        return complete_arguments
-
-    for parameter, clang_argument_type in zip(
-        missing_parameters,
-        clang_argument_types[len(complete_arguments):],
-        strict=True,
-    ):
-        if not isinstance(parameter, CppTypeTemplateParameter):
-            return complete_arguments
-
-        complete_arguments.append(
-            CppTypeTemplateArgument(
-                type=_build_cpp_type(
-                    clang_argument_type,
-                    allow_canonical=True,
-                    context=context,
-                    source_cursor=None,
-                )
-            )
+    complete_arguments = [
+        _coerce_observed_template_argument_to_parameter_kind(
+            argument, parameters[index] if index < len(parameters) else None
         )
+        for index, argument in enumerate(arguments)
+    ]
+    clang_argument_types = _template_argument_types_with_canonical_fallback(clang_type)
+    clang_missing_count = len(clang_argument_types) - len(complete_arguments)
+    if clang_missing_count > 0:
+        missing_parameters = parameters[
+            len(complete_arguments) : len(complete_arguments) + clang_missing_count
+        ]
+        if len(missing_parameters) == clang_missing_count:
+            for parameter, clang_argument_type in zip(
+                missing_parameters,
+                clang_argument_types[len(complete_arguments) :],
+                strict=True,
+            ):
+                if not isinstance(parameter, CppTypeTemplateParameter):
+                    break
+
+                complete_arguments.append(
+                    CppTypeTemplateArgument(
+                        type=_build_cpp_type(
+                            clang_argument_type,
+                            allow_canonical=True,
+                            context=context,
+                            source_cursor=None,
+                        )
+                    )
+                )
+
+    for parameter in parameters[len(complete_arguments):]:
+        default_argument = getattr(parameter, "default", None)
+        if default_argument is None:
+            break
+        complete_arguments.append(deepcopy(default_argument))
 
     return complete_arguments
+
+
+def _coerce_observed_template_argument_to_parameter_kind(
+    argument: CppTemplateArgument,
+    parameter: Any,
+) -> CppTemplateArgument:
+    """Coerce one parsed observed argument into the declared parameter kind when safe."""
+
+    if (
+        isinstance(parameter, CppTemplateTemplateParameter)
+        and isinstance(argument, CppTypeTemplateArgument)
+        and isinstance(argument.type, NamedCppType)
+    ):
+        return CppTemplateTemplateArgument(
+            name=argument.type.name,
+            parameters=deepcopy(parameter.parameters),
+        )
+
+    return argument
 
 
 def _template_argument_types_with_canonical_fallback(clang_type: Any) -> list[Any]:
