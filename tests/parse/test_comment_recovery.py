@@ -525,6 +525,47 @@ public:
             msg=f"Expected recovery warning, got: {result.warnings}",
         )
 
+    def test_parse_headers_prefer_structured_definition_docs_for_redeclared_classes_across_headers(self) -> None:
+        result = _parse_headers_from_sources(
+            {
+                "a.hpp": """
+namespace demo {
+
+/**
+ * @brief Forward declaration docs.
+ */
+class Widget;
+
+}
+""",
+                "b.hpp": """
+namespace demo {
+
+/**
+ * @brief Widget docs from the richer definition path.
+ */
+class Widget {
+public:
+    int value {};
+};
+
+}
+""",
+            },
+            header_order=["a.hpp", "b.hpp"],
+        )
+
+        widget = result.module.declarations.namespaces[0].declarations.classes[0]
+
+        self.assertEqual(len(widget.cpp.location.declarations), 2)
+        self.assertEqual(
+            widget.cpp.comment,
+            "/**\n * @brief Widget docs from the richer definition path.\n */",
+        )
+        self.assertEqual(widget.cpp.doc.brief, "Widget docs from the richer definition path.")
+        self.assertEqual(len(widget.declarations.variables), 1)
+        self.assertEqual(widget.declarations.variables[0].name, "value")
+
     def test_parse_headers_prefer_recovered_forward_comment_on_later_redeclarations(self) -> None:
         sources = {
             "a.hpp": """

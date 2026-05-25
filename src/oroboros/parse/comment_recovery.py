@@ -137,6 +137,19 @@ def recover_comment_candidates(cursor: Any, context: BuildContext) -> list[Recov
     if leading is not None:
         candidates.append(leading)
 
+    # Stacked out-of-line member-template definitions can start at the last
+    # `template <...>` prefix line instead of the first one. Recover comments
+    # attached ahead of the whole template-prefix block in that common style.
+    template_anchor = _template_prefix_block_start_anchor(tokens, start_offset=start_offset)
+    if template_anchor is not None and template_anchor[1] != start_offset:
+        leading = _recover_leading_comment_group(
+            tokens,
+            start_line=template_anchor[0],
+            start_offset=template_anchor[1],
+        )
+        if leading is not None:
+            candidates.append(leading)
+
     return candidates
 
 
@@ -377,6 +390,46 @@ def _recover_leading_comment_group(
         start_offset=token.start_offset,
         end_offset=token.end_offset,
     )
+
+
+def _template_prefix_block_start_anchor(
+    tokens: list[CursorTokenInfo],
+    *,
+    start_offset: int,
+) -> tuple[int, int] | None:
+    """Return the first token of one contiguous leading template-prefix block."""
+
+    start_index = next(
+        (index for index, token in enumerate(tokens) if token.start_offset == start_offset),
+        None,
+    )
+    if start_index is None or tokens[start_index].spelling != "template":
+        return None
+
+    earliest_index = start_index
+    previous_index = start_index - 1
+
+    while previous_index >= 0 and tokens[previous_index].spelling == ">":
+        depth = 0
+        match_index: int | None = None
+        for token_index in range(previous_index, -1, -1):
+            spelling = tokens[token_index].spelling
+            if spelling == ">":
+                depth += 1
+            elif spelling == "<":
+                depth -= 1
+                if depth == 0:
+                    match_index = token_index
+                    break
+
+        if match_index is None or match_index == 0 or tokens[match_index - 1].spelling != "template":
+            break
+
+        earliest_index = match_index - 1
+        previous_index = earliest_index - 1
+
+    anchor = tokens[earliest_index]
+    return (anchor.start_line, anchor.start_offset)
 
 
 def _comment_has_code_before_same_line(tokens: list[CursorTokenInfo], index: int) -> bool:

@@ -40,6 +40,74 @@ class ParseIntegrationCallableTest(unittest.TestCase):
         self.assertEqual(len(method.parameters), 1)
         self.assertEqual(method.parameters[0].name, "amount")
 
+    def test_parse_headers_merge_redeclared_operator_and_conversion_members(self) -> None:
+        result = _parse_headers_from_sources(
+            {
+                "a.hpp": """
+                    namespace demo {
+
+                    class Widget {
+                    public:
+                        /**
+                         * @brief Invoke one widget from the declaration path.
+                         * @param value Value from the declaration.
+                         */
+                        int operator()(int value = 7) const &;
+
+                        explicit operator bool() const &;
+                    };
+
+                    }
+                """,
+                "b.hpp": """
+                    namespace demo {
+
+                    /**
+                     * @brief Invoke one widget from the richer definition path.
+                     * @param value Value from the definition.
+                     * @return One invoked value.
+                     */
+                    int Widget::operator()(int value) const & {
+                        return value;
+                    }
+
+                    Widget::operator bool() const & {
+                        return true;
+                    }
+
+                    }
+                """,
+            },
+            header_order=["a.hpp", "b.hpp"],
+        )
+
+        widget = result.module.declarations.namespaces[0].declarations.classes[0]
+        call = next(method for method in widget.declarations.methods if method.name == "operator()")
+        conversion = next(method for method in widget.declarations.methods if method.name == "operator bool")
+
+        self.assertEqual(call.cpp.operator.kind, "symbolic")
+        self.assertEqual(call.cpp.operator.symbol, "()")
+        self.assertIsNotNone(call.cpp.location.definition)
+        self.assertTrue(call.cpp.is_const)
+        self.assertEqual(call.cpp.ref_qualifier, "&")
+        self.assertEqual(call.parameters[0].name, "value")
+        self.assertEqual(call.parameters[0].cpp.default_value, "7")
+        self.assertEqual(
+            call.cpp.doc.brief,
+            "Invoke one widget from the richer definition path.",
+        )
+        self.assertEqual(call.cpp.doc.parameters["value"], "Value from the definition.")
+        self.assertEqual(call.cpp.doc.returns, "One invoked value.")
+        self.assertEqual(call.parameters[0].cpp.doc, "Value from the definition.")
+
+        self.assertEqual(conversion.cpp.operator.kind, "conversion")
+        self.assertIsNotNone(conversion.cpp.location.definition)
+        self.assertTrue(conversion.cpp.is_const)
+        self.assertEqual(conversion.cpp.ref_qualifier, "&")
+        self.assertTrue(conversion.cpp.operator.is_explicit)
+        self.assertIsInstance(conversion.cpp.operator.conversion_type, BuiltinCppType)
+        self.assertEqual(conversion.cpp.operator.conversion_type.kind, "bool")
+
     def test_parse_headers_extracts_real_visibility_and_callable_flags(self) -> None:
         source = """
             namespace demo {

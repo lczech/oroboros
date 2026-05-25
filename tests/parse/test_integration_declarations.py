@@ -328,6 +328,47 @@ class ParseIntegrationDeclarationTest(unittest.TestCase):
         self.assertEqual(len(namespace.declarations.functions), 1)
         self.assertEqual(namespace.declarations.functions[0].name, "make_widget")
 
+    def test_parse_headers_merge_forward_declared_classes_with_later_definitions(self) -> None:
+        result = _parse_headers_from_sources(
+            {
+                "a.hpp": """
+                    namespace demo {
+
+                    /// Forward declaration docs.
+                    class Widget;
+
+                    }
+                """,
+                "b.hpp": """
+                    namespace demo {
+
+                    struct Base {};
+
+                    class Widget : public Base {
+                    public:
+                        int value {};
+                    };
+
+                    }
+                """,
+            },
+            header_order=["a.hpp", "b.hpp"],
+        )
+
+        namespace = result.module.declarations.namespaces[0]
+        base = next(class_ for class_ in namespace.declarations.classes if class_.name == "Base")
+        widget = next(class_ for class_ in namespace.declarations.classes if class_.name == "Widget")
+
+        self.assertEqual(len(namespace.declarations.classes), 2)
+        self.assertEqual(len(widget.cpp.location.declarations), 2)
+        self.assertIsNotNone(widget.cpp.comment)
+        self.assertIn("Forward declaration docs.", widget.cpp.comment)
+        self.assertEqual(len(widget.cpp.bases), 1)
+        self.assertIsInstance(widget.cpp.bases[0].type, NamedCppType)
+        self.assertIs(widget.cpp.bases[0].type.declaration, base)
+        self.assertEqual(len(widget.declarations.variables), 1)
+        self.assertEqual(widget.declarations.variables[0].name, "value")
+
     def test_parse_headers_merge_anonymous_namespaces_by_semantic_identity(self) -> None:
         result = _parse_headers_from_sources(
             {

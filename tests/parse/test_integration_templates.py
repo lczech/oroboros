@@ -825,6 +825,121 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         self.assertEqual(len(declaration.declarations.method_templates[0].declaration.parameters), 1)
         self.assertEqual(declaration.declarations.method_templates[0].declaration.parameters[0].name, "value")
 
+    def test_parse_headers_merge_function_template_docs_defaults_and_definition_locations(self) -> None:
+        result = _parse_headers_from_sources(
+            {
+                "a.hpp": """
+                    namespace demo {
+
+                    /**
+                     * @brief Parse one value from the declaration path.
+                     * @param value Value from the declaration.
+                     */
+                    template <class T>
+                    T parse(T value = T{});
+
+                    }
+                """,
+                "b.hpp": """
+                    namespace demo {
+
+                    /**
+                     * @brief Parse one value from the richer definition path.
+                     * @param value Value from the definition.
+                     * @return One parsed value.
+                     */
+                    template <class T>
+                    T parse(T value) {
+                        return value;
+                    }
+
+                    }
+                """,
+            },
+            header_order=["a.hpp", "b.hpp"],
+        )
+
+        namespace = result.module.declarations.namespaces[0]
+        function_template = namespace.declarations.function_templates[0]
+        declaration = function_template.declaration
+
+        self.assertEqual(function_template.name, "parse")
+        self.assertIsNotNone(declaration.cpp.location.definition)
+        self.assertEqual(len(declaration.cpp.location.declarations), 2)
+        self.assertEqual(declaration.parameters[0].name, "value")
+        self.assertEqual(declaration.parameters[0].cpp.default_value, "T{}")
+        self.assertEqual(
+            declaration.cpp.doc.brief,
+            "Parse one value from the richer definition path.",
+        )
+        self.assertEqual(
+            declaration.cpp.doc.parameters["value"],
+            "Value from the definition.",
+        )
+        self.assertEqual(declaration.cpp.doc.returns, "One parsed value.")
+        self.assertEqual(declaration.parameters[0].cpp.doc, "Value from the definition.")
+
+    def test_parse_headers_merge_method_template_docs_defaults_and_definition_locations(self) -> None:
+        result = _parse_headers_from_sources(
+            {
+                "a.hpp": """
+                    namespace demo {
+
+                    template <class T>
+                    class Box {
+                    public:
+                        /**
+                         * @brief Convert one value from the declaration path.
+                         * @param value Value from the declaration.
+                         */
+                        template <class U>
+                        U convert(U value = U{}) const &;
+                    };
+
+                    }
+                """,
+                "b.hpp": """
+                    namespace demo {
+
+                    /**
+                     * @brief Convert one value from the richer definition path.
+                     * @param value Value from the definition.
+                     * @return One converted value.
+                     */
+                    template <class T>
+                    template <class U>
+                    U Box<T>::convert(U value) const & {
+                        return value;
+                    }
+
+                    }
+                """,
+            },
+            header_order=["a.hpp", "b.hpp"],
+        )
+
+        declaration = result.module.declarations.namespaces[0].declarations.class_templates[0].declaration
+        method_template = declaration.declarations.method_templates[0]
+        method_declaration = method_template.declaration
+
+        self.assertEqual(method_template.name, "convert")
+        self.assertIsNotNone(method_declaration.cpp.location.definition)
+        self.assertEqual(len(method_declaration.cpp.location.declarations), 2)
+        self.assertTrue(method_declaration.cpp.is_const)
+        self.assertEqual(method_declaration.cpp.ref_qualifier, "&")
+        self.assertEqual(method_declaration.parameters[0].name, "value")
+        self.assertEqual(method_declaration.parameters[0].cpp.default_value, "U{}")
+        self.assertEqual(
+            method_declaration.cpp.doc.brief,
+            "Convert one value from the richer definition path.",
+        )
+        self.assertEqual(
+            method_declaration.cpp.doc.parameters["value"],
+            "Value from the definition.",
+        )
+        self.assertEqual(method_declaration.cpp.doc.returns, "One converted value.")
+        self.assertEqual(method_declaration.parameters[0].cpp.doc, "Value from the definition.")
+
     def test_parse_headers_keeps_mixed_overload_groups_with_templates_across_reopened_namespaces(self) -> None:
         result = _parse_headers_from_sources(
             {
