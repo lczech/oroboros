@@ -294,6 +294,27 @@ class ModelValidationTest(unittest.TestCase):
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
 
+    def test_validate_semantics_reports_duplicate_child_name_locations(self) -> None:
+        namespace = make_namespace(name="demo")
+        first = namespace.add_alias(CppAlias(name="Index"))
+        first.cpp.target = NamedCppType(name="std::size_t")
+        first.cpp.location = CppLocationInfo(
+            primary=SourceLocation(file=Path("api/demo.hpp"), line=4, column=1)
+        )
+        second = namespace.add_alias(CppAlias(name="Index"))
+        second.cpp.target = BuiltinCppType(kind="unsigned_long")
+        second.cpp.location = CppLocationInfo(
+            primary=SourceLocation(file=Path("api/demo.hpp"), line=8, column=1)
+        )
+        module = make_module(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError) as context:
+            module.validate_semantics()
+
+        message = str(context.exception)
+        self.assertIn("api/demo.hpp:4:1", message)
+        self.assertIn("api/demo.hpp:8:1", message)
+
     def test_validate_semantics_rejects_duplicate_alias_template_names_in_one_scope(self) -> None:
         first = CppAliasTemplate(name="Vec")
         first.declaration.cpp.target = TemplateInstanceCppType(
@@ -323,6 +344,19 @@ class ModelValidationTest(unittest.TestCase):
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
+
+    def test_validate_semantics_reports_alias_target_location_context(self) -> None:
+        alias = CppAlias(name="Vec")
+        alias.cpp.location = CppLocationInfo(
+            primary=SourceLocation(file=Path("api/demo.hpp"), line=12, column=7)
+        )
+        namespace = make_namespace(name="demo", aliases=[alias])
+        module = make_module(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError) as context:
+            module.validate_semantics()
+
+        self.assertIn("api/demo.hpp:12:7", str(context.exception))
 
     def test_validate_semantics_rejects_template_family_name_mismatches(self) -> None:
         function_template = CppFunctionTemplate(name="make_value")
@@ -434,6 +468,30 @@ class ModelValidationTest(unittest.TestCase):
 
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
+
+    def test_validate_semantics_reports_observed_instance_locations(self) -> None:
+        function_template = CppFunctionTemplate(name="make_value")
+        function_template.declaration.cpp.template_parameters.append(
+            CppTypeTemplateParameter(name="T")
+        )
+        function_template.declaration.cpp.observed_instances.append(
+            CppObservedTemplateInstance(
+                arguments=[CppNonTypeTemplateArgument(value="4")],
+                locations=[
+                    SourceLocation(file=Path("api/demo.hpp"), line=21, column=9),
+                    SourceLocation(file=Path("api/other.hpp"), line=8, column=3),
+                ],
+            )
+        )
+        namespace = make_namespace(name="demo", function_templates=[function_template])
+        module = make_module(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError) as context:
+            module.validate_semantics()
+
+        message = str(context.exception)
+        self.assertIn("api/demo.hpp:21:9", message)
+        self.assertIn("api/other.hpp:8:3", message)
 
     def test_validate_semantics_rejects_free_functions_owned_by_class_like_scopes(self) -> None:
         cls = make_class(name="Widget")
