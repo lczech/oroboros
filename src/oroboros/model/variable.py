@@ -27,6 +27,12 @@ class CppVariableCppFacet:
     storage_class: str | None = None
     linkage: str | None = None
     tls_kind: str | None = None
+    # Whether this field declaration uses bitfield syntax such as `unsigned mode : 3`.
+    is_bitfield: bool = False
+    # Declared bitfield width when clang exposes one.
+    bitfield_width: int | None = None
+    # Whether this field declaration uses the `mutable` specifier.
+    is_mutable: bool = False
 
 
 @dataclass(slots=True)

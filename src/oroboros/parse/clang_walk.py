@@ -129,6 +129,10 @@ def _visit_declaration_cursor(
         _visit_friend_cursor(cursor, owner, context)
         return
 
+    if _cursor_kind_matches(cursor, CursorKind.LINKAGE_SPEC):
+        _visit_linkage_spec_cursor(cursor, owner, context)
+        return
+
     if _cursor_kind_matches(cursor, CursorKind.TYPE_ALIAS_TEMPLATE_DECL):
         process_alias_template_cursor(cursor, owner, context)
         return
@@ -190,6 +194,16 @@ def _visit_friend_cursor(
             _semantic_owner_for_cursor(child_cursor, owner, context),
             context,
         )
+
+
+def _visit_linkage_spec_cursor(
+    cursor: Any,
+    owner: CppElement,
+    context: BuildContext,
+) -> None:
+    """Visit the declarations nested under one linkage-spec wrapper cursor."""
+
+    visit_children(cursor.get_children(), owner, context)
 
 
 # ==================================================================================================

@@ -179,6 +179,7 @@ def _validate_element_semantics(
     _validate_constructor_name(element, path, errors)
     _validate_special_member_classification(element, path, errors)
     _validate_method_like_flags(element, path, errors)
+    _validate_variable_field_traits(element, path, errors)
     _validate_alias_target(element, path, errors)
     _validate_enumerator_value_sanity(element, path, errors)
     _validate_template_family(element, path, errors)
@@ -750,6 +751,42 @@ def _validate_alias_target(
 
     if element.cpp.target is None:
         errors.append(f"{path}.cpp.target is missing for this alias declaration.")
+
+
+def _validate_variable_field_traits(
+    element: CppElement,
+    path: str,
+    errors: list[str],
+) -> None:
+    """Validate bitfield and `mutable` traits on parsed variable declarations."""
+
+    from .variable import CppVariable
+
+    if not isinstance(element, CppVariable):
+        return
+
+    cpp_facet = element.cpp
+    is_member_like = cpp_facet.kind in {"member_variable", "static_member_variable"}
+
+    if cpp_facet.bitfield_width is not None and not cpp_facet.is_bitfield:
+        errors.append(
+            f"{path}.cpp.bitfield_width is set, but {path}.cpp.is_bitfield is false."
+        )
+
+    if cpp_facet.is_bitfield and cpp_facet.kind == "static_member_variable":
+        errors.append(
+            f"{path}.cpp marks a static member variable as a bitfield."
+        )
+
+    if cpp_facet.is_mutable and cpp_facet.kind != "member_variable":
+        errors.append(
+            f"{path}.cpp marks a non-member field as mutable."
+        )
+
+    if (cpp_facet.is_bitfield or cpp_facet.bitfield_width is not None or cpp_facet.is_mutable) and not is_member_like:
+        errors.append(
+            f"{path}.cpp field-only traits are only valid on class member variables."
+        )
 
 
 def _validate_template_family(

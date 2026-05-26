@@ -16,8 +16,6 @@ Actionable backlog only. Keep long-term design intent and invariants in
 ### Areas that still need refinement
 
 - Dispatch/coverage follow-ups from a `clang_walk.py` audit:
-  - `LINKAGE_SPEC` is still a real parser hole:
-    `extern "C" { ... }` wrappers are skipped entirely instead of walking their child declarations
   - Inline namespaces are modeled but not fully populated:
     `CppNamespaceCppFacet.is_inline` exists, but the parser does not currently fill it from clang
   - `CLASS_TEMPLATE_PARTIAL_SPECIALIZATION` is still skipped
@@ -25,6 +23,12 @@ Actionable backlog only. Keep long-term design intent and invariants in
     may matter if scope-local re-export/aliasing should appear in the semantic API surface
   - `NAMESPACE_ALIAS` and `USING_DIRECTIVE` remain unmodeled:
     lower priority, but worth revisiting if namespace-surface fidelity becomes important
+- C-API / `extern "C"` maturity follow-ups:
+  - C-style function-pointer-heavy signatures and callback patterns need more real-world coverage
+  - C-oriented ownership/lifetime conventions are still largely policy-layer work rather than parsed facts
+  - Macros / `#define` constants remain out of parser scope and will need a separate strategy if they matter
+  - Conditional-compilation matrix parsing/merge could be a valuable advanced feature for platform- or feature-gated APIs,
+    but is probably overkill for the default path and should wait for a concrete need
 - Redeclaration enrichment beyond the current conservative first pass
 - Comment recovery edge cases around unusual placement/macros
 - Structured type parsing and declaration linking for more clang type kinds
@@ -89,6 +93,7 @@ Actionable backlog only. Keep long-term design intent and invariants in
   - selected template instances
   - activation-header workflow
   - exception translation policy
+  - possible future config-matrix parsing for selected preprocessor define combinations
 - Emitter/backend configuration for output layout, signatures, and backend choice
 
 ## Test Coverage Still Worth Adding
@@ -116,7 +121,6 @@ Actionable backlog only. Keep long-term design intent and invariants in
 
 - Additional clang-exposed facts that may become binding-relevant:
   - declaration availability / deprecation from attributes
-  - field traits such as bitfield / mutable
   - abstract-record classification
   - function `inline` status if later policy or diagnostics need it
 - Richer exception specifications beyond `is_noexcept`

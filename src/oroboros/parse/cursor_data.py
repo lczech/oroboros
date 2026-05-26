@@ -252,6 +252,31 @@ def cursor_type_is_const_qualified(cursor: Any) -> bool:
     return False
 
 
+def cursor_field_is_bitfield(cursor: Any) -> bool:
+    """Return whether one field cursor uses C/C++ bitfield syntax."""
+
+    return cursor_bool_method(cursor, "is_bitfield")
+
+
+def cursor_field_bitfield_width(cursor: Any) -> int | None:
+    """Return one field cursor's declared bitfield width when clang exposes it."""
+
+    get_bitfield_width = getattr(cursor, "get_bitfield_width", None)
+    if not callable(get_bitfield_width):
+        return None
+
+    width = get_bitfield_width()
+    if width is None or int(width) < 0:
+        return None
+    return int(width)
+
+
+def cursor_field_is_mutable(cursor: Any) -> bool:
+    """Return whether one field cursor uses the `mutable` specifier."""
+
+    return cursor_bool_method(cursor, "is_mutable_field")
+
+
 def cursor_bool_method(cursor: Any, method_name: str) -> bool:
     """Call one optional boolean libclang cursor method safely."""
 

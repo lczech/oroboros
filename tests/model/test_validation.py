@@ -148,6 +148,25 @@ class ModelValidationTest(unittest.TestCase):
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
 
+    def test_validate_semantics_rejects_invalid_variable_field_traits(self) -> None:
+        member = CppVariable(name="mode")
+        member.cpp.kind = "member_variable"
+        member.cpp.bitfield_width = 3
+
+        static_member = CppVariable(name="cache")
+        static_member.cpp.kind = "static_member_variable"
+        static_member.cpp.is_mutable = True
+
+        free_variable = CppVariable(name="global_mode")
+        free_variable.cpp.is_bitfield = True
+
+        cls = make_class(name="Widget", variables=[member], static_variables=[static_member])
+        namespace = make_namespace(name="demo", classes=[cls], variables=[free_variable])
+        module = make_module(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
     def test_validate_semantics_rejects_union_bases_and_virtual_methods(self) -> None:
         base = make_class(name="Base")
         union_ = make_class(name="Storage")

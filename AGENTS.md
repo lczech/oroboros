@@ -181,6 +181,7 @@ The parser/model currently materializes:
   - namespace/free variables
   - member variables
   - static member variables
+  - member-variable field traits such as bitfield width and `mutable`
 - parameters
 - base classes
 - source locations and provenance containers
@@ -197,6 +198,7 @@ The parser/model currently materializes:
   - parameter default values
 - parsed operator metadata for binding-relevant operator declarations
 - structured recursive type parsing for common declaration-surface types
+  - including function-pointer / callback-shaped types
 - raw comments plus normalized docs
 - token-based comment recovery and clang/recovery reconciliation
 

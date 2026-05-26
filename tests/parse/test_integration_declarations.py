@@ -114,6 +114,43 @@ class ParseIntegrationDeclarationTest(unittest.TestCase):
         self.assertEqual(function.name, "make_widget")
         self.assertTrue(function.cpp.is_noexcept)
 
+    def test_parse_headers_traverse_linkage_spec_blocks_normally(self) -> None:
+        source = """
+            extern "C" {
+            int c_api(int value) { return value + 1; }
+            typedef int c_int;
+            int c_counter = 7;
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        function = result.module.declarations.functions[0]
+        alias_ = result.module.declarations.aliases[0]
+        variable = result.module.declarations.variables[0]
+
+        self.assertEqual(function.name, "c_api")
+        self.assertEqual(function.parameters[0].name, "value")
+        self.assertEqual(alias_.name, "c_int")
+        self.assertEqual(variable.name, "c_counter")
+        self.assertEqual(result.skipped_kind_counts, {})
+
+    def test_parse_headers_traverse_single_linkage_spec_declarations_inside_namespaces(self) -> None:
+        source = """
+            namespace demo {
+            extern "C" int c_api(int value);
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        function = namespace.declarations.functions[0]
+
+        self.assertEqual(function.name, "c_api")
+        self.assertEqual(function.parameters[0].name, "value")
+        self.assertEqual(result.skipped_kind_counts, {})
+
     def test_parse_headers_materializes_unions_via_the_class_path(self) -> None:
         source = """
             namespace demo {
@@ -750,3 +787,77 @@ class ParseIntegrationDeclarationTest(unittest.TestCase):
         self.assertIsInstance(nested_type.arguments[0].type.arguments[1].type, NamedCppType)
         self.assertEqual(nested_type.arguments[0].type.arguments[1].type.name, "Widget")
         self.assertIs(nested_type.arguments[0].type.arguments[1].type.declaration, widget)
+
+    def test_parse_headers_preserve_callback_typedef_links_and_canonical_function_pointer_types(self) -> None:
+        source = """
+            namespace demo {
+
+            typedef void (*Callback)(int, bool);
+
+            struct Holder {
+                Callback callback;
+            };
+
+            Callback get_callback();
+            void install_callback(Callback callback) {}
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        callback_alias = namespace.declarations.aliases[0]
+        holder = namespace.declarations.classes[0]
+        functions = {function.name: function for function in namespace.declarations.functions}
+
+        self.assertIsInstance(callback_alias.cpp.target, PointerCppType)
+        self.assertIsInstance(callback_alias.cpp.target.pointee, FunctionCppType)
+        self.assertEqual(callback_alias.cpp.target.render(), "void (*)(int, bool)")
+
+        field_type = holder.declarations.variables[0].cpp.type
+        self.assertIsInstance(field_type, NamedCppType)
+        self.assertEqual(field_type.name, "Callback")
+        self.assertIs(field_type.declaration, callback_alias)
+        self.assertIsInstance(field_type.canonical, PointerCppType)
+        self.assertEqual(field_type.canonical.render(), "void (*)(int, bool)")
+
+        return_type = functions["get_callback"].cpp.return_type
+        self.assertIsInstance(return_type, NamedCppType)
+        self.assertEqual(return_type.name, "Callback")
+        self.assertIs(return_type.declaration, callback_alias)
+        self.assertIsInstance(return_type.canonical, PointerCppType)
+        self.assertEqual(return_type.canonical.render(), "void (*)(int, bool)")
+
+        parameter_type = functions["install_callback"].parameters[0].cpp.type
+        self.assertIsInstance(parameter_type, NamedCppType)
+        self.assertEqual(parameter_type.name, "Callback")
+        self.assertIs(parameter_type.declaration, callback_alias)
+        self.assertIsInstance(parameter_type.canonical, PointerCppType)
+        self.assertEqual(parameter_type.canonical.render(), "void (*)(int, bool)")
+
+    def test_parse_headers_materialize_bitfield_and_mutable_field_traits(self) -> None:
+        source = """
+            namespace demo {
+
+            struct Holder {
+                mutable int cache;
+                unsigned mode : 3;
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        holder = result.module.declarations.namespaces[0].declarations.classes[0]
+        cache = holder.declarations.variables[0]
+        mode = holder.declarations.variables[1]
+
+        self.assertFalse(cache.cpp.is_bitfield)
+        self.assertIsNone(cache.cpp.bitfield_width)
+        self.assertTrue(cache.cpp.is_mutable)
+
+        self.assertTrue(mode.cpp.is_bitfield)
+        self.assertEqual(mode.cpp.bitfield_width, 3)
+        self.assertFalse(mode.cpp.is_mutable)

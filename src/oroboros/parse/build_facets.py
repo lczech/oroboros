@@ -20,6 +20,9 @@ from .cursor_data import (
     cursor_constructor_special_member_kind,
     cursor_enum_underlying_type,
     cursor_enum_value_spelling,
+    cursor_field_bitfield_width,
+    cursor_field_is_bitfield,
+    cursor_field_is_mutable,
     cursor_has_explicit_specifier,
     cursor_is_converting_constructor,
     cursor_is_definition,
@@ -258,6 +261,9 @@ def build_variable_cpp_facet(
         storage_class=cursor_storage_class(cursor),
         linkage=cursor_linkage(cursor),
         tls_kind=cursor_tls_kind(cursor),
+        is_bitfield=cursor_field_is_bitfield(cursor),
+        bitfield_width=cursor_field_bitfield_width(cursor),
+        is_mutable=cursor_field_is_mutable(cursor),
     )
 
 
