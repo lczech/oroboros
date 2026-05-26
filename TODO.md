@@ -15,6 +15,16 @@ Actionable backlog only. Keep long-term design intent and invariants in
 
 ### Areas that still need refinement
 
+- Dispatch/coverage follow-ups from a `clang_walk.py` audit:
+  - `LINKAGE_SPEC` is still a real parser hole:
+    `extern "C" { ... }` wrappers are skipped entirely instead of walking their child declarations
+  - Inline namespaces are modeled but not fully populated:
+    `CppNamespaceCppFacet.is_inline` exists, but the parser does not currently fill it from clang
+  - `CLASS_TEMPLATE_PARTIAL_SPECIALIZATION` is still skipped
+  - `USING_DECLARATION` is still skipped:
+    may matter if scope-local re-export/aliasing should appear in the semantic API surface
+  - `NAMESPACE_ALIAS` and `USING_DIRECTIVE` remain unmodeled:
+    lower priority, but worth revisiting if namespace-surface fidelity becomes important
 - Redeclaration enrichment beyond the current conservative first pass
 - Comment recovery edge cases around unusual placement/macros
 - Structured type parsing and declaration linking for more clang type kinds
@@ -104,6 +114,11 @@ Actionable backlog only. Keep long-term design intent and invariants in
 
 ## Missing or thin parsed facts
 
+- Additional clang-exposed facts that may become binding-relevant:
+  - declaration availability / deprecation from attributes
+  - field traits such as bitfield / mutable
+  - abstract-record classification
+  - function `inline` status if later policy or diagnostics need it
 - Richer exception specifications beyond `is_noexcept`
 - Additional method qualifiers such as `volatile`, if a real binding need appears
 - `constexpr` / `consteval` metadata

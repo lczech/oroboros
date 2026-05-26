@@ -3,6 +3,7 @@ from __future__ import annotations
 """Class-member callable semantic model objects."""
 
 from dataclasses import dataclass, field
+from typing import Literal
 
 from .comment import CppDoc, PyDoc
 from .element import CppElement
@@ -26,6 +27,7 @@ from .visibility import CppVisibility
 class CppMethodCppFacet(CppFunctionCppFacet):
     """Store parsed C++ details for one class method."""
 
+    special_member_kind: Literal["copy_assignment", "move_assignment"] | None = None
     ref_qualifier: str | None = None
     is_const: bool = False
     is_static: bool = False
@@ -64,6 +66,8 @@ class CppConstructorCppFacet:
     is_noexcept: bool = False
     is_deleted: bool = False
     is_defaulted: bool = False
+    special_member_kind: Literal["default_constructor", "copy_constructor", "move_constructor"] | None = None
+    is_converting_constructor: bool = False
     visibility: CppVisibility | None = None
 
 

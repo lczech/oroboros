@@ -332,6 +332,77 @@ class ParseIntegrationCallableTest(unittest.TestCase):
 
         self.assertTrue(free_function.cpp.is_deleted)
 
+    def test_parse_headers_populates_special_member_and_converting_constructor_classifiers(self) -> None:
+        source = """
+            namespace demo {
+
+            struct Widget {
+                Widget() = default;
+                Widget(int value);
+                Widget(Widget const&) = default;
+                Widget(Widget&&) = default;
+
+                Widget& operator=(Widget const&) = default;
+                Widget& operator=(Widget&&) = default;
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        widget = result.module.declarations.namespaces[0].declarations.classes[0]
+        constructors = widget.declarations.constructors
+        methods = widget.declarations.methods
+
+        default_constructor = next(constructor for constructor in constructors if len(constructor.parameters) == 0)
+        converting_constructor = next(
+            constructor
+            for constructor in constructors
+            if len(constructor.parameters) == 1
+            and isinstance(constructor.parameters[0].cpp.type, BuiltinCppType)
+            and constructor.parameters[0].cpp.type.kind == "int"
+        )
+        copy_constructor = next(
+            constructor
+            for constructor in constructors
+            if len(constructor.parameters) == 1
+            and isinstance(constructor.parameters[0].cpp.type, LValueReferenceCppType)
+        )
+        move_constructor = next(
+            constructor
+            for constructor in constructors
+            if len(constructor.parameters) == 1
+            and isinstance(constructor.parameters[0].cpp.type, RValueReferenceCppType)
+        )
+        copy_assignment = next(
+            method
+            for method in methods
+            if method.name == "operator="
+            and isinstance(method.parameters[0].cpp.type, LValueReferenceCppType)
+        )
+        move_assignment = next(
+            method
+            for method in methods
+            if method.name == "operator="
+            and isinstance(method.parameters[0].cpp.type, RValueReferenceCppType)
+        )
+
+        self.assertEqual(default_constructor.cpp.special_member_kind, "default_constructor")
+        self.assertFalse(default_constructor.cpp.is_converting_constructor)
+
+        self.assertIsNone(converting_constructor.cpp.special_member_kind)
+        self.assertTrue(converting_constructor.cpp.is_converting_constructor)
+
+        self.assertEqual(copy_constructor.cpp.special_member_kind, "copy_constructor")
+        self.assertTrue(copy_constructor.cpp.is_converting_constructor)
+
+        self.assertEqual(move_constructor.cpp.special_member_kind, "move_constructor")
+        self.assertTrue(move_constructor.cpp.is_converting_constructor)
+
+        self.assertEqual(copy_assignment.cpp.special_member_kind, "copy_assignment")
+        self.assertEqual(move_assignment.cpp.special_member_kind, "move_assignment")
+
     def test_parse_headers_populates_method_ref_qualifiers(self) -> None:
         source = """
             namespace demo {

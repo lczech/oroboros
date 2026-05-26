@@ -117,6 +117,14 @@ def process_constructor_cursor(
     if existing is not None:
         child_cursors = list(cursor.get_children())
         merge_common_cpp_fields(existing, candidate_cpp, context, cursor)
+        merge_cpp_scalar(existing, "special_member_kind", candidate_cpp.special_member_kind, context, cursor)
+        merge_cpp_scalar(
+            existing,
+            "is_converting_constructor",
+            candidate_cpp.is_converting_constructor,
+            context,
+            cursor,
+        )
         merge_cpp_bool_enrichment(existing, "is_explicit", candidate_cpp.is_explicit)
         merge_cpp_scalar(existing, "is_noexcept", candidate_cpp.is_noexcept, context, cursor)
         merge_cpp_bool_enrichment(existing, "is_deleted", candidate_cpp.is_deleted)
@@ -189,6 +197,7 @@ def process_method_cursor(
             values_equivalent=cpp_types_equivalent,
         )
         merge_cpp_scalar(existing, "operator", candidate_cpp.operator, context, cursor)
+        merge_cpp_scalar(existing, "special_member_kind", candidate_cpp.special_member_kind, context, cursor)
         merge_cpp_scalar(existing, "is_noexcept", candidate_cpp.is_noexcept, context, cursor)
         merge_cpp_bool_enrichment(existing, "is_deleted", candidate_cpp.is_deleted)
         merge_cpp_scalar(existing, "is_const", candidate_cpp.is_const, context, cursor)

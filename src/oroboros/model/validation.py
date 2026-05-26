@@ -177,6 +177,7 @@ def _validate_element_semantics(
     _validate_duplicate_child_names(element, path, errors)
     _validate_owner_kind(element, path, errors)
     _validate_constructor_name(element, path, errors)
+    _validate_special_member_classification(element, path, errors)
     _validate_method_like_flags(element, path, errors)
     _validate_alias_target(element, path, errors)
     _validate_enumerator_value_sanity(element, path, errors)
@@ -677,6 +678,60 @@ def _validate_method_like_flags(
     if getattr(cpp_facet, "is_static", False) and ref_qualifier is not None:
         errors.append(
             f"{path}.cpp marks the callable as both static and ref-qualified."
+        )
+
+
+def _validate_special_member_classification(
+    element: CppElement,
+    path: str,
+    errors: list[str],
+) -> None:
+    """Validate special-member and converting-constructor classifier fields."""
+
+    from .member import CppConstructor, CppMethod
+
+    cpp_facet = getattr(element, "cpp", None)
+    if cpp_facet is None:
+        return
+
+    if isinstance(element, CppConstructor):
+        special_member_kind = getattr(cpp_facet, "special_member_kind", None)
+        if special_member_kind not in {
+            None,
+            "default_constructor",
+            "copy_constructor",
+            "move_constructor",
+        }:
+            errors.append(
+                f"{path}.cpp.special_member_kind must be one of None, "
+                f"'default_constructor', 'copy_constructor', or 'move_constructor'."
+            )
+        return
+
+    if hasattr(cpp_facet, "is_converting_constructor") and getattr(cpp_facet, "is_converting_constructor", False):
+        errors.append(
+            f"{path}.cpp.is_converting_constructor is only valid on constructors."
+        )
+
+    if not hasattr(cpp_facet, "special_member_kind"):
+        return
+
+    special_member_kind = getattr(cpp_facet, "special_member_kind", None)
+    if isinstance(element, CppMethod):
+        if special_member_kind not in {None, "copy_assignment", "move_assignment"}:
+            errors.append(
+                f"{path}.cpp.special_member_kind must be one of None, "
+                f"'copy_assignment', or 'move_assignment'."
+            )
+        if special_member_kind is not None and element.name != "operator=":
+            errors.append(
+                f"{path}.cpp marks the method as {special_member_kind!r}, but the method name is not 'operator='."
+            )
+        return
+
+    if special_member_kind is not None:
+        errors.append(
+            f"{path}.cpp.special_member_kind is only valid on constructors and ordinary methods."
         )
 
 

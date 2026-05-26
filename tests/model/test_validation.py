@@ -125,6 +125,29 @@ class ModelValidationTest(unittest.TestCase):
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
 
+    def test_validate_semantics_rejects_invalid_special_member_classification(self) -> None:
+        constructor = CppConstructor(name="Widget")
+        constructor.cpp.special_member_kind = "copy_assignment"
+        constructor.cpp.is_converting_constructor = True
+
+        method = CppMethod(name="run")
+        method.cpp.special_member_kind = "move_assignment"
+
+        method_template = CppMethodTemplate(name="convert")
+        method_template.declaration.cpp.special_member_kind = "copy_assignment"
+
+        cls = make_class(
+            name="Widget",
+            constructors=[constructor],
+            methods=[method],
+            method_templates=[method_template],
+        )
+        namespace = make_namespace(name="demo", classes=[cls])
+        module = make_module(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
     def test_validate_semantics_rejects_union_bases_and_virtual_methods(self) -> None:
         base = make_class(name="Base")
         union_ = make_class(name="Storage")

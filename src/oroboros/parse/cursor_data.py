@@ -261,6 +261,34 @@ def cursor_bool_method(cursor: Any, method_name: str) -> bool:
     return False
 
 
+def cursor_constructor_special_member_kind(cursor: Any) -> str | None:
+    """Return one constructor special-member role when clang classifies it."""
+
+    if cursor_bool_method(cursor, "is_copy_constructor"):
+        return "copy_constructor"
+    if cursor_bool_method(cursor, "is_move_constructor"):
+        return "move_constructor"
+    if cursor_bool_method(cursor, "is_default_constructor"):
+        return "default_constructor"
+    return None
+
+
+def cursor_method_special_member_kind(cursor: Any) -> str | None:
+    """Return one method special-member role when clang classifies it."""
+
+    if cursor_bool_method(cursor, "is_copy_assignment_operator_method"):
+        return "copy_assignment"
+    if cursor_bool_method(cursor, "is_move_assignment_operator_method"):
+        return "move_assignment"
+    return None
+
+
+def cursor_is_converting_constructor(cursor: Any) -> bool:
+    """Return whether one constructor is a converting constructor."""
+
+    return cursor_bool_method(cursor, "is_converting_constructor")
+
+
 def cursor_is_definition(cursor: Any) -> bool:
     """Return whether one clang cursor is a full definition."""
 

@@ -191,6 +191,8 @@ The parser/model currently materializes:
   - `virtual`
   - `noexcept`
   - constructor `explicit`
+  - constructor/method special-member classification
+  - converting-constructor classification
   - deleted/defaulted state
   - parameter default values
 - parsed operator metadata for binding-relevant operator declarations
