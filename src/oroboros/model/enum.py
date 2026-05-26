@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from .availability import CppAvailability
 from .comment import CppDoc, PyDoc
 from .element import CppElement
 from .lookup import make_named_child_view
@@ -31,6 +32,7 @@ class CppEnumeratorCppFacet:
     location: CppLocationInfo = field(default_factory=CppLocationInfo)
     comment: str | None = None
     doc: CppDoc | None = None
+    availability: CppAvailability | None = None
 
 
 @dataclass(slots=True)
@@ -62,6 +64,7 @@ class CppEnumCppFacet:
     location: CppLocationInfo = field(default_factory=CppLocationInfo)
     comment: str | None = None
     doc: CppDoc | None = None
+    availability: CppAvailability | None = None
     is_scoped: bool = False
     visibility: CppVisibility | None = None
 

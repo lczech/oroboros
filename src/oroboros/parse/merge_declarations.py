@@ -35,6 +35,14 @@ def merge_common_cpp_fields(
     if merge_original_name:
         merge_cpp_scalar(element, "original_name", getattr(candidate_cpp, "original_name", None), context, cursor)
     merge_location_info(element.cpp.location, candidate_cpp.location)
+    if hasattr(element.cpp, "availability"):
+        merge_cpp_scalar(
+            element,
+            "availability",
+            getattr(candidate_cpp, "availability", None),
+            context,
+            cursor,
+        )
     if comment_field_name is not None and hasattr(element.cpp, comment_field_name):
         merged_comment = resolve_comment_conflict(
             existing_comment=getattr(element.cpp, comment_field_name),

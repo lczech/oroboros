@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from .availability import CppAvailability
 from .comment import CppDoc, PyDoc
 from .element import CppElement
 from .lookup import make_named_child_view
@@ -65,6 +66,7 @@ class CppFunctionCppFacet:
     location: CppLocationInfo = field(default_factory=CppLocationInfo)
     comment: str | None = None
     doc: CppDoc | None = None
+    availability: CppAvailability | None = None
     overload_index: int | None = None
     is_noexcept: bool = False
     is_deleted: bool = False

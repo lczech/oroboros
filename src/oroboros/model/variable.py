@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
+from .availability import CppAvailability
 from .comment import CppDoc, PyDoc
 from .element import CppElement
 from .location import CppLocationInfo
@@ -22,6 +23,7 @@ class CppVariableCppFacet:
     location: CppLocationInfo = field(default_factory=CppLocationInfo)
     comment: str | None = None
     doc: CppDoc | None = None
+    availability: CppAvailability | None = None
     visibility: CppVisibility | None = None
     kind: Literal["variable", "member_variable", "static_member_variable"] = "variable"
     storage_class: str | None = None

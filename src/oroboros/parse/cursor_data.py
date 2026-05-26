@@ -8,6 +8,7 @@ from typing import Any
 
 from clang.cindex import (
     AccessSpecifier,
+    AvailabilityKind,
     CursorKind,
     ExceptionSpecificationKind,
     LinkageKind,
@@ -186,6 +187,71 @@ def cursor_visibility(cursor: Any) -> CppVisibility | None:
         return CppVisibility.PROTECTED
     if access_name == "PRIVATE":
         return CppVisibility.PRIVATE
+    return None
+
+
+def cursor_namespace_is_inline(cursor: Any) -> bool:
+    """Return whether one namespace cursor uses the `inline namespace` form."""
+
+    token_spellings = cursor_token_spellings(cursor)
+    if len(token_spellings) < 2:
+        return False
+    return token_spellings[0] == "inline" and token_spellings[1] == "namespace"
+
+
+def cursor_class_is_abstract(cursor: Any) -> bool:
+    """Return whether one class-like cursor represents an abstract record."""
+
+    return cursor_bool_method(cursor, "is_abstract_record")
+
+
+def cursor_class_template_is_abstract(cursor: Any) -> bool:
+    """Return whether one class-template declaration is abstract."""
+
+    if cursor_class_is_abstract(cursor):
+        return True
+
+    for child_cursor in cursor.get_children():
+        kind = getattr(child_cursor, "kind", None)
+        if kind in {
+            CursorKind.CXX_METHOD,
+            CursorKind.CONVERSION_FUNCTION,
+            CursorKind.DESTRUCTOR,
+        } and cursor_bool_method(child_cursor, "is_pure_virtual_method"):
+            return True
+
+    return False
+
+
+def cursor_availability(cursor: Any) -> str | None:
+    """Return one coarse declaration availability state when clang exposes it."""
+
+    availability = getattr(cursor, "availability", None)
+    if availability is None:
+        return None
+
+    if availability == AvailabilityKind.AVAILABLE:
+        return "available"
+    if availability == AvailabilityKind.DEPRECATED:
+        return "deprecated"
+    if availability == AvailabilityKind.NOT_ACCESSIBLE:
+        return "not_accessible"
+    if availability == AvailabilityKind.NOT_AVAILABLE:
+        return "not_available"
+
+    name = getattr(availability, "name", None)
+    if not name:
+        return None
+
+    normalized = str(name).lower()
+    if normalized == "available":
+        return "available"
+    if normalized == "deprecated":
+        return "deprecated"
+    if normalized == "not_accessible":
+        return "not_accessible"
+    if normalized == "not_available":
+        return "not_available"
     return None
 
 

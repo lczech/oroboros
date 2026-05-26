@@ -174,6 +174,7 @@ def _validate_element_semantics(
 
     _validate_cpp_name_sanity(element, path, errors)
     _validate_cpp_original_name(element, path, errors)
+    _validate_cpp_availability(element, path, errors)
     _validate_duplicate_child_names(element, path, errors)
     _validate_owner_kind(element, path, errors)
     _validate_constructor_name(element, path, errors)
@@ -387,6 +388,30 @@ def _validate_cpp_original_name(
     if element.name != original_name:
         errors.append(
             f"{path} is named {element.name!r}, but cpp.original_name is {original_name!r}."
+        )
+
+
+def _validate_cpp_availability(
+    element: CppElement,
+    path: str,
+    errors: list[str],
+) -> None:
+    """Validate coarse clang availability annotations on parsed declaration facets."""
+
+    cpp_facet = getattr(element, "cpp", None)
+    availability = getattr(cpp_facet, "availability", None)
+    if availability is None:
+        return
+
+    if availability not in {
+        "available",
+        "deprecated",
+        "not_accessible",
+        "not_available",
+    }:
+        errors.append(
+            f"{path}.cpp.availability must be one of 'available', 'deprecated', "
+            f"'not_accessible', or 'not_available'."
         )
 
 

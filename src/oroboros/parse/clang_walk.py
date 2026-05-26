@@ -266,6 +266,27 @@ _IGNORED_DECLARATION_KINDS = frozenset({
     CursorKind.TEMPLATE_NON_TYPE_PARAMETER,
     CursorKind.TEMPLATE_TEMPLATE_PARAMETER,
     CursorKind.TEMPLATE_TYPE_PARAMETER,
+    # Scope-local `using foo::bar;` re-exports are intentionally unmodeled for now.
+    CursorKind.USING_DECLARATION,
+    # Namespace aliases/directives affect lookup/spelling, not the bindable surface itself.
+    CursorKind.NAMESPACE_ALIAS,
+    CursorKind.USING_DIRECTIVE,
+    # Compile-time-only declaration forms are intentionally unmodeled for now.
+    CursorKind.STATIC_ASSERT,
+    CursorKind.CONCEPT_DECL,
+    CursorKind.MODULE_IMPORT_DECL,
+    # Objective-C declarations are out of scope for Oroboros.
+    CursorKind.OBJC_CATEGORY_DECL,
+    CursorKind.OBJC_CATEGORY_IMPL_DECL,
+    CursorKind.OBJC_CLASS_METHOD_DECL,
+    CursorKind.OBJC_DYNAMIC_DECL,
+    CursorKind.OBJC_IMPLEMENTATION_DECL,
+    CursorKind.OBJC_INSTANCE_METHOD_DECL,
+    CursorKind.OBJC_INTERFACE_DECL,
+    CursorKind.OBJC_IVAR_DECL,
+    CursorKind.OBJC_PROPERTY_DECL,
+    CursorKind.OBJC_PROTOCOL_DECL,
+    CursorKind.OBJC_SYNTHESIZE_DECL,
 })
 
 _CLASS_CURSOR_KINDS = frozenset({CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL, CursorKind.UNION_DECL})
@@ -304,7 +325,7 @@ def _matching_owner_ancestor(
     while current is not None:
         if _element_matches_semantic_parent(current, semantic_parent):
             return current
-        current = current.parent
+        current = current.owner
     return None
 
 

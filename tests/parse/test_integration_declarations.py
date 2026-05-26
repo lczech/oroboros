@@ -151,6 +151,148 @@ class ParseIntegrationDeclarationTest(unittest.TestCase):
         self.assertEqual(function.parameters[0].name, "value")
         self.assertEqual(result.skipped_kind_counts, {})
 
+    def test_parse_headers_mark_inline_namespaces(self) -> None:
+        source = """
+            namespace demo {
+            inline namespace v1 {
+            int make_widget() { return 1; }
+            }
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        inline_namespace = namespace.declarations.namespaces[0]
+
+        self.assertEqual(namespace.name, "demo")
+        self.assertFalse(namespace.cpp.is_inline)
+        self.assertEqual(inline_namespace.name, "v1")
+        self.assertTrue(inline_namespace.cpp.is_inline)
+        self.assertEqual(inline_namespace.declarations.functions[0].name, "make_widget")
+
+    def test_parse_headers_ignore_using_declarations_without_skipped_kind_noise(self) -> None:
+        source = """
+            namespace detail {
+            int helper() { return 1; }
+            }
+
+            namespace demo {
+            using detail::helper;
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        detail_namespace = result.module.declarations.namespaces[0]
+        demo_namespace = result.module.declarations.namespaces[1]
+
+        self.assertEqual(detail_namespace.name, "detail")
+        self.assertEqual(detail_namespace.declarations.functions[0].name, "helper")
+        self.assertEqual(demo_namespace.name, "demo")
+        self.assertEqual(demo_namespace.declarations.functions, [])
+        self.assertEqual(result.skipped_kind_counts, {})
+
+    def test_parse_headers_ignore_non_binding_declaration_kinds_without_skipped_kind_noise(self) -> None:
+        source = """
+            namespace detail {
+            int helper() { return 1; }
+            }
+
+            namespace demo {
+            namespace detail_alias = detail;
+            using namespace detail;
+            static_assert(true, "still parse the rest");
+
+            template <class T>
+            concept HasSize = requires(T value) {
+                value.size();
+            };
+
+            int make_widget() { return helper(); }
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        detail_namespace = result.module.declarations.namespaces[0]
+        demo_namespace = result.module.declarations.namespaces[1]
+
+        self.assertEqual(detail_namespace.name, "detail")
+        self.assertEqual(demo_namespace.name, "demo")
+        self.assertEqual([function.name for function in demo_namespace.declarations.functions], ["make_widget"])
+        self.assertEqual(result.skipped_kind_counts, {})
+
+    def test_parse_headers_materialize_coarse_availability_annotations(self) -> None:
+        source = """
+            namespace demo {
+
+            [[deprecated("use new_api")]]
+            int old_api();
+
+            __attribute__((deprecated("use newer_api")))
+            int old_gnu();
+
+            struct FreshType {};
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        old_api = namespace.declarations.functions[0]
+        old_gnu = namespace.declarations.functions[1]
+        fresh_type = namespace.declarations.classes[0]
+
+        self.assertEqual(old_api.cpp.availability, "deprecated")
+        self.assertEqual(old_gnu.cpp.availability, "deprecated")
+        self.assertEqual(fresh_type.cpp.availability, "available")
+
+    def test_parse_headers_materialize_abstract_record_classification(self) -> None:
+        source = """
+            namespace demo {
+
+            struct Concrete {
+                virtual void run();
+            };
+
+            struct Abstract {
+                virtual void run() = 0;
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        concrete = namespace.declarations.classes[0]
+        abstract = namespace.declarations.classes[1]
+
+        self.assertFalse(concrete.cpp.is_abstract)
+        self.assertTrue(abstract.cpp.is_abstract)
+
+    def test_parse_headers_materialize_abstract_class_template_declarations(self) -> None:
+        source = """
+            namespace demo {
+
+            template <class T>
+            struct AbstractBox {
+                virtual void run(T value) = 0;
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        abstract_template = namespace.declarations.class_templates[0]
+
+        self.assertEqual(abstract_template.name, "AbstractBox")
+        self.assertTrue(abstract_template.declaration.cpp.is_abstract)
+
     def test_parse_headers_materializes_unions_via_the_class_path(self) -> None:
         source = """
             namespace demo {

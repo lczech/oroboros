@@ -174,6 +174,42 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         self.assertIsInstance(function_template.declaration.cpp.return_type, NamedCppType)
         self.assertEqual(function_template.declaration.cpp.return_type.name, "T")
 
+    def test_parse_headers_assigns_overload_indices_to_template_declarations(self) -> None:
+        source = """
+            namespace demo {
+
+            template <class T>
+            T make_value(T value);
+
+            template <class T>
+            T make_value(int value);
+
+            struct Widget {
+                template <class T>
+                void convert(T value);
+
+                template <class T>
+                void convert(int value);
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        function_templates = namespace.declarations.function_templates
+        method_templates = namespace.declarations.classes[0].declarations.method_templates
+
+        self.assertEqual(
+            [template.declaration.cpp.overload_index for template in function_templates],
+            [0, 1],
+        )
+        self.assertEqual(
+            [template.declaration.cpp.overload_index for template in method_templates],
+            [0, 1],
+        )
+
     def test_parse_headers_populates_template_parameter_defaults_across_template_kinds(self) -> None:
         source = """
             namespace demo {
@@ -234,6 +270,8 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         self.assertEqual(function_type_parameter.default.type.kind, "int")
         self.assertIsInstance(function_non_type_parameter.default, CppNonTypeTemplateArgument)
         self.assertEqual(function_non_type_parameter.default.value, "4")
+        self.assertIsInstance(function_non_type_parameter.default.type, BuiltinCppType)
+        self.assertEqual(function_non_type_parameter.default.type.kind, "int")
 
         method_type_parameter = method_template.declaration.cpp.template_parameters[0]
         method_allocator_parameter = method_template.declaration.cpp.template_parameters[1]
@@ -386,6 +424,149 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         self.assertEqual(observed_instances[0].arguments[0].type.kind, "int")
         self.assertIsInstance(observed_instances[0].arguments[1], CppNonTypeTemplateArgument)
         self.assertEqual(observed_instances[0].arguments[1].value, "4")
+
+    def test_parse_headers_coerce_dependent_non_type_observed_arguments(self) -> None:
+        source = """
+            namespace demo {
+
+            template <bool is_const = true>
+            struct Box {
+                using self_type = Box<is_const>;
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        box_template = result.module.declarations.namespaces[0].declarations.class_templates[0]
+        observed_instances = box_template.declaration.cpp.observed_instances
+
+        self.assertEqual(len(observed_instances), 1)
+        self.assertEqual(len(observed_instances[0].arguments), 1)
+        self.assertIsInstance(observed_instances[0].arguments[0], CppNonTypeTemplateArgument)
+        self.assertEqual(observed_instances[0].arguments[0].value, "is_const")
+        self.assertIsInstance(observed_instances[0].arguments[0].type, BuiltinCppType)
+        self.assertEqual(observed_instances[0].arguments[0].type.kind, "bool")
+
+    def test_parse_headers_coerce_dependent_non_type_observed_arguments_in_mixed_templates(self) -> None:
+        source = """
+            namespace demo {
+
+            template <class T, bool is_const = true>
+            struct Box {
+                using self_type = Box<T, is_const>;
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        box_template = result.module.declarations.namespaces[0].declarations.class_templates[0]
+        observed_instances = box_template.declaration.cpp.observed_instances
+
+        self.assertEqual(len(observed_instances), 1)
+        self.assertEqual(len(observed_instances[0].arguments), 2)
+        self.assertIsInstance(observed_instances[0].arguments[0], CppTypeTemplateArgument)
+        self.assertIsInstance(observed_instances[0].arguments[0].type, NamedCppType)
+        self.assertEqual(observed_instances[0].arguments[0].type.name, "T")
+        self.assertIsInstance(observed_instances[0].arguments[1], CppNonTypeTemplateArgument)
+        self.assertEqual(observed_instances[0].arguments[1].value, "is_const")
+        self.assertIsInstance(observed_instances[0].arguments[1].type, BuiltinCppType)
+        self.assertEqual(observed_instances[0].arguments[1].type.kind, "bool")
+
+    def test_parse_headers_coerce_dependent_non_type_expression_observed_arguments(self) -> None:
+        source = """
+            namespace demo {
+
+            template <int N>
+            struct Box {
+                using next_type = Box<N + 1>;
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        box_template = result.module.declarations.namespaces[0].declarations.class_templates[0]
+        observed_instances = box_template.declaration.cpp.observed_instances
+
+        self.assertEqual(len(observed_instances), 1)
+        self.assertEqual(len(observed_instances[0].arguments), 1)
+        self.assertIsInstance(observed_instances[0].arguments[0], CppNonTypeTemplateArgument)
+        self.assertEqual(observed_instances[0].arguments[0].value, "N + 1")
+        self.assertIsInstance(observed_instances[0].arguments[0].type, BuiltinCppType)
+        self.assertEqual(observed_instances[0].arguments[0].type.kind, "int")
+
+    def test_parse_headers_coerce_scoped_non_type_observed_arguments(self) -> None:
+        source = """
+            namespace demo {
+
+            enum class Flag { off, on };
+
+            template <Flag flag>
+            struct Box {
+                using self_type = Box<flag>;
+                using on_type = Box<Flag::on>;
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        box_template = result.module.declarations.namespaces[0].declarations.class_templates[0]
+        observed_instances = box_template.declaration.cpp.observed_instances
+
+        self.assertEqual(len(observed_instances), 2)
+        self.assertEqual(
+            [argument.value for argument in (instance.arguments[0] for instance in observed_instances)],
+            ["flag", "Flag::on"],
+        )
+        self.assertTrue(
+            all(isinstance(instance.arguments[0], CppNonTypeTemplateArgument) for instance in observed_instances)
+        )
+        self.assertTrue(
+            all(
+                isinstance(instance.arguments[0].type, NamedCppType)
+                and instance.arguments[0].type.name == "Flag"
+                for instance in observed_instances
+            )
+        )
+
+    def test_parse_headers_coerce_dependent_non_type_observed_arguments_for_alias_templates(self) -> None:
+        source = """
+            namespace demo {
+
+            template <int N>
+            struct Box {
+                int value {};
+            };
+
+            template <int N>
+            using Alias = Box<N>;
+
+            template <int N>
+            struct Holder {
+                using alias_type = Alias<N>;
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        alias_template = result.module.declarations.namespaces[0].declarations.alias_templates[0]
+        observed_instances = alias_template.declaration.cpp.observed_instances
+
+        self.assertEqual(len(observed_instances), 1)
+        self.assertEqual(len(observed_instances[0].arguments), 1)
+        self.assertIsInstance(observed_instances[0].arguments[0], CppNonTypeTemplateArgument)
+        self.assertEqual(observed_instances[0].arguments[0].value, "N")
+        self.assertIsInstance(observed_instances[0].arguments[0].type, BuiltinCppType)
+        self.assertEqual(observed_instances[0].arguments[0].type.kind, "int")
 
     def test_parse_headers_complete_observed_instances_with_defaulted_template_template_arguments(self) -> None:
         source = """

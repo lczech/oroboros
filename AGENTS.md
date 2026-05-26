@@ -127,6 +127,42 @@ Parameters expose `.cpp`, `.bind`, and `.py`, but not `.defaults`.
 - `.defaults.*` provides inherited descendant defaults through the declaration tree
 - effective settings resolve upward by scope until an explicit override is found
 
+Type-binding policy for parsed `CppType` values should stay separate from the
+types themselves. `CppType` remains structured parsed C++ data; binding
+representation and adaptation choices live in `.bind` configuration/defaults
+and later translation.
+
+For external, STL, and framework-provided types, Oroboros should support a
+layered policy system with both type-specificity and declaration-scope
+precedence:
+
+1. explicit site override
+   - parameter
+   - return value
+   - variable/property
+2. scoped defaults
+   - function/method
+   - class
+   - namespace
+   - module
+3. global exact-type policy
+   - concrete type such as `std::vector<int>`
+4. global template-family policy
+   - type pattern such as `std::vector<T>`
+5. global catch-all fallback policy
+   - configurable, not backend hard-coded
+
+This should allow one stable default for a type family, more specific defaults
+for particular instantiations, and explicit local overrides where a particular
+API wants a different Python-facing representation.
+
+Examples of representation-level policy include:
+
+- ordinary type-caster conversion
+- helper-bound container/class exposure
+- assumed externally prebound type
+- explicit adapter paths such as `ndarray`
+
 Activation/deactivation belongs to the binding layer:
 
 - headers decide what enters the model at all
@@ -186,6 +222,7 @@ The parser/model currently materializes:
 - base classes
 - source locations and provenance containers
 - visibility where clang exposes it
+- class-like abstract-record classification
 - callable flags:
   - `const`
   - method/function-template ref-qualifiers `&` / `&&`
@@ -209,6 +246,9 @@ The parser/model currently materializes:
 - use-site template-instantiated types carry structured template arguments
 - observed class template instances can be collected from declaration-surface type uses
 - template parameter defaults are parsed into structured template arguments
+- class-template partial specializations are intentionally not modeled for now:
+  they are not required for binding concrete selected instances, and would add
+  significant model/parser complexity beyond the current binding-focused scope
 - use-site template-template arguments are still limited
 - block-scope function-body observations remain intentionally out of scope
 
@@ -245,6 +285,11 @@ Highest-value remaining parser gaps:
 - fuller redeclaration enrichment where later declarations add useful facts
 - more structured template behavior if a concrete binding need justifies it
 
+Parsing is otherwise considered feature-complete enough for the current
+binding-focused scope. Remaining work is now mostly semantic enrichment or
+later-stage binding-model work rather than major missing clang declaration
+coverage.
+
 ## Later Work Beyond Parsing
 
 - effective settings resolution across `.bind` and `.defaults`
@@ -254,6 +299,12 @@ Highest-value remaining parser gaps:
 - stub generation
 - binding test scaffolding
 - richer backend policy for STL/container handling, properties, iterators, and signatures
+- binding-model support for externally provided or prebound types
+- richer enum policy such as flag/arithmetic behavior
+- richer class policy such as dynamic attributes, final/subclassability, and
+  trampoline/publicist generation controls
+- buffer / ndarray / C-array adaptation policy for C-style APIs
+- richer ownership, pickle, copy/deepcopy, and container/iterator policies
 
 ## Naming Conventions
 

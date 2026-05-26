@@ -90,6 +90,7 @@ def process_class_cursor(
     existing = lookup_registered_element(cursor, context, CppClass)
     if existing is not None:
         merge_common_cpp_fields(existing, candidate_cpp, context, cursor)
+        merge_cpp_bool_enrichment(existing, "is_abstract", candidate_cpp.is_abstract)
         merge_cpp_scalar(existing, "kind", candidate_cpp.kind, context, cursor)
         merge_cpp_scalar(existing, "visibility", candidate_cpp.visibility, context, cursor)
         merge_class_bases(existing, candidate_cpp.bases, context, cursor)
@@ -143,6 +144,7 @@ def process_constructor_cursor(
     constructor = CppConstructor(name=constructor_name, cpp=candidate_cpp)
     attached = attach_element(owner, "add_constructor", constructor)
     if attached is not None:
+        _refresh_constructor_overload_indices(owner)
         register_element_for_cursor(cursor, attached, context)
         _visit_children(cursor.get_children(), attached, context)
         apply_parameter_docs(attached)
@@ -220,6 +222,7 @@ def process_method_cursor(
     method = CppMethod(name=cursor.spelling, cpp=candidate_cpp)
     attached = attach_element(owner, "add_method", method)
     if attached is not None:
+        _refresh_method_overload_indices(owner)
         register_element_for_cursor(cursor, attached, context)
         _visit_children(cursor.get_children(), attached, context)
         apply_parameter_docs(attached)
@@ -271,8 +274,15 @@ def process_variable_cursor(
             cursor,
             values_equivalent=cpp_types_equivalent,
         )
+        merge_cpp_scalar(existing, "is_const", candidate_cpp.is_const, context, cursor)
         merge_cpp_scalar(existing, "visibility", candidate_cpp.visibility, context, cursor)
         merge_cpp_scalar(existing, "kind", candidate_cpp.kind, context, cursor)
+        merge_cpp_scalar(existing, "storage_class", candidate_cpp.storage_class, context, cursor)
+        merge_cpp_scalar(existing, "linkage", candidate_cpp.linkage, context, cursor)
+        merge_cpp_scalar(existing, "tls_kind", candidate_cpp.tls_kind, context, cursor)
+        merge_cpp_bool_enrichment(existing, "is_bitfield", candidate_cpp.is_bitfield)
+        merge_cpp_scalar(existing, "bitfield_width", candidate_cpp.bitfield_width, context, cursor)
+        merge_cpp_bool_enrichment(existing, "is_mutable", candidate_cpp.is_mutable)
         return
 
     variable = CppVariable(name=cursor.spelling, cpp=candidate_cpp)
@@ -299,6 +309,7 @@ def process_class_template_cursor(
         declaration = existing.declaration
         child_cursors = list(cursor.get_children())
         merge_common_cpp_fields(declaration, candidate_cpp, context, cursor)
+        merge_cpp_bool_enrichment(declaration, "is_abstract", candidate_cpp.is_abstract)
         merge_cpp_scalar(declaration, "kind", candidate_cpp.kind, context, cursor)
         merge_cpp_scalar(declaration, "visibility", candidate_cpp.visibility, context, cursor)
         merge_class_bases(declaration, candidate_cpp.bases, context, cursor)
@@ -343,6 +354,14 @@ def process_templated_constructor_cursor(
     if existing is not None:
         child_cursors = list(template_cursor.get_children())
         merge_common_cpp_fields(existing, candidate_cpp, context, template_cursor)
+        merge_cpp_scalar(existing, "special_member_kind", candidate_cpp.special_member_kind, context, template_cursor)
+        merge_cpp_scalar(
+            existing,
+            "is_converting_constructor",
+            candidate_cpp.is_converting_constructor,
+            context,
+            template_cursor,
+        )
         merge_template_parameters(
             existing.cpp.template_parameters,
             candidate_cpp.template_parameters,
@@ -371,6 +390,7 @@ def process_templated_constructor_cursor(
     )
     attached = attach_element(owner, "add_constructor", constructor)
     if attached is not None:
+        _refresh_constructor_overload_indices(owner)
         register_element_for_cursor(template_cursor, attached, context)
         _visit_children(template_cursor.get_children(), attached, context)
         apply_parameter_docs(attached)
@@ -417,6 +437,7 @@ def process_function_cursor(
     function = CppFunction(name=cursor.spelling, cpp=candidate_cpp)
     attached = attach_element(owner, "add_function", function)
     if attached is not None:
+        _refresh_function_overload_indices(owner)
         register_element_for_cursor(cursor, attached, context)
         _visit_children(cursor.get_children(), attached, context)
         apply_parameter_docs(attached)
@@ -542,6 +563,7 @@ def process_function_template_cursor(
     )
     attached = attach_element(owner, "add_function_template", template)
     if attached is not None:
+        _refresh_function_template_overload_indices(owner)
         register_element_for_cursor(cursor, attached, context)
         visit_non_template_parameter_children(
             child_cursors,
@@ -573,6 +595,7 @@ def process_method_template_cursor(
             values_equivalent=cpp_types_equivalent,
         )
         merge_cpp_scalar(declaration, "operator", candidate_cpp.operator, context, cursor)
+        merge_cpp_scalar(declaration, "special_member_kind", candidate_cpp.special_member_kind, context, cursor)
         merge_cpp_scalar(declaration, "is_noexcept", candidate_cpp.is_noexcept, context, cursor)
         merge_cpp_bool_enrichment(declaration, "is_deleted", candidate_cpp.is_deleted)
         merge_cpp_scalar(declaration, "is_const", candidate_cpp.is_const, context, cursor)
@@ -580,6 +603,7 @@ def process_method_template_cursor(
         merge_cpp_scalar(declaration, "is_static", candidate_cpp.is_static, context, cursor)
         merge_cpp_scalar(declaration, "is_virtual", candidate_cpp.is_virtual, context, cursor)
         merge_cpp_scalar(declaration, "is_pure_virtual", candidate_cpp.is_pure_virtual, context, cursor)
+        merge_cpp_bool_enrichment(declaration, "is_defaulted", candidate_cpp.is_defaulted)
         merge_cpp_scalar(declaration, "visibility", candidate_cpp.visibility, context, cursor)
         merge_template_parameters(
             declaration.cpp.template_parameters,
@@ -606,6 +630,7 @@ def process_method_template_cursor(
     )
     attached = attach_element(owner, "add_method_template", template)
     if attached is not None:
+        _refresh_method_template_overload_indices(owner)
         register_element_for_cursor(cursor, attached, context)
         visit_non_template_parameter_children(
             child_cursors,
@@ -734,6 +759,11 @@ def process_alias_template_cursor(
 # ==================================================================================================
 
 
+# ------------------------------------------------------------------------------
+#     Visitors
+# ------------------------------------------------------------------------------
+
+
 def visit_non_template_parameter_children(
     child_cursors: Iterable[Any],
     owner: CppElement,
@@ -769,6 +799,11 @@ def _visit_cursor(
     from .clang_walk import visit_cursor
 
     visit_cursor(child_cursor, owner, context)
+
+
+# ------------------------------------------------------------------------------
+#     Naming
+# ------------------------------------------------------------------------------
 
 
 def _constructor_name_for_owner(
@@ -808,6 +843,11 @@ def _variable_attach_method_name(owner: CppElement) -> str | None:
         return "add_variable"
 
     return None
+
+
+# ------------------------------------------------------------------------------
+#     Miscellaneous
+# ------------------------------------------------------------------------------
 
 
 def _looks_like_templated_constructor(
@@ -902,3 +942,82 @@ def _strip_trailing_template_arguments(name: str) -> str:
                 return name[:index]
 
     return name
+
+
+# ------------------------------------------------------------------------------
+#     Overload Index Ordering
+# ------------------------------------------------------------------------------
+
+
+def _refresh_function_overload_indices(owner: CppElement) -> None:
+    """Assign stable overload indices across one free-function sibling collection."""
+
+    declarations = getattr(owner, "declarations", None)
+    functions = getattr(declarations, "functions", None)
+    if functions is not None:
+        _assign_overload_indices(functions)
+
+
+def _refresh_method_overload_indices(owner: CppElement) -> None:
+    """Assign stable overload indices across one method sibling collection."""
+
+    declarations = getattr(owner, "declarations", None)
+    methods = getattr(declarations, "methods", None)
+    if methods is not None:
+        _assign_overload_indices(methods)
+
+
+def _refresh_constructor_overload_indices(owner: CppElement) -> None:
+    """Assign stable overload indices across one constructor sibling collection."""
+
+    declarations = getattr(owner, "declarations", None)
+    constructors = getattr(declarations, "constructors", None)
+    if constructors is not None:
+        _assign_overload_indices(constructors)
+
+
+def _refresh_function_template_overload_indices(owner: CppElement) -> None:
+    """Assign stable overload indices across one function-template sibling collection."""
+
+    declarations = getattr(owner, "declarations", None)
+    templates = getattr(declarations, "function_templates", None)
+    if templates is not None:
+        _assign_overload_indices(
+            templates,
+            declaration_getter=lambda template: getattr(template, "declaration", None),
+        )
+
+
+def _refresh_method_template_overload_indices(owner: CppElement) -> None:
+    """Assign stable overload indices across one method-template sibling collection."""
+
+    declarations = getattr(owner, "declarations", None)
+    templates = getattr(declarations, "method_templates", None)
+    if templates is not None:
+        _assign_overload_indices(
+            templates,
+            declaration_getter=lambda template: getattr(template, "declaration", None),
+        )
+
+
+def _assign_overload_indices(
+    elements: Iterable[Any],
+    *,
+    declaration_getter: Any | None = None,
+) -> None:
+    """Assign same-name overload indices in declaration order for one collection."""
+
+    next_index_by_name: dict[str, int] = {}
+    for element in elements:
+        target = declaration_getter(element) if declaration_getter is not None else element
+        if target is None:
+            continue
+
+        cpp = getattr(target, "cpp", None)
+        name = getattr(target, "name", "")
+        if cpp is None or not hasattr(cpp, "overload_index") or not name:
+            continue
+
+        overload_index = next_index_by_name.get(name, 0)
+        cpp.overload_index = overload_index
+        next_index_by_name[name] = overload_index + 1

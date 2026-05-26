@@ -324,7 +324,9 @@ def _single_template_argument_key(argument: CppTemplateArgument) -> tuple[object
         return ("type", cpp_type_key(argument.type))
 
     if isinstance(argument, CppNonTypeTemplateArgument):
-        return ("non_type", cpp_type_key(argument.type), argument.value)
+        # Treat non-type arguments with the same value spelling as the same observed
+        # specialization even when only one path carried optional semantic type data.
+        return ("non_type", argument.value)
 
     if isinstance(argument, CppTemplateTemplateArgument):
         return (

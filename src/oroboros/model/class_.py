@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field as dataclass_field
 from typing import TYPE_CHECKING, Literal
 
+from .availability import CppAvailability
 from .comment import CppDoc, PyDoc
 from .element import CppElement
 from .lookup import make_named_child_view
@@ -55,6 +56,8 @@ class CppClassCppFacet:
     location: CppLocationInfo = dataclass_field(default_factory=CppLocationInfo)
     comment: str | None = None
     doc: CppDoc | None = None
+    availability: CppAvailability | None = None
+    is_abstract: bool = False
     kind: Literal["class", "struct", "union"] = "class"
     visibility: CppVisibility | None = None
     bases: list[CppClassBase] = dataclass_field(default_factory=list)

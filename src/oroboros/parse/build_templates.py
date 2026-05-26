@@ -64,7 +64,10 @@ def build_template_parameter(
     if getattr(cursor, "kind", None) == CursorKind.TEMPLATE_NON_TYPE_PARAMETER:
         return CppNonTypeTemplateParameter(
             name=cursor.spelling,
-            default=_build_non_type_template_parameter_default_argument(cursor),
+            default=_build_non_type_template_parameter_default_argument(
+                cursor,
+                context=context,
+            ),
             type=build_cpp_type(
                 getattr(cursor, "type", None),
                 context=context,
@@ -108,6 +111,8 @@ def _build_type_template_parameter_default_argument(
 
 def _build_non_type_template_parameter_default_argument(
     cursor: Any,
+    *,
+    context: BuildContext | None = None,
 ) -> CppNonTypeTemplateArgument | None:
     """Return one structured default value argument from a non-type template-parameter cursor."""
 
@@ -115,7 +120,13 @@ def _build_non_type_template_parameter_default_argument(
     if default_spelling is None:
         return None
 
-    return CppNonTypeTemplateArgument(value=default_spelling)
+    return CppNonTypeTemplateArgument(
+        value=default_spelling,
+        type=build_cpp_type(
+            getattr(cursor, "type", None),
+            context=context,
+        ),
+    )
 
 
 def _build_template_template_parameter_default_argument(

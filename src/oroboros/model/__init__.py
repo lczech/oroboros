@@ -1,5 +1,6 @@
 """Semantic model package for Oroboros."""
 
+from .availability import CppAvailability
 from .alias import CppAlias, CppAliasBindFacet, CppAliasCppFacet, CppAliasPyFacet, find_aliases
 from .class_ import (
     CppClass,
@@ -138,6 +139,7 @@ from .visibility import CppVisibility
 from .variable import CppVariable, CppVariableBindFacet, CppVariableCppFacet, CppVariablePyFacet
 
 __all__ = [
+    "CppAvailability",
     "CppAlias",
     "CppAliasBindFacet",
     "CppAliasCppFacet",

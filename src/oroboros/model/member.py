@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
+from .availability import CppAvailability
 from .comment import CppDoc, PyDoc
 from .element import CppElement
 from .function import CppFunctionBindFacet, CppFunctionCppFacet, CppFunctionPyFacet, CppParameter
@@ -60,6 +61,7 @@ class CppConstructorCppFacet:
     location: CppLocationInfo = field(default_factory=CppLocationInfo)
     comment: str | None = None
     doc: CppDoc | None = None
+    availability: CppAvailability | None = None
     overload_index: int | None = None
     template_parameters: list["CppTemplateParameter"] = field(default_factory=list)
     is_explicit: bool = False
@@ -97,6 +99,7 @@ class CppDestructorCppFacet:
     location: CppLocationInfo = field(default_factory=CppLocationInfo)
     comment: str | None = None
     doc: CppDoc | None = None
+    availability: CppAvailability | None = None
     is_virtual: bool = False
     is_pure_virtual: bool = False
     is_deleted: bool = False

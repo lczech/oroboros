@@ -12,6 +12,7 @@ from ..model import (
     ArrayCppType,
     BuiltinCppType,
     CppNonTypeTemplateArgument,
+    CppNonTypeTemplateParameter,
     CppObservedTemplateInstance,
     CppTemplateTemplateArgument,
     CppTemplateTemplateParameter,
@@ -968,6 +969,17 @@ def _coerce_observed_template_argument_to_parameter_kind(
     parameter: Any,
 ) -> CppTemplateArgument:
     """Coerce one parsed observed argument into the declared parameter kind when safe."""
+
+    if (
+        isinstance(parameter, CppNonTypeTemplateParameter)
+        and isinstance(argument, CppTypeTemplateArgument)
+        and isinstance(argument.type, NamedCppType)
+        and bool(argument.type.name)
+    ):
+        return CppNonTypeTemplateArgument(
+            value=argument.type.name,
+            type=deepcopy(parameter.type),
+        )
 
     if (
         isinstance(parameter, CppTemplateTemplateParameter)

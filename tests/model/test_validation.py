@@ -167,6 +167,15 @@ class ModelValidationTest(unittest.TestCase):
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
 
+    def test_validate_semantics_rejects_invalid_cpp_availability_values(self) -> None:
+        function = CppFunction(name="old_api")
+        function.cpp.availability = "sunset-soon"
+        namespace = make_namespace(name="demo", functions=[function])
+        module = make_module(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
     def test_validate_semantics_rejects_union_bases_and_virtual_methods(self) -> None:
         base = make_class(name="Base")
         union_ = make_class(name="Storage")

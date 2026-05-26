@@ -11,6 +11,36 @@ from tests.support.parse_helpers import parse_headers_from_sources as _parse_hea
 
 
 class ParseIntegrationCallableTest(unittest.TestCase):
+    def test_parse_headers_assigns_overload_indices_to_overloaded_callables(self) -> None:
+        source = """
+            namespace demo {
+
+            int measure();
+            int measure(int value);
+
+            struct Widget {
+                Widget();
+                Widget(int value);
+
+                void resize();
+                void resize(int amount);
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        functions = namespace.declarations.functions
+        widget = namespace.declarations.classes[0]
+        constructors = widget.declarations.constructors
+        methods = widget.declarations.methods
+
+        self.assertEqual([function.cpp.overload_index for function in functions], [0, 1])
+        self.assertEqual([constructor.cpp.overload_index for constructor in constructors], [0, 1])
+        self.assertEqual([method.cpp.overload_index for method in methods], [0, 1])
+
     def test_parse_headers_merges_redeclared_callable_parameters_by_position(self) -> None:
         source = """
             namespace demo {
@@ -674,6 +704,37 @@ class ParseIntegrationCallableTest(unittest.TestCase):
         self.assertEqual(len(function_template.declaration.parameters), 2)
         self.assertEqual(function_template.declaration.parameters[0].name, "left")
         self.assertEqual(function_template.declaration.parameters[1].name, "right")
+        self.assertEqual(result.skipped_kind_counts, {})
+
+    def test_parse_headers_materialize_hidden_friend_operator_inside_class_template(self) -> None:
+        source = """
+            namespace demo {
+
+            template <class T>
+            struct Box {
+                friend bool operator==(Box const& left, Box const& right) {
+                    return true;
+                }
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        class_template = namespace.declarations.class_templates[0]
+        function = next(
+            function
+            for function in namespace.declarations.functions
+            if function.name == "operator=="
+        )
+
+        self.assertEqual(class_template.declaration.declarations.methods, [])
+        self.assertEqual(function.qualified_name, "demo::operator==")
+        self.assertEqual(function.cpp.operator.kind, "symbolic")
+        self.assertEqual(function.cpp.operator.symbol, "==")
+        self.assertEqual(len(function.parameters), 2)
         self.assertEqual(result.skipped_kind_counts, {})
 
     def test_parse_headers_materialize_member_operator_templates_with_operator_metadata(self) -> None:

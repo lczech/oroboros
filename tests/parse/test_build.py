@@ -210,6 +210,93 @@ class ParseBuildTest(unittest.TestCase):
         self.assertTrue(methods[0].cpp.is_const)
         self.assertEqual(methods[1].cpp.ref_qualifier, "&&")
 
+    def test_build_module_from_clang_populates_method_template_defaulted_flag(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        translation_unit = SimpleNamespace(
+            cursor=_fake_cursor(
+                "TRANSLATION_UNIT",
+                "",
+                file=active_header,
+                children=[
+                    _fake_cursor(
+                        "NAMESPACE",
+                        "demo",
+                        file=active_header,
+                        children=[
+                            _fake_cursor(
+                                "CLASS_DECL",
+                                "Widget",
+                                file=active_header,
+                                children=[
+                                    _fake_cursor(
+                                        "FUNCTION_TEMPLATE",
+                                        "compare",
+                                        file=active_header,
+                                        result_type=_fake_type("BOOL", "bool"),
+                                        methods={"is_default_method": True},
+                                        children=[
+                                            _fake_cursor(
+                                                "TEMPLATE_TYPE_PARAMETER",
+                                                "T",
+                                                file=active_header,
+                                                tokens=["class", "T"],
+                                            )
+                                        ],
+                                    )
+                                ],
+                            )
+                        ],
+                    )
+                ],
+            )
+        )
+
+        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
+        method_template = (
+            build_result.module
+            .declarations.namespaces[0]
+            .declarations.classes[0]
+            .declarations.method_templates[0]
+        )
+
+        self.assertTrue(method_template.declaration.cpp.is_defaulted)
+
+    def test_build_module_from_clang_enriches_repeated_variable_cpp_fields(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        translation_unit = SimpleNamespace(
+            cursor=_fake_cursor(
+                "TRANSLATION_UNIT",
+                "",
+                file=active_header,
+                children=[
+                    _fake_cursor(
+                        "VAR_DECL",
+                        "counter",
+                        file=active_header,
+                        usr="c:@counter",
+                        type=_fake_type("INT", "int"),
+                    ),
+                    _fake_cursor(
+                        "VAR_DECL",
+                        "counter",
+                        file=active_header,
+                        usr="c:@counter",
+                        type=_fake_type("INT", "int"),
+                        storage_class="STATIC",
+                        linkage="INTERNAL",
+                        tls_kind="DYNAMIC",
+                    ),
+                ],
+            )
+        )
+
+        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
+        variable = build_result.module.declarations.variables[0]
+
+        self.assertEqual(variable.cpp.storage_class, "static")
+        self.assertEqual(variable.cpp.linkage, "internal")
+        self.assertEqual(variable.cpp.tls_kind, "dynamic")
+
     def test_build_module_from_clang_populates_types_bases_and_flags(self) -> None:
         active_header = Path("/tmp/project/demo.hpp")
         base_specifier = _fake_cursor(

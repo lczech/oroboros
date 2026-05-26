@@ -10,19 +10,17 @@ Actionable backlog only. Keep long-term design intent and invariants in
 - Activation-aware model behavior and filtered traversal of active bindable elements
 - Better `CppType` query helpers for policy/emitter decisions
 - Template instance selection/materialization ergonomics
+- Layered type-binding policy resolution for external/STL/framework types:
+  - exact site overrides for parameters/returns/variables
+  - scoped defaults from function/class/namespace/module
+  - global exact-type policies like `std::vector<int>`
+  - global template-family policies like `std::vector<T>`
+  - configurable global catch-all fallback policy
 
 ## Remaining Parser Work
 
 ### Areas that still need refinement
 
-- Dispatch/coverage follow-ups from a `clang_walk.py` audit:
-  - Inline namespaces are modeled but not fully populated:
-    `CppNamespaceCppFacet.is_inline` exists, but the parser does not currently fill it from clang
-  - `CLASS_TEMPLATE_PARTIAL_SPECIALIZATION` is still skipped
-  - `USING_DECLARATION` is still skipped:
-    may matter if scope-local re-export/aliasing should appear in the semantic API surface
-  - `NAMESPACE_ALIAS` and `USING_DIRECTIVE` remain unmodeled:
-    lower priority, but worth revisiting if namespace-surface fidelity becomes important
 - C-API / `extern "C"` maturity follow-ups:
   - C-style function-pointer-heavy signatures and callback patterns need more real-world coverage
   - C-oriented ownership/lifetime conventions are still largely policy-layer work rather than parsed facts
@@ -42,6 +40,15 @@ Actionable backlog only. Keep long-term design intent and invariants in
 - Richer hook model than plain `list[str]`
 - Real property model for variables
 - Iterator exposure policy
+- External/prebound-type policy so parsed APIs can refer to types whose
+  bindings/casters come from nanobind helpers, STL binders, or user code
+- Container/STL binding policy separate from raw parsed `CppType` structure
+- Policy matching/query layer for type patterns and exact concrete types
+- Role-specific type policy where needed:
+  - argument/input representation
+  - return representation
+  - field/property representation
+- Buffer / ndarray / C-array adaptation policy for C-style pointer-and-size APIs
 - More precise callable/argument policy:
   - keyword-only / positional-only
   - `noconvert`
@@ -51,7 +58,12 @@ Actionable backlog only. Keep long-term design intent and invariants in
 - Implicit conversion policy
 - Custom constructor / init emission choices
 - Namespace/module policy
-- Richer enum export/flag behavior
+- Richer enum export/flag/arithmetic behavior
+- Richer class policy:
+  - dynamic attributes
+  - final / subclassability controls
+  - trampoline/publicist generation controls
+- Pickle / copy / deepcopy policy
 - Custom wrappers/adaptors for awkward C++ APIs
 
 ## Translation Work
@@ -120,8 +132,6 @@ Actionable backlog only. Keep long-term design intent and invariants in
 ## Missing or thin parsed facts
 
 - Additional clang-exposed facts that may become binding-relevant:
-  - declaration availability / deprecation from attributes
-  - abstract-record classification
   - function `inline` status if later policy or diagnostics need it
 - Richer exception specifications beyond `is_noexcept`
 - Additional method qualifiers such as `volatile`, if a real binding need appears
