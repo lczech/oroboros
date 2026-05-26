@@ -57,5 +57,9 @@ class ParserConfig:
 
     # How to resolve conflicting comment text across repeated declarations.
     comment_conflict_policy: Literal["structured", "longer", "first", "last", "append"] = "structured"
+    # Whether to also warn for ignored explicit class-template specializations under `std`,
+    # such as `std::hash` specializations, which are often irrelevant for bindings.
+    # Non-`std` specializations always warn because their specialization bodies may matter.
+    warn_std_explicit_class_template_specializations: bool = False
     # Whether to validate the resulting semantic model before returning it.
     validate_model: bool = True

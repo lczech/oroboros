@@ -245,6 +245,9 @@ The parser/model currently materializes:
 - selected instances are lightweight binding targets, not copied specialized trees
 - use-site template-instantiated types carry structured template arguments
 - observed class template instances can be collected from declaration-surface type uses
+- explicit class-template specializations are not modeled as standalone specialized
+  declaration trees yet; when the primary template family is materialized they
+  currently contribute observed concrete arguments, otherwise they are ignored
 - template parameter defaults are parsed into structured template arguments
 - class-template partial specializations are intentionally not modeled for now:
   they are not required for binding concrete selected instances, and would add

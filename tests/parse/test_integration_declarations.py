@@ -249,6 +249,68 @@ class ParseIntegrationDeclarationTest(unittest.TestCase):
         self.assertEqual(old_gnu.cpp.availability, "deprecated")
         self.assertEqual(fresh_type.cpp.availability, "available")
 
+    def test_parse_headers_ignore_external_template_explicit_specializations_without_duplicate_classes(self) -> None:
+        source = """
+            #include <functional>
+
+            namespace demo {
+            struct Value {};
+            }
+
+            namespace std {
+            template <>
+            struct hash<demo::Value> {
+                std::size_t operator()(demo::Value const&) const { return 0; }
+            };
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        demo_namespace = result.module.declarations.namespaces[0]
+        std_namespace = result.module.declarations.namespaces[1]
+
+        self.assertEqual(demo_namespace.name, "demo")
+        self.assertEqual(demo_namespace.declarations.classes[0].name, "Value")
+        self.assertEqual(std_namespace.name, "std")
+        self.assertEqual(std_namespace.declarations.classes, [])
+        self.assertEqual(std_namespace.declarations.class_templates, [])
+        self.assertEqual(result.skipped_kind_counts, {})
+        self.assertFalse(
+            any("Explicit class-template specialization" in warning for warning in result.warnings),
+            msg=f"Did not expect std-specialization warning by default, got: {result.warnings}",
+        )
+
+    def test_parse_headers_optionally_warn_for_std_explicit_specializations(self) -> None:
+        source = """
+            #include <functional>
+
+            namespace demo {
+            struct Value {};
+            }
+
+            namespace std {
+            template <>
+            struct hash<demo::Value> {
+                std::size_t operator()(demo::Value const&) const { return 0; }
+            };
+            }
+        """
+
+        result = _parse_headers_from_sources(
+            {"demo.hpp": source},
+            parser_config=ParserConfig(
+                auto_detect_toolchain=False,
+                cxx_standard="c++20",
+                warn_std_explicit_class_template_specializations=True,
+            ),
+        )
+
+        self.assertTrue(
+            any("Explicit class-template specialization" in warning for warning in result.warnings),
+            msg=f"Expected configurable std-specialization warning, got: {result.warnings}",
+        )
+
     def test_parse_headers_materialize_abstract_record_classification(self) -> None:
         source = """
             namespace demo {

@@ -137,4 +137,5 @@ Actionable backlog only. Keep long-term design intent and invariants in
 - Additional method qualifiers such as `volatile`, if a real binding need appears
 - `constexpr` / `consteval` metadata
 - More structured template specialization behavior if a real binding need justifies it
+  - including standalone modeling of explicit class-template specializations
 - Classification for currently unclassified operator forms such as user-defined literal operators, if a concrete binding need appears

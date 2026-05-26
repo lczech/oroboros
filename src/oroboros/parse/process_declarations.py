@@ -25,9 +25,13 @@ from ..model import (
     CppMethod,
     CppMethodTemplate,
     CppMethodTemplateDeclaration,
+    CppObservedTemplateInstance,
     CppParameter,
+    CppTemplateArgument,
     CppVariable,
 )
+from ..model.template_ import _template_argument_key
+from ..model.type import TemplateInstanceCppType
 from ..model.type import cpp_types_equivalent
 from .build_facets import (
     build_alias_cpp_facet,
@@ -46,17 +50,22 @@ from .build_facets import (
     build_parameter_cpp_facet,
 )
 from .build_templates import build_template_parameters
+from .cursor_data import cursor_source_location
 from .merge_declarations import (
+    describe_cursor_entity,
+    format_cursor_location,
     merge_callable_parameter_children,
     merge_class_bases,
     merge_cpp_bool_enrichment,
     merge_common_cpp_fields,
     merge_cpp_scalar,
     merge_template_parameters,
+    record_semantic_warning,
     warn_unexpected_repeated_declaration,
 )
 from .cursor_data import cursor_usr
 from .element_registry import attach_element, lookup_registered_element, register_element_for_cursor
+from .types import build_cpp_type
 
 if TYPE_CHECKING:
     from .build_model import BuildContext
@@ -85,6 +94,9 @@ def process_class_cursor(
     context: BuildContext,
 ) -> None:
     """Create or enrich one class declaration and recurse into its children."""
+
+    if _handle_explicit_class_template_specialization(cursor, owner, context):
+        return
 
     candidate_cpp = build_class_cpp_facet(cursor, context=context)
     existing = lookup_registered_element(cursor, context, CppClass)
@@ -843,6 +855,149 @@ def _variable_attach_method_name(owner: CppElement) -> str | None:
         return "add_variable"
 
     return None
+
+
+# ------------------------------------------------------------------------------
+#     Explicit Class Template Specialization
+# ------------------------------------------------------------------------------
+
+
+def _handle_explicit_class_template_specialization(
+    cursor: Any,
+    owner: CppElement,
+    context: BuildContext,
+) -> bool:
+    """Fold one explicit class-template specialization into the template-family path."""
+
+    specialization_type = _explicit_class_template_specialization_type(cursor, context)
+    if specialization_type is None:
+        return False
+
+    template_family = _find_class_template_family_for_specialization(owner, cursor.spelling)
+    if template_family is not None:
+        _record_observed_class_template_specialization(
+            template_family,
+            specialization_type.arguments,
+            cursor,
+        )
+
+    if _should_warn_about_explicit_class_template_specialization(owner, context):
+        _warn_explicit_class_template_specialization(cursor, template_family, context)
+
+    # The current model does not represent explicit class specializations as
+    # full declaration trees. Keep their concrete arguments when we can, and
+    # otherwise ignore the specialization instead of materializing a duplicate
+    # plain class node.
+    return True
+
+
+def _explicit_class_template_specialization_type(
+    cursor: Any,
+    context: BuildContext,
+) -> TemplateInstanceCppType | None:
+    """Return the structured specialized type for one explicit specialization cursor."""
+
+    cursor_type = getattr(cursor, "type", None)
+    if cursor_type is None:
+        return None
+
+    cpp_type = build_cpp_type(
+        cursor_type,
+        context=context,
+        source_cursor=cursor,
+    )
+    if not isinstance(cpp_type, TemplateInstanceCppType):
+        return None
+
+    if cpp_type.template_name.split("::")[-1] != cursor.spelling:
+        return None
+    return cpp_type
+
+
+def _find_class_template_family_for_specialization(
+    owner: CppElement,
+    template_name: str,
+) -> CppClassTemplate | None:
+    """Return the already materialized class-template family for one specialization."""
+
+    declarations = getattr(owner, "declarations", None)
+    class_templates = getattr(declarations, "class_templates", None)
+    if class_templates is None:
+        return None
+
+    for template in class_templates:
+        if template.name == template_name:
+            return template
+    return None
+
+
+def _record_observed_class_template_specialization(
+    template: CppClassTemplate,
+    arguments: list[CppTemplateArgument],
+    cursor: Any,
+) -> None:
+    """Record one explicit specialization as an observed template instance."""
+
+    observed_instances = template.declaration.cpp.observed_instances
+    argument_key = _template_argument_key(arguments)
+    observation_location = cursor_source_location(cursor)
+
+    for observed_instance in observed_instances:
+        if _template_argument_key(observed_instance.arguments) != argument_key:
+            continue
+        if observation_location is not None and observation_location not in observed_instance.locations:
+            observed_instance.locations.append(observation_location)
+        return
+
+    observed_instances.append(
+        CppObservedTemplateInstance(
+            arguments=list(arguments),
+            locations=[] if observation_location is None else [observation_location],
+        )
+    )
+
+
+def _should_warn_about_explicit_class_template_specialization(
+    owner: CppElement,
+    context: BuildContext,
+) -> bool:
+    """Return whether one ignored explicit specialization should produce a warning."""
+
+    if _owner_is_std_namespace(owner):
+        return context.config.warn_std_explicit_class_template_specializations
+    return True
+
+
+def _owner_is_std_namespace(owner: CppElement) -> bool:
+    """Return whether the current owning scope is the standard namespace."""
+
+    return getattr(owner, "qualified_name", "") == "std"
+
+
+def _warn_explicit_class_template_specialization(
+    cursor: Any,
+    template_family: CppClassTemplate | None,
+    context: BuildContext,
+) -> None:
+    """Emit one actionable warning about unsupported explicit specialization bodies."""
+
+    if template_family is None:
+        family_hint = (
+            "The primary template is not active in the current parsed model, so this "
+            "specialization is ignored entirely."
+        )
+    else:
+        family_hint = (
+            f"The primary template family '{template_family.qualified_name}' is active, "
+            "so its concrete arguments may still be observed."
+        )
+
+    record_semantic_warning(
+        context,
+        f"Explicit class-template specialization for {describe_cursor_entity(cursor)} at "
+        f"{format_cursor_location(cursor)} is not modeled as its own specialized declaration tree yet. "
+        f"{family_hint} We do currently not yet fully support binding this specialization as its own API surface.",
+    )
 
 
 # ------------------------------------------------------------------------------

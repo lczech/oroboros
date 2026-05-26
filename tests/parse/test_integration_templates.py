@@ -174,6 +174,44 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         self.assertIsInstance(function_template.declaration.cpp.return_type, NamedCppType)
         self.assertEqual(function_template.declaration.cpp.return_type.name, "T")
 
+    def test_parse_headers_fold_explicit_class_template_specializations_into_observed_instances(self) -> None:
+        source = """
+            namespace demo {
+
+            template <class T>
+            struct Box {
+                T value {};
+            };
+
+            template <>
+            struct Box<int> {
+                int value {};
+                int doubled() const { return value * 2; }
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+
+        self.assertEqual(namespace.declarations.classes, [])
+        self.assertEqual(len(namespace.declarations.class_templates), 1)
+
+        box_template = namespace.declarations.class_templates[0]
+        observed_instances = box_template.declaration.cpp.observed_instances
+
+        self.assertEqual(len(observed_instances), 1)
+        self.assertEqual(len(observed_instances[0].locations), 1)
+        self.assertIsInstance(observed_instances[0].arguments[0], CppTypeTemplateArgument)
+        self.assertIsInstance(observed_instances[0].arguments[0].type, BuiltinCppType)
+        self.assertEqual(observed_instances[0].arguments[0].type.kind, "int")
+        self.assertTrue(
+            any("Explicit class-template specialization" in warning for warning in result.warnings),
+            msg=f"Expected explicit-specialization warning, got: {result.warnings}",
+        )
+
     def test_parse_headers_assigns_overload_indices_to_template_declarations(self) -> None:
         source = """
             namespace demo {
