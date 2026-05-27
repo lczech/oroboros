@@ -2,8 +2,10 @@ from __future__ import annotations
 
 """Structured header records passed from discovery and selection into parsing."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+
+from ..diagnostics import DiagnosticReport
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +22,7 @@ class HeaderSelection:
     """Represent known project headers plus the currently active subset."""
 
     header_files: list[HeaderFile]
+    report: DiagnosticReport = field(default_factory=DiagnosticReport)
 
     @property
     def known_headers(self) -> list[HeaderFile]:

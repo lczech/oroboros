@@ -2,10 +2,12 @@ from __future__ import annotations
 
 """Merge and warning helpers for repeated clang declarations."""
 
+from pprint import pformat
 from typing import TYPE_CHECKING, Any, Callable, Iterable
 
 from clang.cindex import CursorKind
 
+from ..diagnostics import Diagnostic
 from ..model import CppElement
 from ..model.type import cpp_types_equivalent
 from .build_facets import build_parameter_cpp_facet
@@ -84,8 +86,17 @@ def merge_cpp_scalar(
 
     record_semantic_warning(
         context,
-        f"Conflicting parsed {field_name!r} for {describe_cursor_entity(cursor)} at "
-        f"{format_cursor_location(cursor)}; keeping the first value.",
+        f"Conflicting parsed {field_name!r} for {describe_cursor_entity(cursor)}; "
+        "keeping the first value.",
+        code="parse.merge.conflicting_scalar",
+        cursor=cursor,
+        detail=_build_value_conflict_detail(
+            current_value,
+            new_value,
+            existing_label=f"existing parsed {field_name}",
+            new_label=f"new parsed {field_name}",
+            selected_summary="selected: existing",
+        ),
     )
 
 
@@ -126,8 +137,17 @@ def merge_class_bases(
 
     record_semantic_warning(
         context,
-        f"Conflicting parsed 'bases' for {describe_cursor_entity(cursor)} at "
-        f"{format_cursor_location(cursor)}; keeping the first value.",
+        f"Conflicting parsed 'bases' for {describe_cursor_entity(cursor)}; "
+        "keeping the first value.",
+        code="parse.merge.conflicting_bases",
+        cursor=cursor,
+        detail=_build_value_conflict_detail(
+            element.cpp.bases,
+            new_bases,
+            existing_label="existing parsed bases",
+            new_label="new parsed bases",
+            selected_summary="selected: existing",
+        ),
     )
 
 
@@ -151,8 +171,17 @@ def merge_template_parameters(
 
     record_semantic_warning(
         context,
-        f"Conflicting parsed 'template_parameters' for {describe_cursor_entity(cursor)} at "
-        f"{format_cursor_location(cursor)}; keeping the first value.",
+        f"Conflicting parsed 'template_parameters' for {describe_cursor_entity(cursor)}; "
+        "keeping the first value.",
+        code="parse.merge.conflicting_template_parameters",
+        cursor=cursor,
+        detail=_build_value_conflict_detail(
+            existing_parameters,
+            new_parameters,
+            existing_label="existing parsed template_parameters",
+            new_label="new parsed template_parameters",
+            selected_summary="selected: existing",
+        ),
     )
 
 
@@ -250,12 +279,29 @@ def resolve_comment_conflict(
     if existing_comment == new_comment:
         return existing_comment
 
+    resolved_comment = _resolve_comment_conflict_value(existing_comment, new_comment, context=context)
     record_semantic_warning(
         context,
-        f"Conflicting parsed comments for {describe_cursor_entity(cursor)} at "
-        f"{format_cursor_location(cursor)}; resolved via "
+        f"Conflicting parsed comments for {describe_cursor_entity(cursor)}; resolved via "
         f"`comment_conflict_policy={context.config.comment_conflict_policy}`.",
+        code="parse.merge.conflicting_comments",
+        cursor=cursor,
+        detail=_build_comment_conflict_detail(
+            existing_comment,
+            new_comment,
+            selected_summary=_describe_comment_conflict_selection(existing_comment, new_comment, resolved_comment),
+        ),
     )
+    return resolved_comment
+
+
+def _resolve_comment_conflict_value(
+    existing_comment: str,
+    new_comment: str,
+    *,
+    context: BuildContext,
+) -> str:
+    """Return the resolved comment text for one repeated-declaration conflict."""
 
     if context.config.comment_conflict_policy == "first":
         return existing_comment
@@ -282,11 +328,95 @@ def append_distinct_comments(existing_comment: str, new_comment: str) -> str:
     return f"{existing_comment}\n\n{new_comment}"
 
 
-def record_semantic_warning(context: BuildContext, warning: str) -> None:
+def _build_comment_conflict_detail(
+    existing_comment: str,
+    new_comment: str,
+    *,
+    selected_summary: str,
+) -> str:
+    """Render one structured detail block for repeated-declaration comment conflicts."""
+
+    return "\n".join([
+        "existing parsed comment:",
+        existing_comment,
+        "",
+        "new parsed comment:",
+        new_comment,
+        "",
+        selected_summary,
+    ])
+
+
+def _build_value_conflict_detail(
+    existing_value: Any,
+    new_value: Any,
+    *,
+    existing_label: str,
+    new_label: str,
+    selected_summary: str | None = None,
+) -> str:
+    """Render one structured detail block for two conflicting parsed values."""
+
+    lines = [
+        f"{existing_label}:",
+        _render_detail_value(existing_value),
+        "",
+        f"{new_label}:",
+        _render_detail_value(new_value),
+    ]
+    if selected_summary is not None:
+        lines.extend([
+            "",
+            selected_summary,
+        ])
+    return "\n".join(lines)
+
+
+def _describe_comment_conflict_selection(existing_comment: str, new_comment: str, resolved_comment: str) -> str:
+    """Return one concise summary of which comment outcome was selected."""
+
+    if resolved_comment == existing_comment:
+        return "selected: existing"
+    if resolved_comment == new_comment:
+        return "selected: new"
+    return "selected: merged"
+
+
+def _render_detail_value(value: Any) -> str:
+    """Render one parsed value for stable multi-line diagnostic detail output."""
+
+    return pformat(value, sort_dicts=False, width=100)
+
+
+def record_semantic_warning(
+    context: BuildContext,
+    warning: str,
+    *,
+    code: str = "parse.warning",
+    cursor: Any | None = None,
+    locations: list[Any] | None = None,
+    model_path: str | None = None,
+    detail: str | None = None,
+) -> None:
     """Append one parser-level semantic warning if it is not already present."""
 
-    if warning not in context.semantic_warnings:
-        context.semantic_warnings.append(warning)
+    diagnostic_locations = list(locations or [])
+    if not diagnostic_locations and cursor is not None:
+        location = cursor_source_location(cursor)
+        if location is not None:
+            diagnostic_locations.append(location)
+
+    context.report.add(
+        Diagnostic(
+            severity="warning",
+            stage="parse",
+            code=code,
+            message=warning,
+            detail=detail,
+            locations=diagnostic_locations,
+            model_path=model_path,
+        )
+    )
 
 
 def warn_unexpected_repeated_declaration(
@@ -298,8 +428,10 @@ def warn_unexpected_repeated_declaration(
 
     record_semantic_warning(
         context,
-        f"Encountered repeated {declaration_kind} declaration for {describe_cursor_entity(cursor)} at "
-        f"{format_cursor_location(cursor)}; keeping the first declaration.",
+        f"Encountered repeated {declaration_kind} declaration for {describe_cursor_entity(cursor)}; "
+        "keeping the first declaration.",
+        code=f"parse.repeated_{declaration_kind}_declaration",
+        cursor=cursor,
     )
 
 
@@ -308,18 +440,3 @@ def describe_cursor_entity(cursor: Any) -> str:
 
     spelling = getattr(cursor, "spelling", None) or "<anonymous>"
     return f"{cursor_kind_name(cursor)} {spelling!r}"
-
-
-def format_cursor_location(cursor: Any) -> str:
-    """Render one short source-location string for warnings."""
-
-    location = cursor_source_location(cursor)
-    return format_source_location(location)
-
-
-def format_source_location(location: Any) -> str:
-    """Render one source-location object into a stable short string."""
-
-    if location is None:
-        return "<unknown location>"
-    return f"{location.file}:{location.line}:{location.column}"

@@ -8,11 +8,93 @@ from clang.cindex import CursorKind, TypeKind
 
 from oroboros.model import *
 from oroboros.parse import ParserConfig
-from oroboros.parse.build_model import build_module_from_clang
+from oroboros.parse.build_model import BuildContext, build_module_from_clang
+from oroboros.parse.merge_declarations import merge_class_bases, merge_cpp_scalar, merge_template_parameters
 from oroboros.parse.types import build_cpp_type
 
 
 class ParseBuildTest(unittest.TestCase):
+    def test_merge_cpp_scalar_reports_existing_and_new_values_in_detail(self) -> None:
+        context = BuildContext(
+            active_headers=set(),
+            known_project_headers=set(),
+            config=ParserConfig(),
+        )
+        function = CppFunction(name="make_widget")
+        function.cpp.availability = "available"
+        cursor = _fake_cursor("FUNCTION_DECL", "make_widget", file=Path("/tmp/project/demo.hpp"))
+
+        merge_cpp_scalar(function, "availability", "deprecated", context, cursor)
+
+        self.assertEqual(len(context.report.warnings), 1)
+        warning = context.report.warnings[0]
+        self.assertEqual(warning.code, "parse.merge.conflicting_scalar")
+        self.assertIsNotNone(warning.detail)
+        self.assertIn("existing parsed availability:", warning.detail)
+        self.assertIn("'available'", warning.detail)
+        self.assertIn("new parsed availability:", warning.detail)
+        self.assertIn("'deprecated'", warning.detail)
+        self.assertIn("selected: existing", warning.detail)
+
+    def test_merge_class_bases_reports_existing_and_new_values_in_detail(self) -> None:
+        context = BuildContext(
+            active_headers=set(),
+            known_project_headers=set(),
+            config=ParserConfig(),
+        )
+        class_ = CppClass(name="Widget")
+        class_.cpp.bases.append(
+            CppClassBase(
+                type=NamedCppType(name="BaseA"),
+                visibility=CppVisibility.PUBLIC,
+            )
+        )
+        cursor = _fake_cursor("CLASS_DECL", "Widget", file=Path("/tmp/project/demo.hpp"))
+
+        merge_class_bases(
+            class_,
+            [
+                CppClassBase(
+                    type=NamedCppType(name="BaseB"),
+                    visibility=CppVisibility.PUBLIC,
+                )
+            ],
+            context,
+            cursor,
+        )
+
+        self.assertEqual(len(context.report.warnings), 1)
+        warning = context.report.warnings[0]
+        self.assertEqual(warning.code, "parse.merge.conflicting_bases")
+        self.assertIsNotNone(warning.detail)
+        self.assertIn("existing parsed bases:", warning.detail)
+        self.assertIn("BaseA", warning.detail)
+        self.assertIn("new parsed bases:", warning.detail)
+        self.assertIn("BaseB", warning.detail)
+        self.assertIn("selected: existing", warning.detail)
+
+    def test_merge_template_parameters_reports_existing_and_new_values_in_detail(self) -> None:
+        context = BuildContext(
+            active_headers=set(),
+            known_project_headers=set(),
+            config=ParserConfig(),
+        )
+        cursor = _fake_cursor("FUNCTION_TEMPLATE", "make_widget", file=Path("/tmp/project/demo.hpp"))
+        existing_parameters = [CppTypeTemplateParameter(name="T")]
+        new_parameters = [CppTypeTemplateParameter(name="U")]
+
+        merge_template_parameters(existing_parameters, new_parameters, context, cursor)
+
+        self.assertEqual(len(context.report.warnings), 1)
+        warning = context.report.warnings[0]
+        self.assertEqual(warning.code, "parse.merge.conflicting_template_parameters")
+        self.assertIsNotNone(warning.detail)
+        self.assertIn("existing parsed template_parameters:", warning.detail)
+        self.assertIn("name='T'", warning.detail)
+        self.assertIn("new parsed template_parameters:", warning.detail)
+        self.assertIn("name='U'", warning.detail)
+        self.assertIn("selected: existing", warning.detail)
+
     def test_build_module_from_clang_materializes_basic_declarations(self) -> None:
         active_header = Path("/tmp/project/demo.hpp")
         translation_unit = SimpleNamespace(
@@ -60,7 +142,6 @@ class ParseBuildTest(unittest.TestCase):
         module = build_result.module
 
         self.assertEqual(module.cpp.header_files, [active_header.resolve()])
-        self.assertEqual(build_result.skipped_kind_counts, {})
         self.assertEqual([namespace.name for namespace in module.declarations.namespaces], ["demo"])
         self.assertIsInstance(module.declarations.namespaces[0].declarations.classes[0], CppClass)
         self.assertEqual(module.declarations.namespaces[0].declarations.classes[0].name, "Widget")
@@ -1072,13 +1153,13 @@ class ParseBuildTest(unittest.TestCase):
         self.assertEqual(len(widget.declarations.enums[0].enumerators), 1)
         self.assertEqual(widget.declarations.enums[0].enumerators[0].cpp.value_spelling, "1")
         self.assertTrue(
-            any("repeated alias declaration" in warning for warning in build_result.warnings)
+            any("repeated alias declaration" in warning.message for warning in build_result.report.warnings)
         )
         self.assertTrue(
-            any("repeated variable declaration" in warning for warning in build_result.warnings)
+            any("repeated variable declaration" in warning.message for warning in build_result.report.warnings)
         )
         self.assertTrue(
-            any("repeated enumerator declaration" in warning for warning in build_result.warnings)
+            any("repeated enumerator declaration" in warning.message for warning in build_result.report.warnings)
         )
 
     def test_build_module_from_clang_materializes_union_declarations(self) -> None:
@@ -1106,7 +1187,6 @@ class ParseBuildTest(unittest.TestCase):
         namespace = build_result.module.declarations.namespaces[0]
         union_ = namespace.declarations.classes[0]
 
-        self.assertEqual(build_result.skipped_kind_counts, {})
         self.assertEqual(len(namespace.declarations.classes), 1)
         self.assertEqual(union_.name, "Storage")
         self.assertEqual(union_.cpp.kind, "union")
@@ -1148,9 +1228,16 @@ class ParseBuildTest(unittest.TestCase):
             build_result.module.declarations.functions[0].cpp.doc.brief,
             "Create one widget from the current demo factory state.",
         )
-        self.assertTrue(
-            any("Conflicting parsed comments" in warning for warning in build_result.warnings)
-        )
+        conflict_warnings = [
+            warning
+            for warning in build_result.report.warnings
+            if "Conflicting parsed comments" in warning.message
+        ]
+        self.assertTrue(conflict_warnings)
+        self.assertIsNotNone(conflict_warnings[0].detail)
+        self.assertIn("existing parsed comment:", conflict_warnings[0].detail)
+        self.assertIn("new parsed comment:", conflict_warnings[0].detail)
+        self.assertIn("selected: new", conflict_warnings[0].detail)
 
     def test_build_module_from_clang_recomputes_structured_doc_after_comment_merge(self) -> None:
         active_header = Path("/tmp/project/demo.hpp")

@@ -4,89 +4,71 @@ from __future__ import annotations
 
 from collections import Counter
 import sys
-from typing import Iterable, TextIO
+from typing import TextIO
 
+from ..diagnostics import DiagnosticRenderOptions, format_report
+from ..diagnostics.color import should_use_color, style_muted, style_severity, style_title
 from ..model.inspect import format_tree, summarize_tree
-from .result import ParseResult, ParserDiagnostic
+from .result import ParseResult
 
 
-def format_diagnostics(diagnostics: Iterable[ParserDiagnostic]) -> str:
-    """Render parser diagnostics as readable lines."""
-
-    lines = [
-        _format_diagnostic(diagnostic)
-        for diagnostic in diagnostics
-    ]
-    if not lines:
-        return "Clang diagnostics: none"
-
-    return "\n".join(["Clang diagnostics:"] + [f"  {line}" for line in lines])
-
-
-def summarize_parse_result(parse_result: ParseResult) -> str:
+def summarize_parse_result(parse_result: ParseResult, *, color: bool = False) -> str:
     """Return a compact summary of one parse result."""
 
-    severity_counts = Counter(diagnostic.severity for diagnostic in parse_result.diagnostics)
-    skipped_total = sum(parse_result.skipped_kind_counts.values())
+    severity_counts = Counter(
+        diagnostic.severity for diagnostic in parse_result.report.diagnostics
+    )
 
     lines = [
-        "Parse summary:",
-        f"  input headers: {len(parse_result.headers)}",
-        f"  clang diagnostics: {len(parse_result.diagnostics)}",
-        f"  parser warnings: {len(parse_result.warnings)}",
-        f"  skipped unsupported entities: {skipped_total}",
-        f"  skipped cursor kinds: {len(parse_result.skipped_kind_counts)}",
+        style_title("Parse summary:", color=color),
+        f"  {style_muted('input headers:', color=color)} {len(parse_result.headers)}",
+        f"  {style_muted('reported diagnostics:', color=color)} {len(parse_result.report.diagnostics)}",
+        f"  {style_muted('clang diagnostics:', color=color)} {len(parse_result.report.by_stage('clang'))}",
+        f"  {style_muted('parser/header/validation diagnostics:', color=color)} {len(parse_result.report.diagnostics) - len(parse_result.report.by_stage('clang'))}",
     ]
 
     for severity in ("fatal", "error", "warning", "note"):
-        lines.append(f"  {severity}s: {severity_counts.get(severity, 0)}")
+        lines.append(
+            f"  {style_severity(f'{severity}s', severity, color=color)}: {severity_counts.get(severity, 0)}"
+        )
 
     model_summary_lines = summarize_tree(parse_result.module).splitlines()
-    lines.append("  model:")
+    lines.append(f"  {style_muted('model:', color=color)}")
     lines.extend(f"    {line.strip()}" for line in model_summary_lines[1:])
     return "\n".join(lines)
 
 
-def format_parse_result(parse_result: ParseResult) -> str:
-    """Render one parse result with headers, tree, diagnostics, and warnings."""
+def format_parse_result(parse_result: ParseResult, *, color: bool = False) -> str:
+    """Render one parse result with headers, tree, and diagnostics."""
 
-    header_lines = ["Parser input headers:"]
+    header_lines = [style_title("Parser input headers:", color=color)]
     if parse_result.headers:
         header_lines.extend(f"  {header}" for header in parse_result.headers)
     else:
-        header_lines.append("  <none>")
+        header_lines.append(f"  {style_muted('<none>', color=color)}")
 
     tree_text = format_tree(parse_result.module, indent=1)
-    tree_lines = ["Semantic tree:"]
+    tree_lines = [style_title("Semantic tree:", color=color)]
     if tree_text:
         tree_lines.extend(tree_text.splitlines())
     else:
-        tree_lines.append("  <empty>")
+        tree_lines.append(f"  {style_muted('<empty>', color=color)}")
 
-    diagnostic_text = format_diagnostics(parse_result.diagnostics)
-
-    warning_lines = ["Parser warnings:"]
-    if parse_result.warnings:
-        warning_lines.extend(f"  {warning}" for warning in parse_result.warnings)
-    else:
-        warning_lines.append("  none")
-
-    skipped_lines = ["Skipped unsupported cursor kinds:"]
-    if parse_result.skipped_kind_counts:
-        skipped_lines.extend(
-            f"  {kind_name}: {count}"
-            for kind_name, count in parse_result.skipped_kind_counts.items()
-        )
-    else:
-        skipped_lines.append("  none")
+    diagnostic_text = format_report(
+        parse_result.report,
+        options=DiagnosticRenderOptions(
+            include_stage=False,
+            include_code=True,
+            include_detail=True,
+            color=color,
+        ),
+    )
 
     return "\n\n".join([
-        summarize_parse_result(parse_result),
+        summarize_parse_result(parse_result, color=color),
         "\n".join(header_lines),
         "\n".join(tree_lines),
         diagnostic_text,
-        "\n".join(skipped_lines),
-        "\n".join(warning_lines),
     ])
 
 
@@ -94,32 +76,33 @@ def print_parse_result(
     parse_result: ParseResult,
     *,
     stream: TextIO | None = None,
+    color: bool | None = None,
 ) -> None:
     """Print one formatted parse result."""
 
     output_stream = stream if stream is not None else sys.stdout
-    print(format_parse_result(parse_result), file=output_stream)
+    print(
+        format_parse_result(
+            parse_result,
+            color=should_use_color(output_stream, color=color),
+        ),
+        file=output_stream,
+    )
 
 
 def print_parse_summary(
     parse_result: ParseResult,
     *,
     stream: TextIO | None = None,
+    color: bool | None = None,
 ) -> None:
     """Print one compact parse-result summary."""
 
     output_stream = stream if stream is not None else sys.stdout
-    print(summarize_parse_result(parse_result), file=output_stream)
-
-
-def _format_diagnostic(diagnostic: ParserDiagnostic) -> str:
-    """Format one parser diagnostic as a single readable line."""
-
-    if diagnostic.location is None:
-        location = "<unknown location>"
-    else:
-        location = (
-            f"{diagnostic.location.file}:{diagnostic.location.line}:"
-            f"{diagnostic.location.column}"
-        )
-    return f"[{diagnostic.severity}] {location}: {diagnostic.message}"
+    print(
+        summarize_parse_result(
+            parse_result,
+            color=should_use_color(output_stream, color=color),
+        ),
+        file=output_stream,
+    )

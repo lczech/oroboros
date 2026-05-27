@@ -53,7 +53,6 @@ from .build_templates import build_template_parameters
 from .cursor_data import cursor_source_location
 from .merge_declarations import (
     describe_cursor_entity,
-    format_cursor_location,
     merge_callable_parameter_children,
     merge_class_bases,
     merge_cpp_bool_enrichment,
@@ -994,9 +993,11 @@ def _warn_explicit_class_template_specialization(
 
     record_semantic_warning(
         context,
-        f"Explicit class-template specialization for {describe_cursor_entity(cursor)} at "
-        f"{format_cursor_location(cursor)} is not modeled as its own specialized declaration tree yet. "
+        f"Explicit class-template specialization for {describe_cursor_entity(cursor)} "
+        "is not modeled as its own specialized declaration tree yet. "
         f"{family_hint} We do currently not yet fully support binding this specialization as its own API surface.",
+        code="parse.explicit_class_template_specialization_ignored",
+        cursor=cursor,
     )
 
 

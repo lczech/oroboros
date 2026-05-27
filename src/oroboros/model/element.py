@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
-from typing import Iterable, TypeVar
+from typing import TYPE_CHECKING, Iterable, TypeVar
+
+if TYPE_CHECKING:
+    from ..diagnostics import Diagnostic
 
 
 ElementT = TypeVar("ElementT", bound="CppElement")
@@ -17,6 +20,10 @@ ElementT = TypeVar("ElementT", bound="CppElement")
 
 class ModelValidationError(ValueError):
     """Report one or more structural problems in the semantic model tree."""
+
+    def __init__(self, message: str, *, diagnostics: list["Diagnostic"] | None = None) -> None:
+        super().__init__(message)
+        self.diagnostics = [] if diagnostics is None else diagnostics
 
 
 @dataclass(slots=True)

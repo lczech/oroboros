@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Sequence
 
+from ..diagnostics import Diagnostic, DiagnosticReport
 from ..model import CppElement, CppModule, NamedCppType
 from .config import ParserConfig
 from .clang_walk import visit_cursor
@@ -19,38 +20,6 @@ if TYPE_CHECKING:
 # ==================================================================================================
 #     Build Results
 # ==================================================================================================
-
-
-@dataclass(slots=True)
-class BuildResult:
-    """Store one built semantic module plus skipped parser cursor-kind counts."""
-
-    module: CppModule
-    semantic_warnings: list[str] = field(default_factory=list)
-    skipped_kind_counts: dict[str, int] = field(default_factory=dict)
-
-    @property
-    def warnings(self) -> list[str]:
-        """Return user-facing parser warnings derived from skipped cursor kinds."""
-
-        warnings = list(self.semantic_warnings)
-        if not self.skipped_kind_counts:
-            return warnings
-
-        rendered_counts = ", ".join(
-            f"{kind_name} ({count})"
-            for kind_name, count in self.skipped_kind_counts.items()
-        )
-        warnings.append(f"Skipped unsupported libclang cursor kinds: {rendered_counts}")
-        return warnings
-
-
-@dataclass(slots=True)
-class PendingTypeDeclarationLink:
-    """Store one deferred `NamedCppType` to declaration-USR link to resolve later."""
-
-    cpp_type: NamedCppType
-    declaration_usr: str
 
 
 @dataclass(slots=True)
@@ -84,10 +53,28 @@ class BuildContext:
     # ----------
     # Output results accumulated during the build.
 
-    # User-facing semantic warnings gathered while enriching repeated declarations.
-    semantic_warnings: list[str] = field(default_factory=list)
+    # Structured diagnostics gathered while enriching repeated declarations.
+    report: DiagnosticReport = field(default_factory=DiagnosticReport)
     # Counts of unsupported libclang cursor kinds skipped during the walk.
     skipped_kind_counts: Counter[str] = field(default_factory=Counter)
+
+
+@dataclass(slots=True)
+class BuildResult:
+    """Store one built semantic module plus parser-side diagnostics."""
+
+    # Semantic module materialized from one clang translation unit.
+    module: CppModule
+    # Structured diagnostics gathered during the parser-side model build.
+    report: DiagnosticReport = field(default_factory=DiagnosticReport)
+
+
+@dataclass(slots=True)
+class PendingTypeDeclarationLink:
+    """Store one deferred `NamedCppType` to declaration-USR link to resolve later."""
+
+    cpp_type: NamedCppType
+    declaration_usr: str
 
 
 # ==================================================================================================
@@ -123,11 +110,11 @@ def build_module_from_clang(
     for child_cursor in root_cursor.get_children():
         visit_cursor(child_cursor, module, context)
     _resolve_pending_type_declaration_links(context)
+    _record_skipped_cursor_kind_warning(context)
 
     return BuildResult(
         module=module,
-        semantic_warnings=list(context.semantic_warnings),
-        skipped_kind_counts=dict(sorted(context.skipped_kind_counts.items())),
+        report=context.report.copy(),
     )
 
 
@@ -143,3 +130,23 @@ def _resolve_pending_type_declaration_links(context: BuildContext) -> None:
             continue
 
         pending_link.cpp_type.declaration = declaration
+
+
+def _record_skipped_cursor_kind_warning(context: BuildContext) -> None:
+    """Summarize unsupported skipped cursor kinds as one parser diagnostic."""
+
+    if not context.skipped_kind_counts:
+        return
+
+    rendered_counts = ", ".join(
+        f"{kind_name} ({count})"
+        for kind_name, count in sorted(context.skipped_kind_counts.items())
+    )
+    context.report.add(
+        Diagnostic(
+            severity="warning",
+            stage="parse",
+            code="parse.skipped_cursor_kinds",
+            message=f"Skipped unsupported libclang cursor kinds: {rendered_counts}",
+        )
+    )

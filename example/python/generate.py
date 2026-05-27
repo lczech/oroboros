@@ -35,16 +35,10 @@ def main() -> int:
     """Update the activation header and run the current parser on the example."""
 
     # Path setup for the example.
-    # repo_root = Path(__file__).resolve().parents[2]
-    # header_dir = repo_root / "example" / "inc"
-    # root_header = header_dir / "cosmos" / "cosmos.hpp"
-    # activation_header = repo_root / "example" / "python" / "active_headers.hpp"
-
-    # Testing with genesis repo
-    repo_root = Path("/home/lucas/Dropbox/GitHub/genesis/lib")
-    header_dir = repo_root
-    root_header = header_dir / "genesis" / "genesis.hpp"
-    activation_header = header_dir / "genesis" / "active_headers.hpp"
+    repo_root = Path(__file__).resolve().parents[2]
+    header_dir = repo_root / "example" / "inc"
+    root_header = header_dir / "cosmos" / "cosmos.hpp"
+    activation_header = repo_root / "example" / "python" / "active_headers.hpp"
 
     # Exclude the umbrella header for now: the current parser does not yet merge
     # redeclarations from both the umbrella include and the concrete headers.

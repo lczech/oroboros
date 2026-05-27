@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 import unittest
 
+from oroboros.diagnostics import Diagnostic, DiagnosticReport
 from oroboros.headers import HeaderFile, HeaderSelection
 from oroboros.parse import ParserConfig, parse_header_selection
 from oroboros.parse.build_model import BuildResult
@@ -201,7 +202,14 @@ some trailer
 
     def test_parse_header_selection_wires_driver_and_builder_results(self) -> None:
         translation_unit = object()
-        diagnostics = [SimpleNamespace(severity="warning")]
+        diagnostics = [
+            Diagnostic(
+                severity="warning",
+                stage="clang",
+                code="clang.diagnostic",
+                message="warning",
+            )
+        ]
         driver_result = SimpleNamespace(translation_unit=translation_unit, diagnostics=diagnostics)
         built_module = SimpleNamespace(
             validate_tree=lambda: None,
@@ -209,8 +217,16 @@ some trailer
         )
         build_result = BuildResult(
             module=built_module,
-            semantic_warnings=[],
-            skipped_kind_counts={"TYPEDEF_DECL": 2},
+            report=DiagnosticReport(
+                diagnostics=[
+                    Diagnostic(
+                        severity="warning",
+                        stage="parse",
+                        code="parse.skipped_cursor_kinds",
+                        message="Skipped unsupported libclang cursor kinds: TYPEDEF_DECL (2)",
+                    )
+                ]
+            ),
         )
 
         with (
@@ -237,17 +253,24 @@ some trailer
             known_project_headers=[Path("/tmp/project/demo.hpp").resolve()],
         )
         self.assertIs(result.module, built_module)
-        self.assertEqual(result.diagnostics, diagnostics)
-        self.assertEqual(result.skipped_kind_counts, {"TYPEDEF_DECL": 2})
+        self.assertEqual(result.report.by_stage("clang"), diagnostics)
+        self.assertEqual(len(result.report.diagnostics), 2)
         self.assertEqual(
-            result.warnings,
+            [diagnostic.message for diagnostic in result.report.by_stage("parse")],
             ["Skipped unsupported libclang cursor kinds: TYPEDEF_DECL (2)"],
         )
         self.assertEqual(result.headers, [Path("/tmp/project/demo.hpp").resolve()])
 
     def test_parse_header_selection_passes_explicit_known_project_headers_to_builder(self) -> None:
         translation_unit = object()
-        diagnostics = [SimpleNamespace(severity="warning")]
+        diagnostics = [
+            Diagnostic(
+                severity="warning",
+                stage="clang",
+                code="clang.diagnostic",
+                message="warning",
+            )
+        ]
         driver_result = SimpleNamespace(translation_unit=translation_unit, diagnostics=diagnostics)
         built_module = SimpleNamespace(
             validate_tree=lambda: None,
@@ -255,8 +278,7 @@ some trailer
         )
         build_result = BuildResult(
             module=built_module,
-            semantic_warnings=[],
-            skipped_kind_counts={},
+            report=DiagnosticReport(),
         )
         active_header = Path("/tmp/project/api.hpp")
         inactive_header = Path("/tmp/project/detail.hpp")

@@ -306,7 +306,7 @@ struct Widget {};
         self.assertNotIn("namespace demo::detail", namespace.cpp.comment)
         self.assertIn("demo::detail", namespace.cpp.comment)
         self.assertEqual(widget.cpp.doc.brief, "Widget docs.")
-        self.assertFalse(any("Recovered attached comment" in warning for warning in result.warnings))
+        self.assertFalse(any("Recovered attached comment" in warning.message for warning in result.report.warnings))
 
     def test_parse_headers_attach_plain_trailing_comments_and_indented_code_blocks(self) -> None:
         source = """
@@ -405,7 +405,7 @@ int make_widget();
         self.assertIsNone(widget.cpp.doc)
         self.assertIsNone(function.cpp.comment)
         self.assertIsNone(function.cpp.doc)
-        self.assertFalse(any("Recovered attached comment" in warning for warning in result.warnings))
+        self.assertFalse(any("Recovered attached comment" in warning.message for warning in result.report.warnings))
 
     def test_parse_headers_suppress_detached_namespace_banner_warnings(self) -> None:
         source = """
@@ -428,7 +428,7 @@ struct Widget {};
         self.assertIsNone(namespace.cpp.comment)
         self.assertIsNone(namespace.cpp.doc)
         self.assertEqual(widget.name, "Widget")
-        self.assertFalse(any("Recovered attached comment" in warning for warning in result.warnings))
+        self.assertFalse(any("Recovered attached comment" in warning.message for warning in result.report.warnings))
 
     def test_parse_headers_attach_comments_across_methods_constructors_templates_aliases_and_reopened_namespaces(self) -> None:
         result = _parse_headers_from_sources(
@@ -520,10 +520,21 @@ public:
             "/**\n * @brief The class does cool things.\n */",
         )
         self.assertEqual(abc.cpp.doc.brief, "The class does cool things.")
+        mismatch_warnings = [
+            warning
+            for warning in result.report.warnings
+            if "Recovered attached comment" in warning.message
+        ]
         self.assertTrue(
-            any("Recovered attached comment" in warning for warning in result.warnings),
-            msg=f"Expected recovery warning, got: {result.warnings}",
+            mismatch_warnings,
+            msg=f"Expected recovery warning, got: {result.report.warnings}",
         )
+        self.assertIsNotNone(mismatch_warnings[0].detail)
+        self.assertIn("clang raw_comment:", mismatch_warnings[0].detail)
+        self.assertIn("// Forward declaration of a type we need.", mismatch_warnings[0].detail)
+        self.assertIn("recovered attached comment:", mismatch_warnings[0].detail)
+        self.assertIn("@brief The class does cool things.", mismatch_warnings[0].detail)
+        self.assertIn("selected: recovered", mismatch_warnings[0].detail)
 
     def test_parse_headers_prefer_structured_definition_docs_for_redeclared_classes_across_headers(self) -> None:
         result = _parse_headers_from_sources(

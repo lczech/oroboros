@@ -5,10 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Sequence
 
+from ..diagnostics import DiagnosticReport
 from ..headers import HeaderSelection
+from ..model import CppElement
 from .config import ParserConfig
 from .build_model import build_module_from_clang
 from .clang_driver import parse_with_clang
+from ..model.validation import collect_semantic_diagnostics, collect_tree_diagnostics
 from .result import ParseResult
 
 
@@ -22,6 +25,7 @@ def parse_header_selection(
         selection.active_project_headers,
         config,
         known_project_headers=selection.known_project_headers,
+        initial_report=selection.report,
     )
 
 
@@ -30,6 +34,7 @@ def _parse_active_headers(
     config: ParserConfig,
     *,
     known_project_headers: Sequence[Path] | None = None,
+    initial_report: DiagnosticReport | None = None,
 ) -> ParseResult:
     """Parse one ordered active-header list into the semantic model."""
 
@@ -39,9 +44,10 @@ def _parse_active_headers(
         if known_project_headers is None
         else [Path(header).resolve() for header in known_project_headers]
     )
+    report = initial_report.copy() if initial_report is not None else DiagnosticReport()
 
     if not normalized_headers:
-        return ParseResult()
+        return ParseResult(report=report)
 
     driver_result = parse_with_clang(normalized_headers, config)
     build_result = build_module_from_clang(
@@ -50,15 +56,15 @@ def _parse_active_headers(
         config,
         known_project_headers=normalized_known_project_headers,
     )
+    report.extend(driver_result.diagnostics)
+    report.extend(build_result.report.diagnostics)
 
-    if config.validate_model:
-        build_result.module.validate_tree()
-        build_result.module.validate_semantics()
+    if config.validate_model and isinstance(build_result.module, CppElement):
+        report.extend(collect_tree_diagnostics(build_result.module))
+        report.extend(collect_semantic_diagnostics(build_result.module))
 
     return ParseResult(
         module=build_result.module,
-        diagnostics=driver_result.diagnostics,
-        warnings=build_result.warnings,
-        skipped_kind_counts=build_result.skipped_kind_counts,
+        report=report,
         headers=normalized_headers,
     )

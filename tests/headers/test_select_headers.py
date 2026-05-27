@@ -4,8 +4,8 @@ from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
-import warnings
 
+from oroboros.diagnostics import DiagnosticReport
 from oroboros.headers import HeaderFile, HeaderSelection, select_active_headers
 from oroboros.headers.select_headers import (
     parse_activation_header,
@@ -68,13 +68,16 @@ class SelectHeadersTest(unittest.TestCase):
                 HeaderFile(full_path=temp_dir / "a.hpp", relative_path=Path("demo/a.hpp")),
                 HeaderFile(full_path=temp_dir / "b.hpp", relative_path=Path("demo/b.hpp")),
             ]
+            report = DiagnosticReport()
 
-            with warnings.catch_warnings(record=True) as caught_warnings:
-                warnings.simplefilter("always")
-                selected_headers = parse_activation_header(header_files, activation_header)
+            selected_headers = parse_activation_header(
+                header_files,
+                activation_header,
+                report=report,
+            )
 
-        self.assertEqual(len(caught_warnings), 1)
-        self.assertIn("demo/b.hpp", str(caught_warnings[0].message))
+        self.assertEqual(len(report.warnings), 1)
+        self.assertIn("demo/b.hpp", report.warnings[0].message)
 
     def test_select_active_headers_returns_structured_selection(self) -> None:
         with TemporaryDirectory() as temp_dir_name:
@@ -301,3 +304,20 @@ class SelectHeadersTest(unittest.TestCase):
         self.assertIn("Activation header:", report_text)
         self.assertIn("Added headers:", report_text)
         self.assertIn("demo/a.hpp", report_text)
+
+    def test_print_update_report_optionally_renders_ansi_color(self) -> None:
+        with TemporaryDirectory() as temp_dir_name:
+            temp_dir = Path(temp_dir_name)
+            target_file = temp_dir / "activated_headers.hpp"
+            update_result = update_activation_header(
+                [HeaderFile(full_path=temp_dir / "a.hpp", relative_path=Path("demo/a.hpp"), active=False)],
+                target_file,
+                default_active=False,
+            )
+
+            output = StringIO()
+            print_update_report(update_result, stream=output, color=True)
+
+        report_text = output.getvalue()
+        self.assertIn("\033[", report_text)
+        self.assertIn("Activation header:", report_text)

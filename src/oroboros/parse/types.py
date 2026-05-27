@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from clang.cindex import CursorKind, TypeKind
 
+from ..diagnostics import Diagnostic
 from ..model import (
     ArrayCppType,
     BuiltinCppType,
@@ -678,6 +679,8 @@ def _record_named_type_declaration_link(
             declaration_usr=declaration_usr,
         )
     )
+
+
 def _record_inactive_project_type_reference_warning(
     cpp_type: NamedCppType,
     *,
@@ -688,23 +691,25 @@ def _record_inactive_project_type_reference_warning(
     """Warn when an active declaration references a known inactive project type."""
 
     use_location = cursor_source_location(source_cursor) if source_cursor is not None else None
-    rendered_use_location = _format_source_location_for_warning(use_location)
-    rendered_declaration_location = _format_source_location_for_warning(declaration_location)
     warning = (
-        f"Active declaration at {rendered_use_location} references known project type "
-        f"{cpp_type.name!r} from inactive header {rendered_declaration_location}; "
+        f"Active declaration references known project type {cpp_type.name!r} "
+        "from an inactive project header; "
         "preserving the type spelling without materializing that declaration."
     )
-    if warning not in context.semantic_warnings:
-        context.semantic_warnings.append(warning)
-
-
-def _format_source_location_for_warning(location: Any) -> str:
-    """Render one optional source location into a short stable warning string."""
-
-    if location is None:
-        return "<unknown location>"
-    return f"{location.file}:{location.line}:{location.column}"
+    locations = []
+    if use_location is not None:
+        locations.append(use_location)
+    if declaration_location is not None:
+        locations.append(declaration_location)
+    context.report.add(
+        Diagnostic(
+            severity="warning",
+            stage="parse",
+            code="parse.inactive_project_type_reference",
+            message=warning,
+            locations=locations,
+        )
+    )
 
 
 def _record_observed_template_instance(
@@ -805,6 +810,11 @@ def _record_one_observed_template_instance(
             locations=[] if observation_location is None else [observation_location],
         )
     )
+
+
+# ==================================================================================================
+#     Template Introspection
+# ==================================================================================================
 
 
 def _template_cursor_from_source_reference(

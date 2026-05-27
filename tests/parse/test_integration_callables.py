@@ -633,7 +633,6 @@ class ParseIntegrationCallableTest(unittest.TestCase):
         self.assertEqual(operator_function.cpp.operator.kind, "symbolic")
         self.assertEqual(operator_function.cpp.operator.symbol, "+")
         self.assertEqual(len(operator_function.parameters), 2)
-        self.assertEqual(result.skipped_kind_counts, {})
 
     def test_parse_headers_materialize_free_operator_templates_with_operator_metadata(self) -> None:
         source = """
@@ -704,7 +703,6 @@ class ParseIntegrationCallableTest(unittest.TestCase):
         self.assertEqual(len(function_template.declaration.parameters), 2)
         self.assertEqual(function_template.declaration.parameters[0].name, "left")
         self.assertEqual(function_template.declaration.parameters[1].name, "right")
-        self.assertEqual(result.skipped_kind_counts, {})
 
     def test_parse_headers_materialize_hidden_friend_operator_inside_class_template(self) -> None:
         source = """
@@ -735,7 +733,6 @@ class ParseIntegrationCallableTest(unittest.TestCase):
         self.assertEqual(function.cpp.operator.kind, "symbolic")
         self.assertEqual(function.cpp.operator.symbol, "==")
         self.assertEqual(len(function.parameters), 2)
-        self.assertEqual(result.skipped_kind_counts, {})
 
     def test_parse_headers_materialize_member_operator_templates_with_operator_metadata(self) -> None:
         source = """
@@ -793,7 +790,6 @@ class ParseIntegrationCallableTest(unittest.TestCase):
         self.assertIsNone(literal_operator.cpp.operator)
         self.assertEqual(len(literal_operator.parameters), 1)
         self.assertEqual(literal_operator.parameters[0].name, "value")
-        self.assertEqual(result.skipped_kind_counts, {})
 
     def test_parse_headers_enriches_defaulted_redeclarations_without_warning(self) -> None:
         source = """
@@ -818,7 +814,7 @@ class ParseIntegrationCallableTest(unittest.TestCase):
 
         self.assertTrue(constructor.cpp.is_defaulted)
         self.assertEqual(method.parameters[0].cpp.default_value, "7")
-        self.assertFalse(any("is_defaulted" in warning for warning in result.warnings))
+        self.assertFalse(any("is_defaulted" in warning.message for warning in result.report.warnings))
 
     def test_parse_headers_preserves_overload_declaration_order(self) -> None:
         source = """

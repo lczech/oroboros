@@ -11,10 +11,18 @@ files while preserving existing user choices where possible.
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TextIO
-import warnings
 import re
 import sys
 
+from ..diagnostics import Diagnostic, DiagnosticReport
+from ..diagnostics.color import (
+    should_use_color,
+    style_bool,
+    style_failure,
+    style_muted,
+    style_success,
+    style_title,
+)
 from .selection import HeaderFile, HeaderSelection
 
 
@@ -115,28 +123,31 @@ def print_update_report(
     update_result: ActivationHeaderUpdateResult,
     *,
     stream: TextIO | None = None,
+    color: bool | None = None,
 ) -> None:
     """Print a concise human-readable summary of an activation header update."""
 
     output_stream = stream if stream is not None else sys.stdout
+    use_color = should_use_color(output_stream, color=color)
     summary = (
-        f"Activation header: {update_result.activation_header} "
-        f"(created={update_result.created_file}, updated={update_result.updated_file})"
+        f"{style_title('Activation header:', color=use_color)} {update_result.activation_header} "
+        f"({style_muted('created', color=use_color)}={style_bool(update_result.created_file, color=use_color)}, "
+        f"{style_muted('updated', color=use_color)}={style_bool(update_result.updated_file, color=use_color)})"
     )
     print(summary, file=output_stream)
 
     if update_result.added_headers:
-        print("Added headers:", file=output_stream)
+        print(style_success("Added headers:", color=use_color), file=output_stream)
         for header_path in update_result.added_headers:
             print(f"  {header_path.as_posix()}", file=output_stream)
 
     if update_result.removed_headers:
-        print("Removed headers:", file=output_stream)
+        print(style_failure("Removed headers:", color=use_color), file=output_stream)
         for header_path in update_result.removed_headers:
             print(f"  {header_path.as_posix()}", file=output_stream)
 
     if not update_result.added_headers and not update_result.removed_headers:
-        print("No header list changes.", file=output_stream)
+        print(style_muted("No header list changes.", color=use_color), file=output_stream)
 
 
 # ==================================================================================================
@@ -187,6 +198,8 @@ def _read_activation_map(activation_header: str | Path) -> dict[str, bool]:
 def parse_activation_header(
     header_files: list[HeaderFile],
     activation_header: str | Path,
+    *,
+    report: DiagnosticReport | None = None,
 ) -> list[HeaderFile]:
     """Apply active and inactive selections from an activation header file."""
 
@@ -198,9 +211,15 @@ def parse_activation_header(
         if header_file.relative_path.as_posix() not in activation_map
     ]
     if missing_headers:
-        warnings.warn(
-            "Headers missing from activation header: " + ", ".join(missing_headers),
-            stacklevel=2,
+        diagnostic_report = report if report is not None else DiagnosticReport()
+        diagnostic_report.add(
+            Diagnostic(
+                severity="warning",
+                stage="headers",
+                code="headers.activation.missing_headers",
+                message="Headers missing from activation header: " + ", ".join(missing_headers),
+                locations=[],
+            )
         )
 
     selected_headers = [
@@ -220,7 +239,12 @@ def select_active_headers(
     """Apply one activation header to a known project-header selection."""
 
     return HeaderSelection(
-        header_files=parse_activation_header(selection.known_headers, activation_header),
+        header_files=parse_activation_header(
+            selection.known_headers,
+            activation_header,
+            report=selection.report,
+        ),
+        report=selection.report,
     )
 
 

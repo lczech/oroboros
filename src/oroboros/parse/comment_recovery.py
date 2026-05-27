@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from clang.cindex import TokenKind
 
+from ..diagnostics import Diagnostic
 from ..model import SourceLocation
 from .comment_structure import comment_preference_key, parse_cpp_doc
 from .cursor_data import CursorTokenInfo, cursor_raw_comment, cursor_source_location, cursor_usr, file_cursor_tokens
@@ -55,6 +56,7 @@ class CursorCommentResolution:
     selected_doc: Any = None
     selection_reason: str = "missing"
     mismatch_warning: str | None = None
+    mismatch_detail: str | None = None
 
 
 def resolve_cursor_comment(cursor: Any, context: BuildContext | None) -> CursorCommentResolution:
@@ -95,8 +97,17 @@ def resolve_cursor_comment(cursor: Any, context: BuildContext | None) -> CursorC
     usr = cursor_usr(cursor)
     if usr is not None:
         context.usr_to_comments.setdefault(usr, []).append(resolution)
-    if resolution.mismatch_warning is not None and resolution.mismatch_warning not in context.semantic_warnings:
-        context.semantic_warnings.append(resolution.mismatch_warning)
+    if resolution.mismatch_warning is not None:
+        context.report.add(
+            Diagnostic(
+                severity="warning",
+                stage="parse",
+                code="parse.comment_recovery.mismatch",
+                message=resolution.mismatch_warning,
+                detail=resolution.mismatch_detail,
+                locations=[] if location is None else [location],
+            )
+        )
     return resolution
 
 
@@ -176,6 +187,7 @@ def _select_comment_resolution(
     selected_comment = clang_raw_comment
     selection_reason = "clang_raw_comment"
     mismatch_warning: str | None = None
+    mismatch_detail: str | None = None
 
     if clang_raw_comment is None:
         selected_comment = best_candidate.text
@@ -186,6 +198,7 @@ def _select_comment_resolution(
         selected_comment = best_candidate.text
         selection_reason = f"recovered_{best_candidate.kind}"
         mismatch_warning = _build_mismatch_warning(cursor, clang_raw_comment, best_candidate.text)
+        mismatch_detail = _build_mismatch_detail(clang_raw_comment, best_candidate.text)
 
     return CursorCommentResolution(
         location=cursor_source_location(cursor),
@@ -194,6 +207,7 @@ def _select_comment_resolution(
         selected_doc=parse_cpp_doc(selected_comment),
         selection_reason=selection_reason,
         mismatch_warning=mismatch_warning,
+        mismatch_detail=mismatch_detail,
     )
 
 
@@ -452,27 +466,33 @@ def _comment_has_code_before_same_line(tokens: list[CursorTokenInfo], index: int
 def _build_mismatch_warning(cursor: Any, clang_raw_comment: str, recovered_comment: str) -> str:
     """Render one warning about conflicting clang and recovered comment attachment."""
 
-    location = cursor_source_location(cursor)
-    rendered_location = "<unknown>"
-    if location is not None:
-        rendered_location = f"{location.file}:{location.line}:{location.column}"
     spelling = getattr(cursor, "spelling", "") or "<anonymous>"
     return (
-        f"Recovered attached comment for {spelling!r} at {rendered_location} differed from "
+        f"Recovered attached comment for {spelling!r} differed from "
         "clang's attached raw comment; using the recovered comment."
     )
+
+
+def _build_mismatch_detail(clang_raw_comment: str, recovered_comment: str) -> str:
+    """Render one structured detail block for comment-recovery mismatches."""
+
+    return "\n".join([
+        "clang raw_comment:",
+        clang_raw_comment,
+        "",
+        "recovered attached comment:",
+        recovered_comment,
+        "",
+        "selected: recovered",
+    ])
 
 
 def _build_detached_warning(cursor: Any, clang_raw_comment: str) -> str:
     """Render one warning when clang attached a separated non-doc comment block."""
 
-    location = cursor_source_location(cursor)
-    rendered_location = "<unknown>"
-    if location is not None:
-        rendered_location = f"{location.file}:{location.line}:{location.column}"
     spelling = getattr(cursor, "spelling", "") or "<anonymous>"
     return (
-        f"Discarded clang-attached raw comment for {spelling!r} at {rendered_location} because "
+        f"Discarded clang-attached raw comment for {spelling!r} because "
         "token-based recovery found no attached comment block at that declaration site."
     )
 

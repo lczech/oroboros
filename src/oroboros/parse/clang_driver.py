@@ -6,9 +6,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Sequence
 
+from ..diagnostics import Diagnostic
 from ..model import SourceLocation
 from .config import ParserConfig
-from .result import ParserDiagnostic
 from .toolchain import _resolve_parser_config_toolchain
 
 
@@ -25,7 +25,7 @@ class ClangDriverResult:
     """Store one parsed clang translation unit plus collected diagnostics."""
 
     translation_unit: Any
-    diagnostics: list[ParserDiagnostic] = field(default_factory=list)
+    diagnostics: list[Diagnostic] = field(default_factory=list)
     synthetic_source: str = ""
     synthetic_filename: str = _SYNTHETIC_FILENAME
 
@@ -131,20 +131,22 @@ def _load_clang_cindex(config: ParserConfig) -> Any:
 # ==================================================================================================
 
 
-def _collect_diagnostics(diagnostics: Sequence[Any]) -> list[ParserDiagnostic]:
+def _collect_diagnostics(diagnostics: Sequence[Any]) -> list[Diagnostic]:
     """Convert libclang diagnostics into small public diagnostic value objects."""
 
     return [_convert_diagnostic(diagnostic) for diagnostic in diagnostics]
 
 
-def _convert_diagnostic(diagnostic: Any) -> ParserDiagnostic:
+def _convert_diagnostic(diagnostic: Any) -> Diagnostic:
     """Convert one libclang diagnostic into the public result representation."""
 
     location = _convert_source_location(getattr(diagnostic, "location", None))
-    return ParserDiagnostic(
+    return Diagnostic(
         severity=_normalize_diagnostic_severity(getattr(diagnostic, "severity", None)),
+        stage="clang",
+        code="clang.diagnostic",
         message=str(diagnostic.spelling),
-        location=location,
+        locations=[] if location is None else [location],
     )
 
 

@@ -72,8 +72,8 @@ class ParseIntegrationDeclarationTest(unittest.TestCase):
         self.assertEqual(make_helper.parameters[0].cpp.type.name, "Helper")
         self.assertIsNone(make_helper.parameters[0].cpp.type.declaration)
         self.assertTrue(
-            any("inactive" in warning.lower() for warning in result.warnings),
-            msg=f"Expected an inactive-header warning, got: {result.warnings}",
+            any("inactive" in warning.message.lower() for warning in result.report.warnings),
+            msg=f"Expected an inactive-header warning, got: {result.report.warnings}",
         )
 
     def test_parse_headers_materializes_basic_declarations_end_to_end(self) -> None:
@@ -133,7 +133,6 @@ class ParseIntegrationDeclarationTest(unittest.TestCase):
         self.assertEqual(function.parameters[0].name, "value")
         self.assertEqual(alias_.name, "c_int")
         self.assertEqual(variable.name, "c_counter")
-        self.assertEqual(result.skipped_kind_counts, {})
 
     def test_parse_headers_traverse_single_linkage_spec_declarations_inside_namespaces(self) -> None:
         source = """
@@ -149,7 +148,6 @@ class ParseIntegrationDeclarationTest(unittest.TestCase):
 
         self.assertEqual(function.name, "c_api")
         self.assertEqual(function.parameters[0].name, "value")
-        self.assertEqual(result.skipped_kind_counts, {})
 
     def test_parse_headers_mark_inline_namespaces(self) -> None:
         source = """
@@ -191,7 +189,6 @@ class ParseIntegrationDeclarationTest(unittest.TestCase):
         self.assertEqual(detail_namespace.declarations.functions[0].name, "helper")
         self.assertEqual(demo_namespace.name, "demo")
         self.assertEqual(demo_namespace.declarations.functions, [])
-        self.assertEqual(result.skipped_kind_counts, {})
 
     def test_parse_headers_ignore_non_binding_declaration_kinds_without_skipped_kind_noise(self) -> None:
         source = """
@@ -221,7 +218,6 @@ class ParseIntegrationDeclarationTest(unittest.TestCase):
         self.assertEqual(detail_namespace.name, "detail")
         self.assertEqual(demo_namespace.name, "demo")
         self.assertEqual([function.name for function in demo_namespace.declarations.functions], ["make_widget"])
-        self.assertEqual(result.skipped_kind_counts, {})
 
     def test_parse_headers_materialize_coarse_availability_annotations(self) -> None:
         source = """
@@ -275,10 +271,9 @@ class ParseIntegrationDeclarationTest(unittest.TestCase):
         self.assertEqual(std_namespace.name, "std")
         self.assertEqual(std_namespace.declarations.classes, [])
         self.assertEqual(std_namespace.declarations.class_templates, [])
-        self.assertEqual(result.skipped_kind_counts, {})
         self.assertFalse(
-            any("Explicit class-template specialization" in warning for warning in result.warnings),
-            msg=f"Did not expect std-specialization warning by default, got: {result.warnings}",
+            any("Explicit class-template specialization" in warning.message for warning in result.report.warnings),
+            msg=f"Did not expect std-specialization warning by default, got: {result.report.warnings}",
         )
 
     def test_parse_headers_optionally_warn_for_std_explicit_specializations(self) -> None:
@@ -307,8 +302,8 @@ class ParseIntegrationDeclarationTest(unittest.TestCase):
         )
 
         self.assertTrue(
-            any("Explicit class-template specialization" in warning for warning in result.warnings),
-            msg=f"Expected configurable std-specialization warning, got: {result.warnings}",
+            any("Explicit class-template specialization" in warning.message for warning in result.report.warnings),
+            msg=f"Expected configurable std-specialization warning, got: {result.report.warnings}",
         )
 
     def test_parse_headers_materialize_abstract_record_classification(self) -> None:

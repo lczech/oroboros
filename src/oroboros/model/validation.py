@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import fields as dataclass_fields, is_dataclass
 from typing import Any
 
+from ..diagnostics import Diagnostic, DiagnosticRenderOptions, format_diagnostics
 from .class_ import CppClass
 from .function import CppParameter
 from .element import CppElement, ModelValidationError
@@ -22,16 +23,30 @@ from .type import NamedCppType
 def validate_tree(root: CppElement) -> None:
     """Validate owner links and direct-child containment across one subtree."""
 
+    diagnostics = collect_tree_diagnostics(root)
+    if diagnostics:
+        raise ModelValidationError(
+            format_diagnostics(
+                diagnostics,
+                title="Invalid semantic model tree:",
+                options=DiagnosticRenderOptions(
+                    include_stage=False,
+                    include_code=False,
+                ),
+            ),
+            diagnostics=diagnostics,
+        )
+
+
+def collect_tree_diagnostics(root: CppElement) -> list[Diagnostic]:
+    """Collect structural validation diagnostics across one subtree."""
+
     root_path = _root_access_path(root)
-    errors: list[str] = []
+    diagnostics: list[Diagnostic] = []
     visited: dict[int, str] = {id(root): root_path}
 
-    _validate_tree_subtree(root, root_path, visited, errors)
-
-    if errors:
-        raise ModelValidationError(
-            "Invalid semantic model tree:\n\n" + "\n\n".join(errors)
-        )
+    _validate_tree_subtree(root, root_path, visited, diagnostics)
+    return diagnostics
 
 
 def _validate_tree_subtree(
@@ -99,19 +114,37 @@ def _validate_owner_chain(
 class ModelSemanticValidationError(ValueError):
     """Report one or more semantic consistency problems in the model."""
 
+    def __init__(self, message: str, *, diagnostics: list[Diagnostic] | None = None) -> None:
+        super().__init__(message)
+        self.diagnostics = [] if diagnostics is None else diagnostics
+
 
 def validate_semantics(root: CppElement) -> None:
     """Validate semantic cross-links and type usage across one subtree."""
 
-    root_path = _root_access_path(root)
-    errors: list[str] = []
-
-    _validate_semantic_subtree(root, root_path, errors)
-
-    if errors:
+    diagnostics = collect_semantic_diagnostics(root)
+    if diagnostics:
         raise ModelSemanticValidationError(
-            "Invalid semantic model:\n\n" + "\n\n".join(errors)
+            format_diagnostics(
+                diagnostics,
+                title="Invalid semantic model:",
+                options=DiagnosticRenderOptions(
+                    include_stage=False,
+                    include_code=False,
+                ),
+            ),
+            diagnostics=diagnostics,
         )
+
+
+def collect_semantic_diagnostics(root: CppElement) -> list[Diagnostic]:
+    """Collect semantic validation diagnostics across one subtree."""
+
+    root_path = _root_access_path(root)
+    diagnostics: list[Diagnostic] = []
+
+    _validate_semantic_subtree(root, root_path, diagnostics)
+    return diagnostics
 
 
 def _validate_semantic_subtree(
@@ -1349,29 +1382,30 @@ def _reference_lookup_scope(element: CppElement) -> CppElement | None:
 
 
 def _append_validation_error(
-    errors: list[str],
+    errors: list[Diagnostic],
     path: str,
     detail: str,
     *,
     subject: Any | None = None,
     locations: list[SourceLocation] | None = None,
 ) -> None:
-    """Append one structured validation diagnostic block."""
+    """Append one structured validation diagnostic."""
 
     rendered_locations = (
         _unique_source_locations(locations)
         if locations is not None
         else _validation_subject_locations(subject)
     )
-
-    lines = (
-        [_format_source_location(location) for location in rendered_locations]
-        if rendered_locations
-        else ["<unknown location>"]
+    errors.append(
+        Diagnostic(
+            severity="error",
+            stage="validation",
+            code="validation.error",
+            message=detail,
+            locations=rendered_locations,
+            model_path=path,
+        )
     )
-    lines.append(f"  model: {path}")
-    lines.append(f"  error: {detail}")
-    errors.append("\n".join(lines))
 
 
 def _validation_subject_locations(subject: Any) -> list[SourceLocation]:
@@ -1420,12 +1454,6 @@ def _unique_source_locations(locations: list[SourceLocation]) -> list[SourceLoca
         seen_keys.add(key)
         unique_locations.append(location)
     return unique_locations
-
-
-def _format_source_location(location: SourceLocation) -> str:
-    """Render one source location compactly for validator messages."""
-
-    return f"{location.file}:{location.line}:{location.column}"
 
 
 def _root_access_path(root: CppElement) -> str:

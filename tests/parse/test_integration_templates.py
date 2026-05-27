@@ -208,8 +208,8 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         self.assertIsInstance(observed_instances[0].arguments[0].type, BuiltinCppType)
         self.assertEqual(observed_instances[0].arguments[0].type.kind, "int")
         self.assertTrue(
-            any("Explicit class-template specialization" in warning for warning in result.warnings),
-            msg=f"Expected explicit-specialization warning, got: {result.warnings}",
+            any("Explicit class-template specialization" in warning.message for warning in result.report.warnings),
+            msg=f"Expected explicit-specialization warning, got: {result.report.warnings}",
         )
 
     def test_parse_headers_assigns_overload_indices_to_template_declarations(self) -> None:
