@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+import tempfile
 from types import SimpleNamespace
 import unittest
 
-from clang.cindex import CursorKind, TypeKind
+from clang.cindex import CursorKind, TokenKind, TypeKind
 
 from oroboros.model import *
 from oroboros.parse import ParserConfig
@@ -940,57 +941,64 @@ class ParseBuildTest(unittest.TestCase):
         self.assertEqual(namespace.declarations.aliases[1].cpp.kind, "typedef")
 
     def test_build_module_from_clang_merges_reopened_namespace_provenance(self) -> None:
-        active_header = Path("/tmp/project/demo.hpp")
-        translation_unit = SimpleNamespace(
-            cursor=_fake_cursor(
-                "TRANSLATION_UNIT",
-                "",
-                file=active_header,
-                children=[
-                    _fake_cursor(
-                        "NAMESPACE",
-                        "demo",
-                        file=active_header,
-                        line=3,
-                        raw_comment=None,
-                        children=[
-                            _fake_cursor(
-                                "CLASS_DECL",
-                                "Widget",
-                                file=active_header,
-                                usr="c:@N@demo@S@Widget",
-                            ),
-                        ],
-                    ),
-                    _fake_cursor(
-                        "NAMESPACE",
-                        "demo",
-                        file=active_header,
-                        line=12,
-                        raw_comment="/// Namespace docs.",
-                        children=[
-                            _fake_cursor(
-                                "FUNCTION_DECL",
-                                "make_widget",
-                                file=active_header,
-                                usr="c:@N@demo@F@make_widget#",
-                                result_type=_fake_type("INT", "int"),
-                            ),
-                        ],
+        with tempfile.TemporaryDirectory() as temp_dir:
+            active_header = Path(temp_dir) / "demo.hpp"
+            active_header.write_text("\n" * 20)
+            translation_unit = _fake_translation_unit(
+                _fake_cursor(
+                    "TRANSLATION_UNIT",
+                    "",
+                    file=active_header,
+                    children=[
+                        _fake_cursor(
+                            "NAMESPACE",
+                            "demo",
+                            file=active_header,
+                            line=3,
+                            children=[
+                                _fake_cursor(
+                                    "CLASS_DECL",
+                                    "Widget",
+                                    file=active_header,
+                                    usr="c:@N@demo@S@Widget",
+                                ),
+                            ],
+                        ),
+                        _fake_cursor(
+                            "NAMESPACE",
+                            "demo",
+                            file=active_header,
+                            line=12,
+                            children=[
+                                _fake_cursor(
+                                    "FUNCTION_DECL",
+                                    "make_widget",
+                                    file=active_header,
+                                    usr="c:@N@demo@F@make_widget#",
+                                    result_type=_fake_type("INT", "int"),
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
+                tokens=[
+                    _fake_comment_token(
+                        active_header,
+                        "/// Namespace docs.",
+                        start_line=11,
                     ),
                 ],
             )
-        )
 
-        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
-        namespace = build_result.module.declarations.namespaces[0]
+            build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
+            namespace = build_result.module.declarations.namespaces[0]
 
-        self.assertEqual(namespace.name, "demo")
-        self.assertEqual(len(namespace.cpp.location.declarations), 2)
-        self.assertIsNotNone(namespace.cpp.comment)
-        self.assertIn("Namespace docs.", namespace.cpp.comment)
-        self.assertEqual(len(namespace.declarations.classes), 1)
-        self.assertEqual(len(namespace.declarations.functions), 1)
+            self.assertEqual(namespace.name, "demo")
+            self.assertEqual(len(namespace.cpp.location.declarations), 2)
+            self.assertIsNotNone(namespace.cpp.attached_comment)
+            self.assertIn("Namespace docs.", namespace.cpp.attached_comment)
+            self.assertEqual(len(namespace.declarations.classes), 1)
+            self.assertEqual(len(namespace.declarations.functions), 1)
 
     def test_build_module_from_clang_links_nested_template_argument_types_to_declarations(self) -> None:
         active_header = Path("/tmp/project/demo.hpp")
@@ -1192,112 +1200,142 @@ class ParseBuildTest(unittest.TestCase):
         self.assertEqual(union_.cpp.kind, "union")
 
     def test_build_module_from_clang_prefers_longer_conflicting_comment_by_default(self) -> None:
-        active_header = Path("/tmp/project/demo.hpp")
-        translation_unit = SimpleNamespace(
-            cursor=_fake_cursor(
-                "TRANSLATION_UNIT",
-                "",
-                file=active_header,
-                children=[
-                    _fake_cursor(
-                        "FUNCTION_DECL",
-                        "make_widget",
-                        file=active_header,
-                        usr="c:@F@make_widget#",
-                        raw_comment="/// Forward declaration note.",
+        with tempfile.TemporaryDirectory() as temp_dir:
+            active_header = Path(temp_dir) / "demo.hpp"
+            active_header.write_text("\n" * 20)
+            translation_unit = _fake_translation_unit(
+                _fake_cursor(
+                    "TRANSLATION_UNIT",
+                    "",
+                    file=active_header,
+                    children=[
+                        _fake_cursor(
+                            "FUNCTION_DECL",
+                            "make_widget",
+                            file=active_header,
+                            usr="c:@F@make_widget#",
+                            line=4,
+                        ),
+                        _fake_cursor(
+                            "FUNCTION_DECL",
+                            "make_widget",
+                            file=active_header,
+                            usr="c:@F@make_widget#",
+                            line=8,
+                        ),
+                    ],
+                ),
+                tokens=[
+                    _fake_comment_token(
+                        active_header,
+                        "/// Forward declaration note.",
+                        start_line=3,
                     ),
-                    _fake_cursor(
-                        "FUNCTION_DECL",
-                        "make_widget",
-                        file=active_header,
-                        usr="c:@F@make_widget#",
-                        raw_comment="/// Create one widget from the current demo factory state.",
+                    _fake_comment_token(
+                        active_header,
+                        "/// Create one widget from the current demo factory state.",
+                        start_line=7,
                     ),
                 ],
             )
-        )
 
-        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
+            build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
 
-        self.assertEqual(len(build_result.module.declarations.functions), 1)
-        self.assertEqual(
-            build_result.module.declarations.functions[0].cpp.comment,
-            "/// Create one widget from the current demo factory state.",
-        )
-        self.assertEqual(
-            build_result.module.declarations.functions[0].cpp.doc.brief,
-            "Create one widget from the current demo factory state.",
-        )
-        conflict_warnings = [
-            warning
-            for warning in build_result.report.warnings
-            if "Conflicting parsed comments" in warning.message
-        ]
-        self.assertTrue(conflict_warnings)
-        self.assertIsNotNone(conflict_warnings[0].detail)
-        self.assertIn("existing parsed comment:", conflict_warnings[0].detail)
-        self.assertIn("new parsed comment:", conflict_warnings[0].detail)
-        self.assertIn("selected: new", conflict_warnings[0].detail)
+            self.assertEqual(len(build_result.module.declarations.functions), 1)
+            self.assertEqual(
+                build_result.module.declarations.functions[0].cpp.attached_comment,
+                "/// Create one widget from the current demo factory state.",
+            )
+            self.assertEqual(
+                build_result.module.declarations.functions[0].cpp.doc.brief,
+                "Create one widget from the current demo factory state.",
+            )
+            conflict_warnings = [
+                warning
+                for warning in build_result.report.warnings
+                if "Conflicting parsed comments" in warning.message
+            ]
+            self.assertTrue(conflict_warnings)
+            self.assertIsNotNone(conflict_warnings[0].detail)
+            self.assertIn("existing parsed comment:", conflict_warnings[0].detail)
+            self.assertIn("new parsed comment:", conflict_warnings[0].detail)
+            self.assertIn("selected: new", conflict_warnings[0].detail)
 
     def test_build_module_from_clang_recomputes_structured_doc_after_comment_merge(self) -> None:
-        active_header = Path("/tmp/project/demo.hpp")
-        translation_unit = SimpleNamespace(
-            cursor=_fake_cursor(
-                "TRANSLATION_UNIT",
-                "",
-                file=active_header,
-                children=[
-                    _fake_cursor(
-                        "FUNCTION_DECL",
-                        "make_widget",
-                        file=active_header,
-                        usr="c:@F@make_widget#I#",
-                        children=[
-                            _fake_cursor(
-                                "PARM_DECL",
-                                "value",
-                                file=active_header,
-                                usr="c:@F@make_widget#I#@value",
-                            )
-                        ],
-                        raw_comment="""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            active_header = Path(temp_dir) / "demo.hpp"
+            active_header.write_text("\n" * 30)
+            translation_unit = _fake_translation_unit(
+                _fake_cursor(
+                    "TRANSLATION_UNIT",
+                    "",
+                    file=active_header,
+                    children=[
+                        _fake_cursor(
+                            "FUNCTION_DECL",
+                            "make_widget",
+                            file=active_header,
+                            usr="c:@F@make_widget#I#",
+                            line=6,
+                            children=[
+                                _fake_cursor(
+                                    "PARM_DECL",
+                                    "value",
+                                    file=active_header,
+                                    usr="c:@F@make_widget#I#@value",
+                                )
+                            ],
+                        ),
+                        _fake_cursor(
+                            "FUNCTION_DECL",
+                            "make_widget",
+                            file=active_header,
+                            usr="c:@F@make_widget#I#",
+                            line=16,
+                            children=[
+                                _fake_cursor(
+                                    "PARM_DECL",
+                                    "value",
+                                    file=active_header,
+                                    usr="c:@F@make_widget#I#@value",
+                                )
+                            ],
+                        ),
+                    ],
+                ),
+                tokens=[
+                    _fake_comment_token(
+                        active_header,
+                        """
 /**
  * Forward declaration docs.
  * @param value Value from the forward declaration.
  */
-""",
+""".strip(),
+                        start_line=2,
+                        end_line=5,
                     ),
-                    _fake_cursor(
-                        "FUNCTION_DECL",
-                        "make_widget",
-                        file=active_header,
-                        usr="c:@F@make_widget#I#",
-                        children=[
-                            _fake_cursor(
-                                "PARM_DECL",
-                                "value",
-                                file=active_header,
-                                usr="c:@F@make_widget#I#@value",
-                            )
-                        ],
-                        raw_comment="""
+                    _fake_comment_token(
+                        active_header,
+                        """
 /**
  * Build one widget from the current state.
  * @param value Value from the definition.
  * @return One widget.
  */
-""",
+""".strip(),
+                        start_line=11,
+                        end_line=15,
                     ),
                 ],
             )
-        )
 
-        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
+            build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
 
-        function = build_result.module.declarations.functions[0]
-        self.assertEqual(function.cpp.doc.brief, "Build one widget from the current state.")
-        self.assertEqual(function.cpp.doc.parameters["value"], "Value from the definition.")
-        self.assertEqual(function.cpp.doc.returns, "One widget.")
+            function = build_result.module.declarations.functions[0]
+            self.assertEqual(function.cpp.doc.brief, "Build one widget from the current state.")
+            self.assertEqual(function.cpp.doc.parameters["value"], "Value from the definition.")
+            self.assertEqual(function.cpp.doc.returns, "One widget.")
 
 
 class ParseTypesTest(unittest.TestCase):
@@ -1394,6 +1432,8 @@ def _fake_cursor(
     tokens: list[str] | None = None,
     methods: dict[str, object] | None = None,
 ) -> SimpleNamespace:
+    start_offset = line * 1000 + column
+    end_offset = start_offset + max(1, len(spelling))
     cursor = SimpleNamespace(
         kind=getattr(CursorKind, kind_name),
         spelling=spelling,
@@ -1416,6 +1456,10 @@ def _fake_cursor(
             line=line,
             column=column,
         ),
+        extent=SimpleNamespace(
+            start=SimpleNamespace(line=line, column=column, offset=start_offset),
+            end=SimpleNamespace(line=line, column=column + max(1, len(spelling)), offset=end_offset),
+        ),
         get_children=lambda: list(children or []),
         get_tokens=lambda: [SimpleNamespace(spelling=token) for token in (tokens or [])],
         get_usr=lambda: usr,
@@ -1423,6 +1467,36 @@ def _fake_cursor(
     for method_name, method_result in (methods or {}).items():
         setattr(cursor, method_name, lambda result=method_result: result)
     return cursor
+
+
+def _fake_translation_unit(cursor: SimpleNamespace, *, tokens: list[SimpleNamespace] | None = None) -> SimpleNamespace:
+    return SimpleNamespace(
+        cursor=cursor,
+        get_extent=lambda *args, **kwargs: SimpleNamespace(),
+        get_tokens=lambda extent=None: list(tokens or []),
+    )
+
+
+def _fake_comment_token(
+    file: Path,
+    spelling: str,
+    *,
+    start_line: int,
+    end_line: int | None = None,
+    start_column: int = 1,
+) -> SimpleNamespace:
+    token_end_line = end_line if end_line is not None else start_line
+    start_offset = start_line * 1000 + start_column
+    end_offset = token_end_line * 1000 + start_column + max(1, len(spelling))
+    return SimpleNamespace(
+        kind=TokenKind.COMMENT,
+        spelling=spelling,
+        location=SimpleNamespace(file=SimpleNamespace(name=str(file))),
+        extent=SimpleNamespace(
+            start=SimpleNamespace(line=start_line, column=start_column, offset=start_offset),
+            end=SimpleNamespace(line=token_end_line, column=start_column + max(1, len(spelling)), offset=end_offset),
+        ),
+    )
 
 
 def _fake_type(

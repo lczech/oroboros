@@ -17,17 +17,31 @@ from .visibility import CppVisibility
 class CppVariableCppFacet:
     """Store parsed C++ details for one variable declaration."""
 
+    # Spelling written in the C++ source, before any Python-facing renaming.
     original_name: str | None = None
+    # Structured parsed C++ variable type.
     type: CppType | None = None
+    # Whether the variable type was declared const-qualified.
     is_const: bool = False
+    # Source locations where this variable was declared or defined.
     location: CppLocationInfo = field(default_factory=CppLocationInfo)
-    comment: str | None = None
+    # Parser-selected comment text attached to this variable declaration.
+    attached_comment: str | None = None
+    # Raw comment text reported by clang for provenance and debugging.
+    clang_raw_comment: str | None = None
+    # Normalized structured documentation parsed from `attached_comment`.
     doc: CppDoc | None = None
+    # Availability annotations such as deprecation attached to this variable.
     availability: CppAvailability | None = None
+    # Declared member visibility when clang exposes it.
     visibility: CppVisibility | None = None
+    # Variable role within the semantic model.
     kind: Literal["variable", "member_variable", "static_member_variable"] = "variable"
+    # Storage-class spelling as exposed by clang.
     storage_class: str | None = None
+    # Linkage kind as exposed by clang.
     linkage: str | None = None
+    # Thread-local storage kind as exposed by clang.
     tls_kind: str | None = None
     # Whether this field declaration uses bitfield syntax such as `unsigned mode : 3`.
     is_bitfield: bool = False

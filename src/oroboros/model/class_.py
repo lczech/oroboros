@@ -43,8 +43,11 @@ if TYPE_CHECKING:
 class CppClassBase:
     """Store one base-class relationship of a class or struct."""
 
+    # Structured parsed type of the base class as written at the use site.
     type: CppType
+    # Access level of the inheritance declaration, when clang exposes it.
     visibility: CppVisibility | None = None
+    # Whether this base is inherited virtually.
     is_virtual: bool = False
 
 
@@ -52,14 +55,25 @@ class CppClassBase:
 class CppClassCppFacet:
     """Store parsed C++ details for one class or struct."""
 
+    # Spelling written in the C++ source, before any Python-facing renaming.
     original_name: str | None = None
+    # Source locations where this class was declared or defined.
     location: CppLocationInfo = dataclass_field(default_factory=CppLocationInfo)
-    comment: str | None = None
+    # Parser-selected comment text attached to this class declaration.
+    attached_comment: str | None = None
+    # Raw comment text reported by clang for provenance and debugging.
+    clang_raw_comment: str | None = None
+    # Normalized structured documentation parsed from `attached_comment`.
     doc: CppDoc | None = None
+    # Availability annotations such as deprecation attached to this class.
     availability: CppAvailability | None = None
+    # Whether the class is abstract according to clang.
     is_abstract: bool = False
+    # Record kind as spelled in C++: class, struct, or union.
     kind: Literal["class", "struct", "union"] = "class"
+    # Declared class visibility when nested in another class.
     visibility: CppVisibility | None = None
+    # Direct base-class relationships declared on this class.
     bases: list[CppClassBase] = dataclass_field(default_factory=list)
 
 

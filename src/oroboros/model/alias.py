@@ -25,13 +25,23 @@ if TYPE_CHECKING:
 class CppAliasCppFacet:
     """Store parsed C++ details for one alias or typedef declaration."""
 
+    # Spelling written in the C++ source, before any Python-facing renaming.
     original_name: str | None = None
+    # Structured parsed target type of the alias or typedef.
     target: CppType | None = None
+    # Source locations where this alias was declared.
     location: CppLocationInfo = field(default_factory=CppLocationInfo)
-    comment: str | None = None
+    # Parser-selected comment text attached to this alias declaration.
+    attached_comment: str | None = None
+    # Raw comment text reported by clang for provenance and debugging.
+    clang_raw_comment: str | None = None
+    # Normalized structured documentation parsed from `attached_comment`.
     doc: CppDoc | None = None
+    # Availability annotations such as deprecation attached to this alias.
     availability: CppAvailability | None = None
+    # Declared member visibility when clang exposes it.
     visibility: CppVisibility | None = None
+    # Alias syntax used in the source, either `using` or `typedef`.
     kind: Literal["using", "typedef"] | None = None
 
 

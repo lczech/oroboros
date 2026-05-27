@@ -30,6 +30,7 @@ def ensure_namespace(
     """Return one existing or newly created namespace for one parser cursor."""
 
     candidate_cpp = build_namespace_cpp_facet(cursor, context=context)
+    _inherit_compact_namespace_comment(owner, candidate_cpp)
     existing = lookup_registered_element(cursor, context, CppNamespace)
     if existing is not None:
         merge_common_cpp_fields(existing, candidate_cpp, context, cursor)
@@ -55,6 +56,25 @@ def ensure_namespace(
     if attached is not None:
         register_element_for_cursor(cursor, attached, context)
     return attached
+
+
+def _inherit_compact_namespace_comment(owner: CppElement, candidate_cpp: Any) -> None:
+    """Propagate one compact `namespace a::b` comment from the outer to inner namespace."""
+
+    if not isinstance(owner, CppNamespace):
+        return
+    if candidate_cpp.attached_comment is not None or owner.cpp.attached_comment is None:
+        return
+
+    owner_location = owner.cpp.location.primary
+    candidate_location = candidate_cpp.location.primary
+    if owner_location is None or candidate_location is None:
+        return
+    if owner_location.file != candidate_location.file or owner_location.line != candidate_location.line:
+        return
+
+    candidate_cpp.attached_comment = owner.cpp.attached_comment
+    candidate_cpp.doc = owner.cpp.doc
 
 
 def attach_element(

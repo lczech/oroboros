@@ -1,15 +1,73 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from pathlib import Path
 import tempfile
 from textwrap import dedent
 import unittest
 
+from clang.cindex import TokenKind
+
 from oroboros.headers import HeaderFile, HeaderSelection
 from oroboros.parse import ParserConfig, parse_header_selection
+from oroboros.parse.build_model import BuildContext
+from oroboros.parse.comment_recovery import resolve_cursor_comment
+from oroboros.parse.cursor_data import CursorTokenInfo
 
 
 class ParseCommentIntegrationTest(unittest.TestCase):
+    def test_resolve_cursor_comment_suppresses_warning_for_nonlocal_clang_raw_comment_when_recovered_comment_exists(self) -> None:
+        header = Path("/tmp/project/demo.hpp").resolve()
+        recovered_comment = """
+/**
+ * @brief Widget docs.
+ */
+""".strip()
+        stale_raw_comment = """
+// =================================================================================================
+//     Forward Declarations
+// =================================================================================================
+""".strip()
+        cursor = SimpleNamespace(
+            spelling="Widget",
+            raw_comment=stale_raw_comment,
+            location=SimpleNamespace(
+                file=SimpleNamespace(name=str(header)),
+                line=10,
+                column=7,
+            ),
+            extent=SimpleNamespace(
+                start=SimpleNamespace(line=10, offset=100),
+                end=SimpleNamespace(line=20, offset=150),
+            ),
+            is_definition=lambda: True,
+            get_usr=lambda: None,
+        )
+        context = BuildContext(
+            active_headers={header},
+            known_project_headers={header},
+            config=ParserConfig(),
+            translation_unit=object(),
+        )
+        context.file_tokens_by_path[header] = [
+            CursorTokenInfo(
+                kind=TokenKind.COMMENT,
+                spelling=recovered_comment,
+                start_line=5,
+                start_column=1,
+                start_offset=50,
+                end_line=9,
+                end_column=4,
+                end_offset=99,
+            ),
+        ]
+
+        resolution = resolve_cursor_comment(cursor, context)
+
+        self.assertEqual(resolution.selected_comment, recovered_comment)
+        self.assertEqual(resolution.selection_reason, "recovered_leading_block")
+        self.assertFalse(context.report.diagnostics)
+
     def test_parse_headers_extracts_real_doxygen_comments(self) -> None:
         source = """
 namespace demo {
@@ -34,13 +92,16 @@ Widget make_widget(int value);
         widget = namespace.declarations.classes[0]
         function = namespace.declarations.functions[0]
 
-        self.assertIsNotNone(widget.cpp.comment)
-        self.assertIn("Represent one widget", widget.cpp.comment)
+        self.assertIsNotNone(widget.cpp.attached_comment)
+        self.assertIsNotNone(widget.cpp.clang_raw_comment)
+        self.assertIn("Represent one widget", widget.cpp.attached_comment)
+        self.assertIn("Represent one widget", widget.cpp.clang_raw_comment)
         self.assertIsNotNone(widget.cpp.doc)
         self.assertEqual(widget.cpp.doc.brief, "Represent one widget in the real parsed headers.")
-        self.assertIsNotNone(function.cpp.comment)
-        self.assertIn("Build one widget", function.cpp.comment)
-        self.assertIn("@return One newly created widget.", function.cpp.comment)
+        self.assertIsNotNone(function.cpp.attached_comment)
+        self.assertIsNotNone(function.cpp.clang_raw_comment)
+        self.assertIn("Build one widget", function.cpp.attached_comment)
+        self.assertIn("@return One newly created widget.", function.cpp.attached_comment)
         self.assertIsNotNone(function.cpp.doc)
         self.assertEqual(function.cpp.doc.brief, "Build one widget from the current demo state.")
         self.assertEqual(
@@ -66,7 +127,7 @@ struct Widget {};
 
         widget = result.module.declarations.namespaces[0].declarations.classes[0]
 
-        self.assertIsNotNone(widget.cpp.comment)
+        self.assertIsNotNone(widget.cpp.attached_comment)
         self.assertIsNotNone(widget.cpp.doc)
         self.assertEqual(widget.cpp.doc.brief, "Represent one widget.")
         self.assertEqual(widget.cpp.doc.description, "Used by the demo API.")
@@ -224,16 +285,16 @@ enum class Mode {
         widget = namespace.declarations.classes[0]
         mode = namespace.declarations.enums[0]
 
-        self.assertIsNotNone(widget.declarations.variables[0].cpp.comment)
+        self.assertIsNotNone(widget.declarations.variables[0].cpp.attached_comment)
         self.assertEqual(widget.declarations.variables[0].cpp.doc.brief, "Current size in elements.")
-        self.assertIsNotNone(widget.declarations.variables[1].cpp.comment)
+        self.assertIsNotNone(widget.declarations.variables[1].cpp.attached_comment)
         self.assertEqual(
             widget.declarations.variables[1].cpp.doc.brief,
             "Total number of stored entries.",
         )
-        self.assertIsNotNone(mode.enumerators[0].cpp.comment)
+        self.assertIsNotNone(mode.enumerators[0].cpp.attached_comment)
         self.assertEqual(mode.enumerators[0].cpp.doc.brief, "Fast mode.")
-        self.assertIsNotNone(mode.enumerators[1].cpp.comment)
+        self.assertIsNotNone(mode.enumerators[1].cpp.attached_comment)
         self.assertEqual(mode.enumerators[1].cpp.doc.brief, "Slow mode.")
 
     def test_parse_headers_attach_comments_to_enum_declarations_and_nested_class_scope(self) -> None:
@@ -302,9 +363,9 @@ struct Widget {};
         namespace = result.module.declarations.namespaces[0].declarations.namespaces[0]
         widget = namespace.declarations.classes[0]
 
-        self.assertIsNotNone(namespace.cpp.comment)
-        self.assertNotIn("namespace demo::detail", namespace.cpp.comment)
-        self.assertIn("demo::detail", namespace.cpp.comment)
+        self.assertIsNotNone(namespace.cpp.attached_comment)
+        self.assertNotIn("namespace demo::detail", namespace.cpp.attached_comment)
+        self.assertIn("demo::detail", namespace.cpp.attached_comment)
         self.assertEqual(widget.cpp.doc.brief, "Widget docs.")
         self.assertFalse(any("Recovered attached comment" in warning.message for warning in result.report.warnings))
 
@@ -340,15 +401,39 @@ enum class Mode {
         function = namespace.declarations.functions[0]
         mode = namespace.declarations.enums[0]
 
-        self.assertIsNotNone(widget.declarations.variables[0].cpp.comment)
+        self.assertIsNotNone(widget.declarations.variables[0].cpp.attached_comment)
         self.assertEqual(widget.declarations.variables[0].cpp.doc.brief, "Current size in elements.")
         self.assertIsNotNone(function.cpp.doc)
         self.assertEqual(
             function.cpp.doc.description,
             "Example usage:\n\n```\nWidget widget;\nwidget.build();\n```",
         )
-        self.assertIsNotNone(mode.enumerators[0].cpp.comment)
+        self.assertIsNotNone(mode.enumerators[0].cpp.attached_comment)
         self.assertEqual(mode.enumerators[0].cpp.doc.brief, "Fast mode.")
+
+    def test_parse_headers_do_not_warn_for_indentation_only_recovery_difference(self) -> None:
+        source = """
+namespace demo {
+
+// We use the slots as indicators which elements in the slots of a block have been set already.
+    // Using 64 slots fixed for now, for efficiency. Might parameterize as template param,
+    // so that the buffer can be made smaller if needed for large elements instead.
+struct BlockSlotBits {};
+
+}
+"""
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        block_slot_bits = result.module.declarations.namespaces[0].declarations.classes[0]
+
+        self.assertIsNotNone(block_slot_bits.cpp.attached_comment)
+        self.assertIsNotNone(block_slot_bits.cpp.doc)
+        self.assertEqual(
+            block_slot_bits.cpp.doc.brief,
+            "We use the slots as indicators which elements in the slots of a block have been set already. Using 64 slots fixed for now, for efficiency. Might parameterize as template param, so that the buffer can be made smaller if needed for large elements instead.",
+        )
+        self.assertFalse(any(warning.code == "parse.comment_recovery.mismatch" for warning in result.report.warnings))
 
     def test_parse_headers_keep_blank_lines_inside_indented_code_blocks(self) -> None:
         source = """
@@ -401,9 +486,9 @@ int make_widget();
         widget = namespace.declarations.classes[0]
         function = namespace.declarations.functions[0]
 
-        self.assertIsNone(widget.cpp.comment)
+        self.assertIsNone(widget.cpp.attached_comment)
         self.assertIsNone(widget.cpp.doc)
-        self.assertIsNone(function.cpp.comment)
+        self.assertIsNone(function.cpp.attached_comment)
         self.assertIsNone(function.cpp.doc)
         self.assertFalse(any("Recovered attached comment" in warning.message for warning in result.report.warnings))
 
@@ -425,10 +510,81 @@ struct Widget {};
         namespace = result.module.declarations.namespaces[0]
         widget = namespace.declarations.classes[0]
 
-        self.assertIsNone(namespace.cpp.comment)
+        self.assertIsNone(namespace.cpp.attached_comment)
         self.assertIsNone(namespace.cpp.doc)
         self.assertEqual(widget.name, "Widget")
         self.assertFalse(any("Recovered attached comment" in warning.message for warning in result.report.warnings))
+
+    def test_parse_headers_do_not_attach_detached_header_comment_to_namespace_after_includes(self) -> None:
+        source = """
+/**
+ * @brief Header notes that do not document the namespace below.
+ */
+
+#include <cstddef>
+
+namespace demo {
+
+struct Widget {};
+
+}
+"""
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        widget = namespace.declarations.classes[0]
+
+        self.assertIsNone(namespace.cpp.attached_comment)
+        self.assertIsNone(namespace.cpp.doc)
+        self.assertEqual(widget.name, "Widget")
+        self.assertFalse(any(warning.code == "parse.merge.conflicting_comments" for warning in result.report.warnings))
+
+    def test_parse_headers_discard_stale_nonlocal_namespace_raw_comment_reused_across_headers(self) -> None:
+        result = _parse_headers_from_sources(
+            {
+                "a.hpp": """
+/**
+ * @namespace demo
+ *
+ * @brief Container namespace for all demo symbols.
+ */
+namespace demo {
+
+struct First {};
+
+}
+""",
+                "b.hpp": """
+/**
+ * @brief Header notes that do not document the namespace below.
+ */
+
+namespace demo {
+
+struct Second {};
+
+}
+""",
+                "c.hpp": """
+namespace demo {
+
+struct Third {};
+
+}
+""",
+            },
+            header_order=["a.hpp", "b.hpp", "c.hpp"],
+        )
+
+        namespace = result.module.declarations.namespaces[0]
+
+        self.assertEqual(namespace.cpp.doc.brief, "Container namespace for all demo symbols.")
+        self.assertEqual(
+            [declaration.name for declaration in namespace.declarations.classes],
+            ["First", "Second", "Third"],
+        )
+        self.assertFalse(any(warning.code == "parse.merge.conflicting_comments" for warning in result.report.warnings))
 
     def test_parse_headers_attach_comments_across_methods_constructors_templates_aliases_and_reopened_namespaces(self) -> None:
         result = _parse_headers_from_sources(
@@ -516,7 +672,7 @@ public:
         abc = result.module.declarations.namespaces[0].declarations.classes[0]
 
         self.assertEqual(
-            abc.cpp.comment,
+            abc.cpp.attached_comment,
             "/**\n * @brief The class does cool things.\n */",
         )
         self.assertEqual(abc.cpp.doc.brief, "The class does cool things.")
@@ -525,16 +681,19 @@ public:
             for warning in result.report.warnings
             if "Recovered attached comment" in warning.message
         ]
-        self.assertTrue(
-            mismatch_warnings,
-            msg=f"Expected recovery warning, got: {result.report.warnings}",
-        )
-        self.assertIsNotNone(mismatch_warnings[0].detail)
-        self.assertIn("clang raw_comment:", mismatch_warnings[0].detail)
-        self.assertIn("// Forward declaration of a type we need.", mismatch_warnings[0].detail)
-        self.assertIn("recovered attached comment:", mismatch_warnings[0].detail)
-        self.assertIn("@brief The class does cool things.", mismatch_warnings[0].detail)
-        self.assertIn("selected: recovered", mismatch_warnings[0].detail)
+        self.assertFalse(mismatch_warnings, msg=f"Expected no recovery warning, got: {result.report.warnings}")
+        merge_warnings = [
+            warning
+            for warning in result.report.warnings
+            if warning.code == "parse.merge.conflicting_comments"
+        ]
+        self.assertTrue(merge_warnings, msg=f"Expected merge warning, got: {result.report.warnings}")
+        self.assertIsNotNone(merge_warnings[0].detail)
+        self.assertIn("existing parsed comment:", merge_warnings[0].detail)
+        self.assertIn("// Forward declaration of a type we need.", merge_warnings[0].detail)
+        self.assertIn("new parsed comment:", merge_warnings[0].detail)
+        self.assertIn("@brief The class does cool things.", merge_warnings[0].detail)
+        self.assertIn("selected: new", merge_warnings[0].detail)
 
     def test_parse_headers_prefer_structured_definition_docs_for_redeclared_classes_across_headers(self) -> None:
         result = _parse_headers_from_sources(
@@ -570,7 +729,7 @@ public:
 
         self.assertEqual(len(widget.cpp.location.declarations), 2)
         self.assertEqual(
-            widget.cpp.comment,
+            widget.cpp.attached_comment,
             "/**\n * @brief Widget docs from the richer definition path.\n */",
         )
         self.assertEqual(widget.cpp.doc.brief, "Widget docs from the richer definition path.")
@@ -605,7 +764,7 @@ struct Widget;
         widget = result.module.declarations.namespaces[0].declarations.classes[0]
 
         self.assertEqual(len(widget.cpp.location.declarations), 2)
-        self.assertEqual(widget.cpp.comment, "/// Second forward docs are longer.")
+        self.assertEqual(widget.cpp.attached_comment, "/// Second forward docs are longer.")
         self.assertEqual(widget.cpp.doc.brief, "Second forward docs are longer.")
 
     def test_parse_headers_preserve_attached_structured_docs_across_redeclarations(self) -> None:
@@ -679,8 +838,8 @@ struct Box {
 
         self.assertEqual(class_template.name, "Box")
         self.assertEqual(len(class_template.declaration.cpp.location.declarations), 2)
-        self.assertIsNotNone(class_template.declaration.cpp.comment)
-        self.assertIn("Forward declaration docs.", class_template.declaration.cpp.comment)
+        self.assertIsNotNone(class_template.declaration.cpp.attached_comment)
+        self.assertIn("Forward declaration docs.", class_template.declaration.cpp.attached_comment)
         self.assertEqual(len(class_template.declaration.declarations.variables), 1)
         self.assertEqual(class_template.declaration.declarations.variables[0].name, "value")
 

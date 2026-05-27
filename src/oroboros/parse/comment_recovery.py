@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-"""Resolve one selected raw comment per declaration cursor before redeclaration merging.
+"""Resolve one selected attached comment per declaration cursor before redeclaration merging.
 
-This module handles comment attachment: For each clang cursor, it asks clang for
-``raw_comment`` and also recovers nearby leading or trailing comment tokens from
-the source file. It then reconciles those sources into one selected raw comment
-for that cursor, preferring locally attached recovered comments when clang appears
-to be reusing a stale comment from an earlier declaration of the same USR.
+This module owns comment attachment for parsed declarations. For each clang cursor,
+it recovers nearby leading or trailing comment tokens from the source file and
+selects one locally attached comment block when available.
 
-The selected raw comment is later parsed into ``CppDoc`` by ``comment_structure``,
+Libclang's ``raw_comment`` is preserved only as provenance. It is intentionally
+not used as an attachment source because it can become stale or over-attached
+across declarations and even across files in one combined translation unit.
+
+The selected attached comment is later parsed into ``CppDoc`` by ``comment_structure``,
 and repeated declarations are still merged afterwards by the normal redeclaration
-merge layer. In other words, this module chooses the best comment per cursor, while
-later merge policy chooses among comments across declaration sites.
+merge layer. In other words, this module chooses the best local comment per cursor,
+while later merge policy chooses among comments across declaration sites.
 """
 
 from dataclasses import dataclass
@@ -20,10 +22,9 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from clang.cindex import TokenKind
 
-from ..diagnostics import Diagnostic
 from ..model import SourceLocation
 from .comment_structure import comment_preference_key, parse_cpp_doc
-from .cursor_data import CursorTokenInfo, cursor_raw_comment, cursor_source_location, cursor_usr, file_cursor_tokens
+from .cursor_data import CursorTokenInfo, cursor_raw_comment, cursor_source_location, file_cursor_tokens
 
 if TYPE_CHECKING:
     from .build_model import BuildContext
@@ -47,6 +48,17 @@ class RecoveredCommentCandidate:
 
 
 @dataclass(slots=True)
+class CursorCommentSearchContext:
+    """Store one cursor's file-local token search data for comment recovery."""
+
+    tokens: list[CursorTokenInfo]
+    start_line: int
+    start_offset: int
+    end_line: int
+    end_offset: int
+
+
+@dataclass(slots=True)
 class CursorCommentResolution:
     """Store the resolved comment decision for one declaration cursor occurrence."""
 
@@ -55,106 +67,65 @@ class CursorCommentResolution:
     selected_comment: str | None = None
     selected_doc: Any = None
     selection_reason: str = "missing"
-    mismatch_warning: str | None = None
-    mismatch_detail: str | None = None
 
 
 def resolve_cursor_comment(cursor: Any, context: BuildContext | None) -> CursorCommentResolution:
-    """Resolve the best raw comment for one cursor using clang plus token recovery."""
+    """Resolve the best locally attached comment for one cursor."""
 
-    raw_comment = cursor_raw_comment(cursor)
+    clang_raw_comment = cursor_raw_comment(cursor)
     location = cursor_source_location(cursor)
-    fallback = CursorCommentResolution(
+    resolution = CursorCommentResolution(
         location=location,
-        clang_raw_comment=raw_comment,
-        selected_comment=raw_comment,
-        selected_doc=parse_cpp_doc(raw_comment),
-        selection_reason="clang_raw_comment" if raw_comment is not None else "missing",
+        clang_raw_comment=clang_raw_comment,
+        selected_comment=None,
+        selected_doc=None,
+        selection_reason="missing",
     )
     if context is None or context.translation_unit is None:
-        return fallback
+        return resolution
 
     recovered_candidates = recover_comment_candidates(cursor, context)
-    if not recovered_candidates:
-        if raw_comment is not None and _raw_comment_is_detached(cursor, context, raw_comment):
-            resolution = CursorCommentResolution(
-                location=location,
-                clang_raw_comment=raw_comment,
-                selected_comment=None,
-                selected_doc=None,
-                selection_reason="discarded_detached_clang_raw_comment",
-                # Keep detached-comment discard itself, but do not warn for it:
-                # blank-line-separated comments that clang still attaches as raw comments
-                # turned out to produce too much noise without indicating a real problem.
-                # mismatch_warning=_build_detached_warning(cursor, raw_comment),
-                mismatch_warning=None,
-            )
-        else:
-            resolution = fallback
-    else:
-        resolution = _select_comment_resolution(cursor, context, raw_comment, recovered_candidates)
-
-    usr = cursor_usr(cursor)
-    if usr is not None:
-        context.usr_to_comments.setdefault(usr, []).append(resolution)
-    if resolution.mismatch_warning is not None:
-        context.report.add(
-            Diagnostic(
-                severity="warning",
-                stage="parse",
-                code="parse.comment_recovery.mismatch",
-                message=resolution.mismatch_warning,
-                detail=resolution.mismatch_detail,
-                locations=[] if location is None else [location],
-            )
-        )
+    if recovered_candidates:
+        resolution = _select_comment_resolution(recovered_candidates, resolution)
     return resolution
 
 
 def recover_comment_candidates(cursor: Any, context: BuildContext) -> list[RecoveredCommentCandidate]:
     """Recover attached comment candidates for one cursor from token positions."""
 
-    cursor_extent = getattr(cursor, "extent", None)
-    cursor_location = getattr(cursor, "location", None)
-    file_object = getattr(cursor_location, "file", None)
-    file_name = getattr(file_object, "name", None)
-    if cursor_extent is None or file_name is None:
+    search_context = _build_cursor_comment_search_context(cursor, context)
+    if search_context is None:
         return []
-
-    file_path = Path(file_name).resolve()
-    tokens = file_cursor_tokens(file_path, context)
-    if not tokens:
-        return []
-
-    start = cursor_extent.start
-    end = cursor_extent.end
-    start_line = int(getattr(start, "line", 0))
-    start_offset = int(getattr(start, "offset", 0))
-    end_line = int(getattr(end, "line", 0))
-    end_offset = int(getattr(end, "offset", 0))
 
     candidates: list[RecoveredCommentCandidate] = []
 
     trailing = _recover_trailing_comment(
-        tokens,
-        start_line=start_line,
-        end_line=end_line,
-        end_offset=end_offset,
+        search_context.tokens,
+        start_line=search_context.start_line,
+        end_line=search_context.end_line,
+        end_offset=search_context.end_offset,
     )
     if trailing is not None:
         candidates.append(trailing)
 
-    leading = _recover_leading_comment_group(tokens, start_line=start_line, start_offset=start_offset)
+    leading = _recover_leading_comment_group(
+        search_context.tokens,
+        start_line=search_context.start_line,
+        start_offset=search_context.start_offset,
+    )
     if leading is not None:
         candidates.append(leading)
 
     # Stacked out-of-line member-template definitions can start at the last
     # `template <...>` prefix line instead of the first one. Recover comments
     # attached ahead of the whole template-prefix block in that common style.
-    template_anchor = _template_prefix_block_start_anchor(tokens, start_offset=start_offset)
-    if template_anchor is not None and template_anchor[1] != start_offset:
+    template_anchor = _template_prefix_block_start_anchor(
+        search_context.tokens,
+        start_offset=search_context.start_offset,
+    )
+    if template_anchor is not None and template_anchor[1] != search_context.start_offset:
         leading = _recover_leading_comment_group(
-            tokens,
+            search_context.tokens,
             start_line=template_anchor[0],
             start_offset=template_anchor[1],
         )
@@ -170,144 +141,48 @@ def recover_comment_candidates(cursor: Any, context: BuildContext) -> list[Recov
 
 
 def _select_comment_resolution(
-    cursor: Any,
-    context: BuildContext,
-    clang_raw_comment: str | None,
     recovered_candidates: list[RecoveredCommentCandidate],
+    resolution: CursorCommentResolution,
 ) -> CursorCommentResolution:
-    """Select one final raw comment from clang and recovered candidates."""
+    """Select one final attached comment from recovered local candidates."""
 
     best_candidate = max(
         recovered_candidates,
         key=lambda candidate: (_candidate_attachment_rank(candidate), comment_preference_key(candidate.text)),
     )
-    recovered_texts = {candidate.text for candidate in recovered_candidates}
-    raw_matches_recovered = clang_raw_comment in recovered_texts if clang_raw_comment is not None else False
-
-    selected_comment = clang_raw_comment
-    selection_reason = "clang_raw_comment"
-    mismatch_warning: str | None = None
-    mismatch_detail: str | None = None
-
-    if clang_raw_comment is None:
-        selected_comment = best_candidate.text
-        selection_reason = f"recovered_{best_candidate.kind}"
-    elif raw_matches_recovered:
-        selection_reason = f"clang_matches_recovered_{best_candidate.kind}"
-    elif _should_prefer_recovered(cursor, context, clang_raw_comment, best_candidate.text):
-        selected_comment = best_candidate.text
-        selection_reason = f"recovered_{best_candidate.kind}"
-        mismatch_warning = _build_mismatch_warning(cursor, clang_raw_comment, best_candidate.text)
-        mismatch_detail = _build_mismatch_detail(clang_raw_comment, best_candidate.text)
-
-    return CursorCommentResolution(
-        location=cursor_source_location(cursor),
-        clang_raw_comment=clang_raw_comment,
-        selected_comment=selected_comment,
-        selected_doc=parse_cpp_doc(selected_comment),
-        selection_reason=selection_reason,
-        mismatch_warning=mismatch_warning,
-        mismatch_detail=mismatch_detail,
-    )
+    resolution.selected_comment = best_candidate.text
+    resolution.selected_doc = parse_cpp_doc(best_candidate.text)
+    resolution.selection_reason = f"recovered_{best_candidate.kind}"
+    return resolution
 
 
-# ==================================================================================================
-#     Comment Provenance Checks
-# ==================================================================================================
-
-
-def _should_prefer_recovered(
+def _build_cursor_comment_search_context(
     cursor: Any,
     context: BuildContext,
-    clang_raw_comment: str,
-    recovered_comment: str,
-) -> bool:
-    """Return whether recovered local attachment should override clang raw_comment."""
-
-    if comment_preference_key(recovered_comment) > comment_preference_key(clang_raw_comment):
-        return True
-
-    is_definition = bool(getattr(cursor, "is_definition", lambda: False)())
-    if is_definition:
-        return True
-
-    # If clang is reusing a raw comment that we already selected on an earlier
-    # declaration of the same entity, treat that as evidence that the current
-    # cursor's clang attachment is stale and prefer the locally recovered one.
-    return _clang_raw_comment_was_already_selected_for_usr(cursor, context, clang_raw_comment)
-
-
-def _clang_raw_comment_was_already_selected_for_usr(
-    cursor: Any,
-    context: BuildContext,
-    clang_raw_comment: str,
-) -> bool:
-    """Return whether clang raw_comment was already selected on an earlier declaration."""
-
-    usr = cursor_usr(cursor)
-    if usr is None:
-        return False
-
-    prior_resolutions = context.usr_to_comments.get(usr, [])
-    return any(resolution.selected_comment == clang_raw_comment for resolution in prior_resolutions)
-
-
-def _raw_comment_is_detached(cursor: Any, context: BuildContext, raw_comment: str) -> bool:
-    """Return whether clang raw_comment matches a nearby but detached leading comment group."""
+) -> CursorCommentSearchContext | None:
+    """Return one cursor's local token search data for comment recovery."""
 
     cursor_extent = getattr(cursor, "extent", None)
     cursor_location = getattr(cursor, "location", None)
     file_object = getattr(cursor_location, "file", None)
     file_name = getattr(file_object, "name", None)
     if cursor_extent is None or file_name is None:
-        return False
+        return None
 
     file_path = Path(file_name).resolve()
     tokens = file_cursor_tokens(file_path, context)
     if not tokens:
-        return False
+        return None
 
     start = cursor_extent.start
-    start_line = int(getattr(start, "line", 0))
-    start_offset = int(getattr(start, "offset", 0))
-
-    preceding_index: int | None = None
-    for index in range(len(tokens) - 1, -1, -1):
-        if tokens[index].end_offset <= start_offset:
-            preceding_index = index
-            break
-
-    if preceding_index is None:
-        return False
-
-    token = tokens[preceding_index]
-    if token.kind != TokenKind.COMMENT:
-        return False
-
-    if token.spelling.lstrip().startswith("//"):
-        group: list[CursorTokenInfo] = [token]
-        index = preceding_index - 1
-        while index >= 0:
-            candidate = tokens[index]
-            if candidate.kind != TokenKind.COMMENT:
-                break
-            if not candidate.spelling.lstrip().startswith("//"):
-                break
-            if _comment_has_code_before_same_line(tokens, index):
-                break
-            if candidate.end_line + 1 != group[0].start_line:
-                break
-            group.insert(0, candidate)
-            index -= 1
-
-        group_text = "\n".join(token.spelling.strip() for token in group)
-        if group_text != raw_comment:
-            return False
-        return _comment_has_code_before_same_line(tokens, preceding_index) or group[-1].end_line < start_line - 1
-
-    if token.spelling.strip() != raw_comment.strip():
-        return False
-    return _comment_has_code_before_same_line(tokens, preceding_index) or token.end_line < start_line - 1
+    end = cursor_extent.end
+    return CursorCommentSearchContext(
+        tokens=tokens,
+        start_line=int(getattr(start, "line", 0)),
+        start_offset=int(getattr(start, "offset", 0)),
+        end_line=int(getattr(end, "line", 0)),
+        end_offset=int(getattr(end, "offset", 0)),
+    )
 
 
 def _recover_trailing_comment(
@@ -369,20 +244,7 @@ def _recover_leading_comment_group(
     if token.spelling.lstrip().startswith("//"):
         if token.end_line != start_line - 1:
             return None
-        group: list[CursorTokenInfo] = [token]
-        index = preceding_index - 1
-        while index >= 0:
-            candidate = tokens[index]
-            if candidate.kind != TokenKind.COMMENT:
-                break
-            if not candidate.spelling.lstrip().startswith("//"):
-                break
-            if _comment_has_code_before_same_line(tokens, index):
-                break
-            if candidate.end_line + 1 != group[0].start_line:
-                break
-            group.insert(0, candidate)
-            index -= 1
+        group, _ = _collect_contiguous_line_comment_group(tokens, preceding_index)
 
         return RecoveredCommentCandidate(
             text="\n".join(token.spelling.strip() for token in group),
@@ -446,6 +308,31 @@ def _template_prefix_block_start_anchor(
     return (anchor.start_line, anchor.start_offset)
 
 
+def _collect_contiguous_line_comment_group(
+    tokens: list[CursorTokenInfo],
+    end_index: int,
+) -> tuple[list[CursorTokenInfo], int]:
+    """Collect one contiguous preceding `//` comment group ending at one token index."""
+
+    group: list[CursorTokenInfo] = [tokens[end_index]]
+    group_start_index = end_index
+    candidate_index = end_index - 1
+    while candidate_index >= 0:
+        candidate = tokens[candidate_index]
+        if candidate.kind != TokenKind.COMMENT:
+            break
+        if not candidate.spelling.lstrip().startswith("//"):
+            break
+        if _comment_has_code_before_same_line(tokens, candidate_index):
+            break
+        if candidate.end_line + 1 != group[0].start_line:
+            break
+        group.insert(0, candidate)
+        group_start_index = candidate_index
+        candidate_index -= 1
+    return group, group_start_index
+
+
 def _comment_has_code_before_same_line(tokens: list[CursorTokenInfo], index: int) -> bool:
     """Return whether one comment token is trailing after code on the same line."""
 
@@ -456,45 +343,6 @@ def _comment_has_code_before_same_line(tokens: list[CursorTokenInfo], index: int
             return False
         return True
     return False
-
-
-# ==================================================================================================
-#     Warning Rendering
-# ==================================================================================================
-
-
-def _build_mismatch_warning(cursor: Any, clang_raw_comment: str, recovered_comment: str) -> str:
-    """Render one warning about conflicting clang and recovered comment attachment."""
-
-    spelling = getattr(cursor, "spelling", "") or "<anonymous>"
-    return (
-        f"Recovered attached comment for {spelling!r} differed from "
-        "clang's attached raw comment; using the recovered comment."
-    )
-
-
-def _build_mismatch_detail(clang_raw_comment: str, recovered_comment: str) -> str:
-    """Render one structured detail block for comment-recovery mismatches."""
-
-    return "\n".join([
-        "clang raw_comment:",
-        clang_raw_comment,
-        "",
-        "recovered attached comment:",
-        recovered_comment,
-        "",
-        "selected: recovered",
-    ])
-
-
-def _build_detached_warning(cursor: Any, clang_raw_comment: str) -> str:
-    """Render one warning when clang attached a separated non-doc comment block."""
-
-    spelling = getattr(cursor, "spelling", "") or "<anonymous>"
-    return (
-        f"Discarded clang-attached raw comment for {spelling!r} because "
-        "token-based recovery found no attached comment block at that declaration site."
-    )
 
 
 def _candidate_attachment_rank(candidate: RecoveredCommentCandidate) -> tuple[int, int]:

@@ -27,11 +27,19 @@ from .visibility import CppVisibility
 class CppEnumeratorCppFacet:
     """Store parsed C++ details for one enumerator."""
 
+    # Spelling written in the C++ source, before any Python-facing renaming.
     original_name: str | None = None
+    # Enumerator value spelling as written in the declaration.
     value_spelling: str | None = None
+    # Source location where this enumerator was declared.
     location: CppLocationInfo = field(default_factory=CppLocationInfo)
-    comment: str | None = None
+    # Parser-selected comment text attached to this enumerator declaration.
+    attached_comment: str | None = None
+    # Raw comment text reported by clang for provenance and debugging.
+    clang_raw_comment: str | None = None
+    # Normalized structured documentation parsed from `attached_comment`.
     doc: CppDoc | None = None
+    # Availability annotations such as deprecation attached to this enumerator.
     availability: CppAvailability | None = None
 
 
@@ -59,13 +67,23 @@ class CppEnumeratorPyFacet:
 class CppEnumCppFacet:
     """Store parsed C++ details for one enum."""
 
+    # Spelling written in the C++ source, before any Python-facing renaming.
     original_name: str | None = None
+    # Structured parsed underlying integer type, when explicitly declared.
     underlying_type: CppType | None = None
+    # Source locations where this enum was declared or defined.
     location: CppLocationInfo = field(default_factory=CppLocationInfo)
-    comment: str | None = None
+    # Parser-selected comment text attached to this enum declaration.
+    attached_comment: str | None = None
+    # Raw comment text reported by clang for provenance and debugging.
+    clang_raw_comment: str | None = None
+    # Normalized structured documentation parsed from `attached_comment`.
     doc: CppDoc | None = None
+    # Availability annotations such as deprecation attached to this enum.
     availability: CppAvailability | None = None
+    # Whether this enum was declared as a scoped enum class/struct.
     is_scoped: bool = False
+    # Declared member visibility when clang exposes it.
     visibility: CppVisibility | None = None
 
 

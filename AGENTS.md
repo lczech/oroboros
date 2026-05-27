@@ -172,7 +172,8 @@ Activation/deactivation belongs to the binding layer:
 
 The model should preserve both:
 
-- `cpp.comment`: raw attached/recovered comment text
+- `cpp.attached_comment`: parser-selected attached comment text
+- `cpp.clang_raw_comment`: raw comment text reported by clang for provenance
 - `cpp.doc`: normalized structured `CppDoc`
 
 Later translation derives:

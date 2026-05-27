@@ -27,10 +27,15 @@ from .type import CppType
 class CppParameterCppFacet:
     """Store parsed C++ details for one function parameter."""
 
+    # Spelling written in the C++ source, before any Python-facing renaming.
     original_name: str | None = None
+    # Structured parsed C++ parameter type.
     type: CppType | None = None
+    # Default-value spelling as written in the C++ declaration.
     default_value: str | None = None
+    # Source location where this parameter was declared.
     location: CppLocationInfo = field(default_factory=CppLocationInfo)
+    # Parameter documentation text extracted from the attached declaration docs.
     doc: str | None = None
 
 
@@ -60,15 +65,27 @@ class CppParameterPyFacet:
 class CppFunctionCppFacet:
     """Store parsed C++ details for one free function."""
 
+    # Spelling written in the C++ source, before any Python-facing renaming.
     original_name: str | None = None
+    # Parsed operator metadata for operator overload declarations.
     operator: CppOperator | None = None
+    # Structured parsed C++ return type.
     return_type: CppType | None = None
+    # Source locations where this function was declared or defined.
     location: CppLocationInfo = field(default_factory=CppLocationInfo)
-    comment: str | None = None
+    # Parser-selected comment text attached to this function declaration.
+    attached_comment: str | None = None
+    # Raw comment text reported by clang for provenance and debugging.
+    clang_raw_comment: str | None = None
+    # Normalized structured documentation parsed from `attached_comment`.
     doc: CppDoc | None = None
+    # Availability annotations such as deprecation attached to this function.
     availability: CppAvailability | None = None
+    # Parser-assigned index among overloads with the same semantic name.
     overload_index: int | None = None
+    # Whether the function was declared `noexcept`.
     is_noexcept: bool = False
+    # Whether the function was explicitly declared deleted.
     is_deleted: bool = False
 
 

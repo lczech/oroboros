@@ -11,7 +11,7 @@ from ..diagnostics import Diagnostic
 from ..model import CppElement
 from ..model.type import cpp_types_equivalent
 from .build_facets import build_parameter_cpp_facet
-from .comment_structure import comment_preference_key, parse_cpp_doc
+from .comment_structure import comment_preference_key, comments_are_equivalent, parse_cpp_doc
 from .cursor_data import cursor_is_from_active_header, cursor_kind_name, cursor_source_location
 
 if TYPE_CHECKING:
@@ -29,7 +29,7 @@ def merge_common_cpp_fields(
     context: BuildContext,
     cursor: Any,
     *,
-    comment_field_name: str | None = "comment",
+    comment_field_name: str | None = "attached_comment",
     merge_original_name: bool = True,
 ) -> None:
     """Merge common parsed fields from one repeated declaration into an element."""
@@ -276,7 +276,7 @@ def resolve_comment_conflict(
         return existing_comment
     if existing_comment is None:
         return new_comment
-    if existing_comment == new_comment:
+    if comments_are_equivalent(existing_comment, new_comment):
         return existing_comment
 
     resolved_comment = _resolve_comment_conflict_value(existing_comment, new_comment, context=context)
@@ -321,7 +321,7 @@ def _resolve_comment_conflict_value(
 def append_distinct_comments(existing_comment: str, new_comment: str) -> str:
     """Join two distinct comment blocks while avoiding exact duplication."""
 
-    if new_comment in existing_comment:
+    if comments_are_equivalent(existing_comment, new_comment) or new_comment in existing_comment:
         return existing_comment
     if existing_comment in new_comment:
         return new_comment

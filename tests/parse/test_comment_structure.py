@@ -2,10 +2,24 @@ from __future__ import annotations
 
 import unittest
 
-from oroboros.parse.comment_structure import parse_cpp_doc
+from oroboros.parse.comment_structure import comments_are_equivalent, parse_cpp_doc
 
 
 class ParseCommentsTest(unittest.TestCase):
+    def test_comments_are_equivalent_for_indentation_only_line_comment_differences(self) -> None:
+        clang_raw_comment = """
+// We use the slots as indicators which elements in the slots of a block have been set already.
+    // Using 64 slots fixed for now, for efficiency. Might parameterize as template param,
+    // so that the buffer can be made smaller if needed for large elements instead.
+""".strip()
+        recovered_comment = """
+// We use the slots as indicators which elements in the slots of a block have been set already.
+// Using 64 slots fixed for now, for efficiency. Might parameterize as template param,
+// so that the buffer can be made smaller if needed for large elements instead.
+""".strip()
+
+        self.assertTrue(comments_are_equivalent(clang_raw_comment, recovered_comment))
+
     def test_parse_cpp_doc_normalizes_multiple_comment_styles_consistently(self) -> None:
         raw_comments = [
             """

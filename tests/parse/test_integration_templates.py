@@ -77,7 +77,7 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         self.assertIsInstance(alias_template, CppAliasTemplate)
         self.assertEqual(alias_template.qualified_name, "demo::Vault::Handle")
         self.assertEqual(alias_template.declaration.cpp.visibility, CppVisibility.PROTECTED)
-        self.assertIn("Handle alias for the vault contents.", alias_template.declaration.cpp.comment)
+        self.assertIn("Handle alias for the vault contents.", alias_template.declaration.cpp.attached_comment)
         self.assertIsNotNone(alias_template.declaration.cpp.doc)
         self.assertIsInstance(alias_template.declaration.cpp.target, PointerCppType)
         self.assertIsInstance(alias_template.declaration.cpp.target.pointee, NamedCppType)

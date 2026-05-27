@@ -78,6 +78,21 @@ def comment_preference_key(raw_comment: str | None) -> tuple[int, int, int]:
     return (syntax_rank, structure_rank, len(stripped))
 
 
+def comments_are_equivalent(left: str | None, right: str | None) -> bool:
+    """Return whether two raw comment blocks are equivalent after normalization."""
+
+    return comment_equivalence_key(left) == comment_equivalence_key(right)
+
+
+def comment_equivalence_key(raw_comment: str | None) -> tuple[str, ...] | None:
+    """Return one normalized comparison key for a raw comment block."""
+
+    if raw_comment is None:
+        return None
+
+    return tuple(_normalize_comment_lines(_strip_comment_delimiters(raw_comment)))
+
+
 # ==================================================================================================
 #     Comment Preference Ranking
 # ==================================================================================================
@@ -296,12 +311,6 @@ def _record_named_doc(target: dict[str, str], content: str, *, allow_annotations
 # ==================================================================================================
 #     Paragraph And Section Helpers
 # ==================================================================================================
-
-
-def _collapse_lines(lines: list[str]) -> str | None:
-    """Collapse one line sequence into paragraph-preserving prose."""
-
-    return _join_sections(_paragraphs_from_lines(lines))
 
 
 def _paragraphs_from_lines(lines: list[str]) -> list[str]:

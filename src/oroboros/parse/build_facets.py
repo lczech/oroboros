@@ -56,11 +56,11 @@ if TYPE_CHECKING:
 # ==================================================================================================
 
 
-def _comment_and_doc(cursor: Any, *, context: BuildContext | None = None) -> tuple[str | None, Any]:
-    """Return one raw attached comment plus its normalized structured form."""
+def _comment_and_doc(cursor: Any, *, context: BuildContext | None = None) -> tuple[str | None, str | None, Any]:
+    """Return one selected comment, one raw clang comment, and normalized doc."""
 
     resolution = resolve_cursor_comment(cursor, context)
-    return resolution.selected_comment, resolution.selected_doc
+    return resolution.selected_comment, resolution.clang_raw_comment, resolution.selected_doc
 
 
 def build_parameter_cpp_facet(
@@ -97,12 +97,13 @@ def build_namespace_cpp_facet(
     """Build one parsed namespace facet from one clang cursor."""
 
     from ..model import CppNamespaceCppFacet
-    raw_comment, doc = _comment_and_doc(cursor, context=context)
+    attached_comment, clang_raw_comment, doc = _comment_and_doc(cursor, context=context)
 
     return CppNamespaceCppFacet(
         original_name=cursor.spelling or None,
         location=build_location_info(cursor),
-        comment=raw_comment,
+        attached_comment=attached_comment,
+        clang_raw_comment=clang_raw_comment,
         doc=doc,
         availability=cursor_availability(cursor),
         is_inline=cursor_namespace_is_inline(cursor),
@@ -122,12 +123,13 @@ def build_class_cpp_facet(
     """Build one parsed class/struct facet from one clang cursor."""
 
     from ..model import CppClassCppFacet
-    raw_comment, doc = _comment_and_doc(cursor, context=context)
+    attached_comment, clang_raw_comment, doc = _comment_and_doc(cursor, context=context)
 
     return CppClassCppFacet(
         original_name=cursor.spelling or None,
         location=build_location_info(cursor),
-        comment=raw_comment,
+        attached_comment=attached_comment,
+        clang_raw_comment=clang_raw_comment,
         doc=doc,
         availability=cursor_availability(cursor),
         is_abstract=cursor_class_is_abstract(cursor),
@@ -145,12 +147,13 @@ def build_class_template_declaration_cpp_facet(
     """Build one parsed generic class-template declaration facet."""
 
     from ..model import CppClassTemplateDeclarationCppFacet
-    raw_comment, doc = _comment_and_doc(cursor, context=context)
+    attached_comment, clang_raw_comment, doc = _comment_and_doc(cursor, context=context)
 
     return CppClassTemplateDeclarationCppFacet(
         original_name=cursor.spelling or None,
         location=build_location_info(cursor),
-        comment=raw_comment,
+        attached_comment=attached_comment,
+        clang_raw_comment=clang_raw_comment,
         doc=doc,
         availability=cursor_availability(cursor),
         is_abstract=cursor_class_template_is_abstract(cursor),
@@ -169,7 +172,7 @@ def build_method_cpp_facet(
     """Build one parsed method facet from one clang cursor."""
 
     from ..model import CppMethodCppFacet
-    raw_comment, doc = _comment_and_doc(cursor, context=context)
+    attached_comment, clang_raw_comment, doc = _comment_and_doc(cursor, context=context)
     return_type = build_cpp_type(
         getattr(cursor, "result_type", None),
         context=context,
@@ -181,7 +184,8 @@ def build_method_cpp_facet(
         operator=_build_operator_metadata(cursor, return_type),
         return_type=return_type,
         location=build_location_info(cursor),
-        comment=raw_comment,
+        attached_comment=attached_comment,
+        clang_raw_comment=clang_raw_comment,
         doc=doc,
         availability=cursor_availability(cursor),
         special_member_kind=cursor_method_special_member_kind(cursor),
@@ -205,12 +209,13 @@ def build_constructor_cpp_facet(
     """Build one parsed constructor facet from one clang cursor."""
 
     from ..model import CppConstructorCppFacet
-    raw_comment, doc = _comment_and_doc(cursor, context=context)
+    attached_comment, clang_raw_comment, doc = _comment_and_doc(cursor, context=context)
 
     return CppConstructorCppFacet(
         original_name=cursor.spelling or None,
         location=build_location_info(cursor),
-        comment=raw_comment,
+        attached_comment=attached_comment,
+        clang_raw_comment=clang_raw_comment,
         doc=doc,
         availability=cursor_availability(cursor),
         special_member_kind=cursor_constructor_special_member_kind(cursor),
@@ -231,12 +236,13 @@ def build_destructor_cpp_facet(
     """Build one parsed destructor facet from one clang cursor."""
 
     from ..model import CppDestructorCppFacet
-    raw_comment, doc = _comment_and_doc(cursor, context=context)
+    attached_comment, clang_raw_comment, doc = _comment_and_doc(cursor, context=context)
 
     return CppDestructorCppFacet(
         original_name=cursor.spelling or None,
         location=build_location_info(cursor),
-        comment=raw_comment,
+        attached_comment=attached_comment,
+        clang_raw_comment=clang_raw_comment,
         doc=doc,
         availability=cursor_availability(cursor),
         is_virtual=cursor_bool_method(cursor, "is_virtual_method"),
@@ -256,7 +262,7 @@ def build_variable_cpp_facet(
     """Build one parsed variable facet from one clang cursor."""
 
     from ..model import CppVariableCppFacet
-    raw_comment, doc = _comment_and_doc(cursor, context=context)
+    attached_comment, clang_raw_comment, doc = _comment_and_doc(cursor, context=context)
 
     return CppVariableCppFacet(
         original_name=cursor.spelling or None,
@@ -267,7 +273,8 @@ def build_variable_cpp_facet(
         ),
         is_const=cursor_type_is_const_qualified(cursor),
         location=build_location_info(cursor),
-        comment=raw_comment,
+        attached_comment=attached_comment,
+        clang_raw_comment=clang_raw_comment,
         doc=doc,
         availability=cursor_availability(cursor),
         visibility=cursor_visibility(cursor),
@@ -294,7 +301,7 @@ def build_function_cpp_facet(
     """Build one parsed free-function facet from one clang cursor."""
 
     from ..model import CppFunctionCppFacet
-    raw_comment, doc = _comment_and_doc(cursor, context=context)
+    attached_comment, clang_raw_comment, doc = _comment_and_doc(cursor, context=context)
     return_type = build_cpp_type(
         getattr(cursor, "result_type", None),
         context=context,
@@ -306,7 +313,8 @@ def build_function_cpp_facet(
         operator=_build_operator_metadata(cursor, return_type),
         return_type=return_type,
         location=build_location_info(cursor),
-        comment=raw_comment,
+        attached_comment=attached_comment,
+        clang_raw_comment=clang_raw_comment,
         doc=doc,
         availability=cursor_availability(cursor),
         is_noexcept=cursor_is_noexcept(cursor),
@@ -322,7 +330,7 @@ def build_function_template_declaration_cpp_facet(
     """Build one parsed generic function-template declaration facet."""
 
     from ..model import CppFunctionTemplateDeclarationCppFacet
-    raw_comment, doc = _comment_and_doc(cursor, context=context)
+    attached_comment, clang_raw_comment, doc = _comment_and_doc(cursor, context=context)
     return_type = build_cpp_type(
         getattr(cursor, "result_type", None),
         context=context,
@@ -334,7 +342,8 @@ def build_function_template_declaration_cpp_facet(
         operator=_build_operator_metadata(cursor, return_type),
         return_type=return_type,
         location=build_location_info(cursor),
-        comment=raw_comment,
+        attached_comment=attached_comment,
+        clang_raw_comment=clang_raw_comment,
         doc=doc,
         availability=cursor_availability(cursor),
         is_noexcept=cursor_is_noexcept(cursor),
@@ -351,7 +360,7 @@ def build_method_template_declaration_cpp_facet(
     """Build one parsed generic method-template declaration facet."""
 
     from ..model import CppMethodTemplateDeclarationCppFacet
-    raw_comment, doc = _comment_and_doc(cursor, context=context)
+    attached_comment, clang_raw_comment, doc = _comment_and_doc(cursor, context=context)
     return_type = build_cpp_type(
         getattr(cursor, "result_type", None),
         context=context,
@@ -363,7 +372,8 @@ def build_method_template_declaration_cpp_facet(
         operator=_build_operator_metadata(cursor, return_type),
         return_type=return_type,
         location=build_location_info(cursor),
-        comment=raw_comment,
+        attached_comment=attached_comment,
+        clang_raw_comment=clang_raw_comment,
         doc=doc,
         availability=cursor_availability(cursor),
         special_member_kind=cursor_method_special_member_kind(cursor),
@@ -393,7 +403,7 @@ def build_enum_cpp_facet(
     """Build one parsed enum facet from one clang cursor."""
 
     from ..model import CppEnumCppFacet
-    raw_comment, doc = _comment_and_doc(cursor, context=context)
+    attached_comment, clang_raw_comment, doc = _comment_and_doc(cursor, context=context)
 
     return CppEnumCppFacet(
         original_name=cursor.spelling or None,
@@ -403,7 +413,8 @@ def build_enum_cpp_facet(
             source_cursor=cursor,
         ),
         location=build_location_info(cursor),
-        comment=raw_comment,
+        attached_comment=attached_comment,
+        clang_raw_comment=clang_raw_comment,
         doc=doc,
         availability=cursor_availability(cursor),
         is_scoped=cursor_is_scoped_enum(cursor),
@@ -419,13 +430,14 @@ def build_enumerator_cpp_facet(
     """Build one parsed enumerator facet from one clang cursor."""
 
     from ..model import CppEnumeratorCppFacet
-    raw_comment, doc = _comment_and_doc(cursor, context=context)
+    attached_comment, clang_raw_comment, doc = _comment_and_doc(cursor, context=context)
 
     return CppEnumeratorCppFacet(
         original_name=cursor.spelling or None,
         value_spelling=cursor_enum_value_spelling(cursor),
         location=build_location_info(cursor),
-        comment=raw_comment,
+        attached_comment=attached_comment,
+        clang_raw_comment=clang_raw_comment,
         doc=doc,
         availability=cursor_availability(cursor),
     )
@@ -444,7 +456,7 @@ def build_alias_cpp_facet(
     """Build one parsed alias facet from one clang cursor."""
 
     from ..model import CppAliasCppFacet
-    raw_comment, doc = _comment_and_doc(cursor, context=context)
+    attached_comment, clang_raw_comment, doc = _comment_and_doc(cursor, context=context)
 
     return CppAliasCppFacet(
         original_name=cursor.spelling or None,
@@ -454,7 +466,8 @@ def build_alias_cpp_facet(
             source_cursor=cursor,
         ),
         location=build_location_info(cursor),
-        comment=raw_comment,
+        attached_comment=attached_comment,
+        clang_raw_comment=clang_raw_comment,
         doc=doc,
         availability=cursor_availability(cursor),
         visibility=cursor_visibility(cursor),
@@ -471,7 +484,7 @@ def build_alias_template_declaration_cpp_facet(
 
     from ..model import CppAliasTemplateDeclarationCppFacet
 
-    raw_comment, doc = _comment_and_doc(cursor, context=context)
+    attached_comment, clang_raw_comment, doc = _comment_and_doc(cursor, context=context)
     target_cursor = cursor_alias_template_target_cursor(cursor)
 
     return CppAliasTemplateDeclarationCppFacet(
@@ -482,7 +495,8 @@ def build_alias_template_declaration_cpp_facet(
             source_cursor=target_cursor if target_cursor is not None else cursor,
         ),
         location=build_location_info(cursor),
-        comment=raw_comment,
+        attached_comment=attached_comment,
+        clang_raw_comment=clang_raw_comment,
         doc=doc,
         availability=cursor_availability(cursor),
         visibility=cursor_visibility(cursor),

@@ -27,7 +27,9 @@ from .template_ import (
 class CppMethodTemplateDeclarationCppFacet(CppMethodCppFacet):
     """Store parsed C++ details for one generic method template declaration."""
 
+    # Parsed template parameters declared by this generic template.
     template_parameters: list[CppTemplateParameter] = dataclass_field(default_factory=list)
+    # Concrete template arguments observed at use sites during parsing.
     observed_instances: list[CppObservedTemplateInstance] = dataclass_field(default_factory=list)
 
 
@@ -35,6 +37,7 @@ class CppMethodTemplateDeclarationCppFacet(CppMethodCppFacet):
 class CppMethodTemplateInstanceCppFacet:
     """Store selected template arguments for one method template instance."""
 
+    # Concrete template arguments selected for this binding target.
     template_arguments: list[CppTemplateArgument] = dataclass_field(default_factory=list)
 
 
