@@ -6,7 +6,7 @@ from copy import deepcopy
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from ..model import CppElement, CppNamespace
-from .build_facets import build_namespace_cpp_facet
+from .extract_cpp_facets import extract_namespace_cpp_facet
 from .cursor_data import cursor_usr
 
 if TYPE_CHECKING:
@@ -30,7 +30,7 @@ def ensure_namespace(
 ) -> CppNamespace | None:
     """Return one existing or newly created namespace for one parser cursor."""
 
-    candidate_cpp = build_namespace_cpp_facet(cursor, context=context)
+    candidate_cpp = extract_namespace_cpp_facet(cursor, context=context)
     _inherit_compact_namespace_comment(owner, candidate_cpp)
     existing = lookup_registered_element(cursor, context, CppNamespace)
     if existing is not None:
@@ -53,9 +53,8 @@ def ensure_namespace(
         name=namespace_name,
         cpp=candidate_cpp,
     )
-    attached = attach_element(owner, "add_namespace", namespace)
-    if attached is not None:
-        register_element_for_cursor(cursor, attached, context)
+    attached = owner.add_namespace(namespace)
+    register_element_for_cursor(cursor, attached, context)
     return attached
 
 
@@ -80,19 +79,6 @@ def _inherit_compact_namespace_comment(owner: CppElement, candidate_cpp: Any) ->
         return
 
     candidate_cpp.doc = deepcopy(owner_doc)
-
-
-def attach_element(
-    owner: CppElement,
-    attach_method_name: str,
-    element: _ElementT,
-) -> _ElementT | None:
-    """Attach one element through the named owner `add_*` helper when available."""
-
-    attach = getattr(owner, attach_method_name, None)
-    if attach is None:
-        return None
-    return attach(element)
 
 
 def lookup_registered_element(

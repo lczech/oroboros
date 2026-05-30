@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Build semantic template parameter values from libclang cursors."""
+"""Extract semantic template parameter values from libclang cursors."""
 
 from typing import TYPE_CHECKING, Any
 
@@ -23,11 +23,11 @@ if TYPE_CHECKING:
 
 
 # ==================================================================================================
-#     Template Parameter Builders
+#     Template Parameter Extraction
 # ==================================================================================================
 
 
-def build_template_parameters(
+def extract_template_parameters(
     cursor: Any,
     *,
     context: BuildContext | None = None,
@@ -36,13 +36,13 @@ def build_template_parameters(
 
     parameters: list[CppTemplateParameter] = []
     for child_cursor in cursor.get_children():
-        parameter = build_template_parameter(child_cursor, context=context)
+        parameter = extract_template_parameter(child_cursor, context=context)
         if parameter is not None:
             parameters.append(parameter)
     return parameters
 
 
-def build_template_parameter(
+def extract_template_parameter(
     cursor: Any,
     *,
     context: BuildContext | None = None,
@@ -82,7 +82,7 @@ def build_template_parameter(
                 cursor,
                 context=context,
             ),
-            parameters=build_template_parameters(cursor, context=context),
+            parameters=extract_template_parameters(cursor, context=context),
             is_parameter_pack=is_parameter_pack,
         )
 
@@ -141,7 +141,7 @@ def _build_template_template_parameter_default_argument(
         return None
 
     default_cursor = _template_template_default_referenced_cursor(cursor)
-    parameters = build_template_parameters(default_cursor, context=context) if default_cursor is not None else []
+    parameters = extract_template_parameters(default_cursor, context=context) if default_cursor is not None else []
     return CppTemplateTemplateArgument(
         name=default_spelling,
         parameters=parameters,

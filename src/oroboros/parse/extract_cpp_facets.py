@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-"""Build parsed `.cpp` facet data from libclang cursors."""
+"""Extract parsed `.cpp` facet data from libclang cursors."""
 
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
 from ..model import CppClassBase, CppDocumentation, CppLocationInfo
-from .build_templates import build_template_parameters
+from .extract_templates import extract_template_parameters
 from .comment_recovery import resolve_cursor_comment
 from .cursor_data import (
     cursor_alias_kind,
@@ -52,7 +52,7 @@ if TYPE_CHECKING:
 
 
 # ==================================================================================================
-#     Facet Builders
+#     Facet Extraction
 # ==================================================================================================
 
 
@@ -78,12 +78,12 @@ def _resolve_facet_documentation(
     )
 
 
-def build_parameter_cpp_facet(
+def extract_parameter_cpp_facet(
     cursor: Any,
     *,
     context: BuildContext | None = None,
 ) -> Any:
-    """Build one parsed parameter facet from one clang cursor."""
+    """Extract one parsed parameter facet from one clang cursor."""
 
     from ..model import CppParameterCppFacet
 
@@ -95,7 +95,7 @@ def build_parameter_cpp_facet(
             source_cursor=cursor,
         ),
         default_value=cursor_parameter_default_value(cursor),
-        location=build_location_info(cursor),
+        location=extract_location_info(cursor),
     )
 
 
@@ -104,19 +104,19 @@ def build_parameter_cpp_facet(
 # ------------------------------------------------------------------------------
 
 
-def build_namespace_cpp_facet(
+def extract_namespace_cpp_facet(
     cursor: Any,
     *,
     context: BuildContext | None = None,
 ) -> Any:
-    """Build one parsed namespace facet from one clang cursor."""
+    """Extract one parsed namespace facet from one clang cursor."""
 
     from ..model import CppNamespaceCppFacet
     documentation = _resolve_facet_documentation(cursor, context=context)
 
     return CppNamespaceCppFacet(
         original_name=cursor.spelling or None,
-        location=build_location_info(cursor),
+        location=extract_location_info(cursor),
         doc=documentation,
         availability=cursor_availability(cursor),
         is_inline=cursor_namespace_is_inline(cursor),
@@ -128,57 +128,57 @@ def build_namespace_cpp_facet(
 # ------------------------------------------------------------------------------
 
 
-def build_class_cpp_facet(
+def extract_class_cpp_facet(
     cursor: Any,
     *,
     context: BuildContext | None = None,
 ) -> Any:
-    """Build one parsed class/struct facet from one clang cursor."""
+    """Extract one parsed class/struct facet from one clang cursor."""
 
     from ..model import CppClassCppFacet
     documentation = _resolve_facet_documentation(cursor, context=context)
 
     return CppClassCppFacet(
         original_name=cursor.spelling or None,
-        location=build_location_info(cursor),
+        location=extract_location_info(cursor),
         doc=documentation,
         availability=cursor_availability(cursor),
         is_abstract=cursor_class_is_abstract(cursor),
         kind=cursor_class_kind(cursor),
         visibility=cursor_visibility(cursor),
-        bases=build_class_bases(cursor, context=context),
+        bases=extract_class_bases(cursor, context=context),
     )
 
 
-def build_class_template_declaration_cpp_facet(
+def extract_class_template_declaration_cpp_facet(
     cursor: Any,
     *,
     context: BuildContext | None = None,
 ) -> Any:
-    """Build one parsed generic class-template declaration facet."""
+    """Extract one parsed generic class-template declaration facet."""
 
     from ..model import CppClassTemplateDeclarationCppFacet
     documentation = _resolve_facet_documentation(cursor, context=context)
 
     return CppClassTemplateDeclarationCppFacet(
         original_name=cursor.spelling or None,
-        location=build_location_info(cursor),
+        location=extract_location_info(cursor),
         doc=documentation,
         availability=cursor_availability(cursor),
         is_abstract=cursor_class_template_is_abstract(cursor),
         kind=cursor_class_kind(cursor),
         visibility=cursor_visibility(cursor),
-        bases=build_class_bases(cursor, context=context),
-        template_parameters=build_template_parameters(cursor, context=context),
+        bases=extract_class_bases(cursor, context=context),
+        template_parameters=extract_template_parameters(cursor, context=context),
     )
 
 
-def build_method_cpp_facet(
+def extract_method_cpp_facet(
     cursor: Any,
     *,
     context: BuildContext | None = None,
 ) -> Any:
-    """Build one parsed method facet from one clang cursor."""
+    """Extract one parsed method facet from one clang cursor."""
 
     from ..model import CppMethodCppFacet
     documentation = _resolve_facet_documentation(cursor, context=context)
@@ -192,7 +192,7 @@ def build_method_cpp_facet(
         original_name=cursor.spelling or None,
         operator=_build_operator_metadata(cursor, return_type),
         return_type=return_type,
-        location=build_location_info(cursor),
+        location=extract_location_info(cursor),
         doc=documentation,
         availability=cursor_availability(cursor),
         special_member_kind=cursor_method_special_member_kind(cursor),
@@ -208,19 +208,19 @@ def build_method_cpp_facet(
     )
 
 
-def build_constructor_cpp_facet(
+def extract_constructor_cpp_facet(
     cursor: Any,
     *,
     context: BuildContext | None = None,
 ) -> Any:
-    """Build one parsed constructor facet from one clang cursor."""
+    """Extract one parsed constructor facet from one clang cursor."""
 
     from ..model import CppConstructorCppFacet
     documentation = _resolve_facet_documentation(cursor, context=context)
 
     return CppConstructorCppFacet(
         original_name=cursor.spelling or None,
-        location=build_location_info(cursor),
+        location=extract_location_info(cursor),
         doc=documentation,
         availability=cursor_availability(cursor),
         special_member_kind=cursor_constructor_special_member_kind(cursor),
@@ -233,19 +233,19 @@ def build_constructor_cpp_facet(
     )
 
 
-def build_destructor_cpp_facet(
+def extract_destructor_cpp_facet(
     cursor: Any,
     *,
     context: BuildContext | None = None,
 ) -> Any:
-    """Build one parsed destructor facet from one clang cursor."""
+    """Extract one parsed destructor facet from one clang cursor."""
 
     from ..model import CppDestructorCppFacet
     documentation = _resolve_facet_documentation(cursor, context=context)
 
     return CppDestructorCppFacet(
         original_name=cursor.spelling or None,
-        location=build_location_info(cursor),
+        location=extract_location_info(cursor),
         doc=documentation,
         availability=cursor_availability(cursor),
         is_virtual=cursor_bool_method(cursor, "is_virtual_method"),
@@ -256,13 +256,13 @@ def build_destructor_cpp_facet(
     )
 
 
-def build_variable_cpp_facet(
+def extract_variable_cpp_facet(
     cursor: Any,
     *,
     context: BuildContext | None = None,
     kind: str = "variable",
 ) -> Any:
-    """Build one parsed variable facet from one clang cursor."""
+    """Extract one parsed variable facet from one clang cursor."""
 
     from ..model import CppVariableCppFacet
     documentation = _resolve_facet_documentation(cursor, context=context)
@@ -275,7 +275,7 @@ def build_variable_cpp_facet(
             source_cursor=cursor,
         ),
         is_const=cursor_type_is_const_qualified(cursor),
-        location=build_location_info(cursor),
+        location=extract_location_info(cursor),
         doc=documentation,
         availability=cursor_availability(cursor),
         visibility=cursor_visibility(cursor),
@@ -294,12 +294,12 @@ def build_variable_cpp_facet(
 # ------------------------------------------------------------------------------
 
 
-def build_function_cpp_facet(
+def extract_function_cpp_facet(
     cursor: Any,
     *,
     context: BuildContext | None = None,
 ) -> Any:
-    """Build one parsed free-function facet from one clang cursor."""
+    """Extract one parsed free-function facet from one clang cursor."""
 
     from ..model import CppFunctionCppFacet
     documentation = _resolve_facet_documentation(cursor, context=context)
@@ -313,7 +313,7 @@ def build_function_cpp_facet(
         original_name=cursor.spelling or None,
         operator=_build_operator_metadata(cursor, return_type),
         return_type=return_type,
-        location=build_location_info(cursor),
+        location=extract_location_info(cursor),
         doc=documentation,
         availability=cursor_availability(cursor),
         is_noexcept=cursor_is_noexcept(cursor),
@@ -321,12 +321,12 @@ def build_function_cpp_facet(
     )
 
 
-def build_function_template_declaration_cpp_facet(
+def extract_function_template_declaration_cpp_facet(
     cursor: Any,
     *,
     context: BuildContext | None = None,
 ) -> Any:
-    """Build one parsed generic function-template declaration facet."""
+    """Extract one parsed generic function-template declaration facet."""
 
     from ..model import CppFunctionTemplateDeclarationCppFacet
     documentation = _resolve_facet_documentation(cursor, context=context)
@@ -340,21 +340,21 @@ def build_function_template_declaration_cpp_facet(
         original_name=cursor.spelling or None,
         operator=_build_operator_metadata(cursor, return_type),
         return_type=return_type,
-        location=build_location_info(cursor),
+        location=extract_location_info(cursor),
         doc=documentation,
         availability=cursor_availability(cursor),
         is_noexcept=cursor_is_noexcept(cursor),
         is_deleted=cursor_callable_is_deleted(cursor, context=context),
-        template_parameters=build_template_parameters(cursor, context=context),
+        template_parameters=extract_template_parameters(cursor, context=context),
     )
 
 
-def build_method_template_declaration_cpp_facet(
+def extract_method_template_declaration_cpp_facet(
     cursor: Any,
     *,
     context: BuildContext | None = None,
 ) -> Any:
-    """Build one parsed generic method-template declaration facet."""
+    """Extract one parsed generic method-template declaration facet."""
 
     from ..model import CppMethodTemplateDeclarationCppFacet
     documentation = _resolve_facet_documentation(cursor, context=context)
@@ -368,7 +368,7 @@ def build_method_template_declaration_cpp_facet(
         original_name=cursor.spelling or None,
         operator=_build_operator_metadata(cursor, return_type),
         return_type=return_type,
-        location=build_location_info(cursor),
+        location=extract_location_info(cursor),
         doc=documentation,
         availability=cursor_availability(cursor),
         special_member_kind=cursor_method_special_member_kind(cursor),
@@ -380,7 +380,7 @@ def build_method_template_declaration_cpp_facet(
         is_virtual=cursor_bool_method(cursor, "is_virtual_method"),
         is_pure_virtual=cursor_bool_method(cursor, "is_pure_virtual_method"),
         is_defaulted=cursor_callable_is_defaulted(cursor, context=context),
-        template_parameters=build_template_parameters(cursor, context=context),
+        template_parameters=extract_template_parameters(cursor, context=context),
         visibility=cursor_visibility(cursor),
     )
 
@@ -390,12 +390,12 @@ def build_method_template_declaration_cpp_facet(
 # ------------------------------------------------------------------------------
 
 
-def build_enum_cpp_facet(
+def extract_enum_cpp_facet(
     cursor: Any,
     *,
     context: BuildContext | None = None,
 ) -> Any:
-    """Build one parsed enum facet from one clang cursor."""
+    """Extract one parsed enum facet from one clang cursor."""
 
     from ..model import CppEnumCppFacet
     documentation = _resolve_facet_documentation(cursor, context=context)
@@ -407,7 +407,7 @@ def build_enum_cpp_facet(
             context=context,
             source_cursor=cursor,
         ),
-        location=build_location_info(cursor),
+        location=extract_location_info(cursor),
         doc=documentation,
         availability=cursor_availability(cursor),
         is_scoped=cursor_is_scoped_enum(cursor),
@@ -415,12 +415,12 @@ def build_enum_cpp_facet(
     )
 
 
-def build_enumerator_cpp_facet(
+def extract_enumerator_cpp_facet(
     cursor: Any,
     *,
     context: BuildContext | None = None,
 ) -> Any:
-    """Build one parsed enumerator facet from one clang cursor."""
+    """Extract one parsed enumerator facet from one clang cursor."""
 
     from ..model import CppEnumeratorCppFacet
     documentation = _resolve_facet_documentation(cursor, context=context)
@@ -428,7 +428,7 @@ def build_enumerator_cpp_facet(
     return CppEnumeratorCppFacet(
         original_name=cursor.spelling or None,
         value_spelling=cursor_enum_value_spelling(cursor),
-        location=build_location_info(cursor),
+        location=extract_location_info(cursor),
         doc=documentation,
         availability=cursor_availability(cursor),
     )
@@ -439,12 +439,12 @@ def build_enumerator_cpp_facet(
 # ------------------------------------------------------------------------------
 
 
-def build_alias_cpp_facet(
+def extract_alias_cpp_facet(
     cursor: Any,
     *,
     context: BuildContext | None = None,
 ) -> Any:
-    """Build one parsed alias facet from one clang cursor."""
+    """Extract one parsed alias facet from one clang cursor."""
 
     from ..model import CppAliasCppFacet
     documentation = _resolve_facet_documentation(cursor, context=context)
@@ -456,7 +456,7 @@ def build_alias_cpp_facet(
             context=context,
             source_cursor=cursor,
         ),
-        location=build_location_info(cursor),
+        location=extract_location_info(cursor),
         doc=documentation,
         availability=cursor_availability(cursor),
         visibility=cursor_visibility(cursor),
@@ -464,12 +464,12 @@ def build_alias_cpp_facet(
     )
 
 
-def build_alias_template_declaration_cpp_facet(
+def extract_alias_template_declaration_cpp_facet(
     cursor: Any,
     *,
     context: BuildContext | None = None,
 ) -> Any:
-    """Build one parsed generic alias-template declaration facet."""
+    """Extract one parsed generic alias-template declaration facet."""
 
     from ..model import CppAliasTemplateDeclarationCppFacet
 
@@ -483,12 +483,12 @@ def build_alias_template_declaration_cpp_facet(
             context=context,
             source_cursor=target_cursor if target_cursor is not None else cursor,
         ),
-        location=build_location_info(cursor),
+        location=extract_location_info(cursor),
         doc=documentation,
         availability=cursor_availability(cursor),
         visibility=cursor_visibility(cursor),
         kind="using",
-        template_parameters=build_template_parameters(cursor, context=context),
+        template_parameters=extract_template_parameters(cursor, context=context),
     )
 
 
@@ -497,8 +497,8 @@ def build_alias_template_declaration_cpp_facet(
 # ==================================================================================================
 
 
-def build_location_info(cursor: Any) -> CppLocationInfo:
-    """Convert one clang cursor location into the semantic provenance container."""
+def extract_location_info(cursor: Any) -> CppLocationInfo:
+    """Extract one clang cursor location into the semantic provenance container."""
 
     location = cursor_source_location(cursor)
     if location is None:
@@ -511,12 +511,12 @@ def build_location_info(cursor: Any) -> CppLocationInfo:
     )
 
 
-def build_class_bases(
+def extract_class_bases(
     cursor: Any,
     *,
     context: BuildContext | None = None,
 ) -> list[CppClassBase]:
-    """Collect direct base-class relationships declared on one class cursor."""
+    """Extract direct base-class relationships declared on one class cursor."""
 
     bases: list[CppClassBase] = []
     for child_cursor in cursor.get_children():
@@ -546,7 +546,7 @@ def _build_operator_metadata(
     cursor: Any,
     return_type: Any,
 ) -> Any:
-    """Build structured operator metadata for one function-like cursor."""
+    """Extract structured operator metadata for one function-like cursor."""
 
     operator = cursor_operator(cursor)
     if operator is None:

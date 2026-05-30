@@ -8,24 +8,9 @@ from clang.cindex import CursorKind
 
 from ..model import CppClassTemplate, CppElement, CppModule, CppNamespace
 from .cursor_data import cursor_is_from_active_header, cursor_kind_name, cursor_usr, is_base_specifier_cursor
-from .merge_declarations import merge_common_cpp_fields, merge_cpp_scalar
+from .merge_properties import merge_common_cpp_fields, merge_cpp_scalar
 from .element_registry import ensure_namespace
-from .process_declarations import (
-    process_alias_cursor,
-    process_alias_template_cursor,
-    process_class_cursor,
-    process_class_template_cursor,
-    process_constructor_cursor,
-    process_destructor_cursor,
-    process_enum_cursor,
-    process_enumerator_cursor,
-    process_field_cursor,
-    process_function_cursor,
-    process_function_template_cursor,
-    process_method_cursor,
-    process_parameter_cursor,
-    process_variable_cursor,
-)
+from . import process_cursors
 
 if TYPE_CHECKING:
     from .build_model import BuildContext
@@ -102,27 +87,63 @@ def _visit_declaration_cursor(
     """Materialize one supported declaration cursor by concrete cursor kind."""
 
     if _cursor_kind_matches(cursor, *_CLASS_CURSOR_KINDS):
-        process_class_cursor(cursor, owner, context)
+        process_cursors.process_class_cursor(cursor, owner, context)
         return
 
     if _cursor_kind_matches(cursor, CursorKind.CLASS_TEMPLATE):
-        process_class_template_cursor(cursor, owner, context)
+        process_cursors.process_class_template_cursor(cursor, owner, context)
         return
 
     if _cursor_kind_matches(cursor, CursorKind.ENUM_DECL):
-        process_enum_cursor(cursor, owner, context)
+        process_cursors.process_enum_cursor(cursor, owner, context)
         return
 
     if _cursor_kind_matches(cursor, CursorKind.ENUM_CONSTANT_DECL):
-        process_enumerator_cursor(cursor, owner, context)
+        process_cursors.process_enumerator_cursor(cursor, owner, context)
         return
 
     if _cursor_kind_matches(cursor, CursorKind.FUNCTION_DECL):
-        process_function_cursor(cursor, owner, context)
+        process_cursors.process_function_cursor(cursor, owner, context)
         return
 
     if _cursor_kind_matches(cursor, CursorKind.FUNCTION_TEMPLATE):
-        process_function_template_cursor(cursor, owner, context)
+        process_cursors.process_function_template_cursor(cursor, owner, context)
+        return
+
+    if _cursor_kind_matches(cursor, CursorKind.TYPE_ALIAS_TEMPLATE_DECL):
+        process_cursors.process_alias_template_cursor(cursor, owner, context)
+        return
+
+    if _cursor_kind_matches(cursor, CursorKind.TYPE_ALIAS_DECL, CursorKind.TYPEDEF_DECL):
+        process_cursors.process_alias_cursor(cursor, owner, context)
+        return
+
+    if _cursor_kind_matches(cursor, CursorKind.CXX_METHOD):
+        process_cursors.process_method_cursor(cursor, owner, context)
+        return
+
+    if _cursor_kind_matches(cursor, CursorKind.CONVERSION_FUNCTION):
+        process_cursors.process_method_cursor(cursor, owner, context)
+        return
+
+    if _cursor_kind_matches(cursor, CursorKind.CONSTRUCTOR):
+        process_cursors.process_constructor_cursor(cursor, owner, context)
+        return
+
+    if _cursor_kind_matches(cursor, CursorKind.DESTRUCTOR):
+        process_cursors.process_destructor_cursor(cursor, owner, context)
+        return
+
+    if _cursor_kind_matches(cursor, CursorKind.FIELD_DECL):
+        process_cursors.process_field_cursor(cursor, owner, context)
+        return
+
+    if _cursor_kind_matches(cursor, CursorKind.VAR_DECL):
+        process_cursors.process_variable_cursor(cursor, owner, context)
+        return
+
+    if _cursor_kind_matches(cursor, CursorKind.PARM_DECL):
+        process_cursors.process_parameter_cursor(cursor, owner, context)
         return
 
     if _cursor_kind_matches(cursor, CursorKind.FRIEND_DECL):
@@ -131,42 +152,6 @@ def _visit_declaration_cursor(
 
     if _cursor_kind_matches(cursor, CursorKind.LINKAGE_SPEC):
         _visit_linkage_spec_cursor(cursor, owner, context)
-        return
-
-    if _cursor_kind_matches(cursor, CursorKind.TYPE_ALIAS_TEMPLATE_DECL):
-        process_alias_template_cursor(cursor, owner, context)
-        return
-
-    if _cursor_kind_matches(cursor, CursorKind.TYPE_ALIAS_DECL, CursorKind.TYPEDEF_DECL):
-        process_alias_cursor(cursor, owner, context)
-        return
-
-    if _cursor_kind_matches(cursor, CursorKind.CXX_METHOD):
-        process_method_cursor(cursor, owner, context)
-        return
-
-    if _cursor_kind_matches(cursor, CursorKind.CONVERSION_FUNCTION):
-        process_method_cursor(cursor, owner, context)
-        return
-
-    if _cursor_kind_matches(cursor, CursorKind.CONSTRUCTOR):
-        process_constructor_cursor(cursor, owner, context)
-        return
-
-    if _cursor_kind_matches(cursor, CursorKind.DESTRUCTOR):
-        process_destructor_cursor(cursor, owner, context)
-        return
-
-    if _cursor_kind_matches(cursor, CursorKind.FIELD_DECL):
-        process_field_cursor(cursor, owner, context)
-        return
-
-    if _cursor_kind_matches(cursor, CursorKind.VAR_DECL):
-        process_variable_cursor(cursor, owner, context)
-        return
-
-    if _cursor_kind_matches(cursor, CursorKind.PARM_DECL):
-        process_parameter_cursor(cursor, owner, context)
         return
 
     if _is_ignored_declaration_cursor(cursor):

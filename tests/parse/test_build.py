@@ -10,7 +10,11 @@ from clang.cindex import CursorKind, TokenKind, TypeKind
 from oroboros.model import *
 from oroboros.parse import ParserConfig
 from oroboros.parse.build_model import BuildContext, build_module_from_clang
-from oroboros.parse.merge_declarations import merge_class_bases, merge_cpp_scalar, merge_template_parameters
+from oroboros.parse.merge_properties import (
+    merge_class_bases,
+    merge_cpp_scalar,
+    merge_template_parameters,
+)
 from oroboros.parse.types import build_cpp_type
 
 
