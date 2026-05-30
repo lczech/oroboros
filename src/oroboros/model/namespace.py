@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from .availability import CppAvailability
-from .comment import CppDoc, PyDoc
+from .documentation import CppDocumentation, PyDoc
 from .element import CppElement
 from .lookup import make_named_child_view
 from .location import CppLocationInfo
@@ -34,12 +34,8 @@ class CppNamespaceCppFacet:
     original_name: str | None = None
     # Source locations where this namespace was declared or defined.
     location: CppLocationInfo = field(default_factory=CppLocationInfo)
-    # Parser-selected comment text attached to this namespace declaration.
-    attached_comment: str | None = None
-    # Raw comment text reported by clang for provenance and debugging.
-    clang_raw_comment: str | None = None
-    # Normalized structured documentation parsed from `attached_comment`.
-    doc: CppDoc | None = None
+    # Attached-comment provenance plus normalized parsed documentation for this namespace.
+    doc: CppDocumentation | None = None
     # Availability annotations such as deprecation attached to this namespace.
     availability: CppAvailability | None = None
     # Whether this namespace was declared with the `inline` specifier.

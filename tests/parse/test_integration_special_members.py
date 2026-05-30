@@ -41,7 +41,7 @@ class ParseIntegrationSpecialMembersTest(unittest.TestCase):
         self.assertTrue(widget_destructor.cpp.is_virtual)
         self.assertTrue(widget_destructor.cpp.is_defaulted)
         self.assertFalse(widget_destructor.cpp.is_deleted)
-        self.assertEqual(widget_destructor.cpp.doc.brief, "Destroy one widget.")
+        self.assertEqual(widget_destructor.cpp.doc.parsed.brief, "Destroy one widget.")
         self.assertEqual(widget.declarations.methods, [])
 
         self.assertIsNotNone(locked_destructor)
@@ -72,7 +72,7 @@ class ParseIntegrationSpecialMembersTest(unittest.TestCase):
         destructor = widget.declarations.destructor
 
         self.assertIsNotNone(destructor)
-        self.assertEqual(destructor.cpp.doc.brief, "Destroy the widget from its declaration.")
+        self.assertEqual(destructor.cpp.doc.parsed.brief, "Destroy the widget from its declaration.")
         self.assertEqual(len(destructor.cpp.location.declarations), 2)
         self.assertIsNotNone(destructor.cpp.location.definition)
 

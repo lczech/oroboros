@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .availability import CppAvailability
-from .comment import CppDoc, PyDoc
+from .documentation import CppDocumentation, PyDoc
 from .element import CppElement
 from .lookup import make_named_child_view
 from .location import CppLocationInfo
@@ -33,12 +33,8 @@ class CppEnumeratorCppFacet:
     value_spelling: str | None = None
     # Source location where this enumerator was declared.
     location: CppLocationInfo = field(default_factory=CppLocationInfo)
-    # Parser-selected comment text attached to this enumerator declaration.
-    attached_comment: str | None = None
-    # Raw comment text reported by clang for provenance and debugging.
-    clang_raw_comment: str | None = None
-    # Normalized structured documentation parsed from `attached_comment`.
-    doc: CppDoc | None = None
+    # Attached-comment provenance plus normalized parsed documentation for this enumerator.
+    doc: CppDocumentation | None = None
     # Availability annotations such as deprecation attached to this enumerator.
     availability: CppAvailability | None = None
 
@@ -73,12 +69,8 @@ class CppEnumCppFacet:
     underlying_type: CppType | None = None
     # Source locations where this enum was declared or defined.
     location: CppLocationInfo = field(default_factory=CppLocationInfo)
-    # Parser-selected comment text attached to this enum declaration.
-    attached_comment: str | None = None
-    # Raw comment text reported by clang for provenance and debugging.
-    clang_raw_comment: str | None = None
-    # Normalized structured documentation parsed from `attached_comment`.
-    doc: CppDoc | None = None
+    # Attached-comment provenance plus normalized parsed documentation for this enum.
+    doc: CppDocumentation | None = None
     # Availability annotations such as deprecation attached to this enum.
     availability: CppAvailability | None = None
     # Whether this enum was declared as a scoped enum class/struct.

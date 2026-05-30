@@ -6,7 +6,7 @@ from dataclasses import dataclass, field as dataclass_field
 from typing import TYPE_CHECKING, Literal
 
 from .availability import CppAvailability
-from .comment import CppDoc, PyDoc
+from .documentation import CppDocumentation, PyDoc
 from .element import CppElement
 from .lookup import make_named_child_view
 from .location import CppLocationInfo
@@ -59,12 +59,8 @@ class CppClassCppFacet:
     original_name: str | None = None
     # Source locations where this class was declared or defined.
     location: CppLocationInfo = dataclass_field(default_factory=CppLocationInfo)
-    # Parser-selected comment text attached to this class declaration.
-    attached_comment: str | None = None
-    # Raw comment text reported by clang for provenance and debugging.
-    clang_raw_comment: str | None = None
-    # Normalized structured documentation parsed from `attached_comment`.
-    doc: CppDoc | None = None
+    # Attached-comment provenance plus normalized parsed documentation for this class.
+    doc: CppDocumentation | None = None
     # Availability annotations such as deprecation attached to this class.
     availability: CppAvailability | None = None
     # Whether the class is abstract according to clang.

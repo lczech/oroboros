@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from .availability import CppAvailability
-from .comment import CppDoc, PyDoc
+from .documentation import CppDocumentation, PyDoc
 from .element import CppElement
 from .function import CppFunctionBindFacet, CppFunctionCppFacet, CppFunctionPyFacet, CppParameter
 from .lookup import make_named_child_view
@@ -69,12 +69,8 @@ class CppConstructorCppFacet:
     original_name: str | None = None
     # Source locations where this constructor was declared or defined.
     location: CppLocationInfo = field(default_factory=CppLocationInfo)
-    # Parser-selected comment text attached to this constructor declaration.
-    attached_comment: str | None = None
-    # Raw comment text reported by clang for provenance and debugging.
-    clang_raw_comment: str | None = None
-    # Normalized structured documentation parsed from `attached_comment`.
-    doc: CppDoc | None = None
+    # Attached-comment provenance plus normalized parsed documentation for this constructor.
+    doc: CppDocumentation | None = None
     # Availability annotations such as deprecation attached to this constructor.
     availability: CppAvailability | None = None
     # Parser-assigned index among constructor overloads.
@@ -123,12 +119,8 @@ class CppDestructorCppFacet:
     original_name: str | None = None
     # Source locations where this destructor was declared or defined.
     location: CppLocationInfo = field(default_factory=CppLocationInfo)
-    # Parser-selected comment text attached to this destructor declaration.
-    attached_comment: str | None = None
-    # Raw comment text reported by clang for provenance and debugging.
-    clang_raw_comment: str | None = None
-    # Normalized structured documentation parsed from `attached_comment`.
-    doc: CppDoc | None = None
+    # Attached-comment provenance plus normalized parsed documentation for this destructor.
+    doc: CppDocumentation | None = None
     # Availability annotations such as deprecation attached to this destructor.
     availability: CppAvailability | None = None
     # Whether this destructor was declared `virtual`.

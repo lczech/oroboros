@@ -995,8 +995,8 @@ class ParseBuildTest(unittest.TestCase):
 
             self.assertEqual(namespace.name, "demo")
             self.assertEqual(len(namespace.cpp.location.declarations), 2)
-            self.assertIsNotNone(namespace.cpp.attached_comment)
-            self.assertIn("Namespace docs.", namespace.cpp.attached_comment)
+            self.assertIsNotNone(namespace.cpp.doc.attached_comment)
+            self.assertIn("Namespace docs.", namespace.cpp.doc.attached_comment)
             self.assertEqual(len(namespace.declarations.classes), 1)
             self.assertEqual(len(namespace.declarations.functions), 1)
 
@@ -1243,11 +1243,11 @@ class ParseBuildTest(unittest.TestCase):
 
             self.assertEqual(len(build_result.module.declarations.functions), 1)
             self.assertEqual(
-                build_result.module.declarations.functions[0].cpp.attached_comment,
+                build_result.module.declarations.functions[0].cpp.doc.attached_comment,
                 "/// Create one widget from the current demo factory state.",
             )
             self.assertEqual(
-                build_result.module.declarations.functions[0].cpp.doc.brief,
+                build_result.module.declarations.functions[0].cpp.doc.parsed.brief,
                 "Create one widget from the current demo factory state.",
             )
             conflict_warnings = [
@@ -1333,9 +1333,9 @@ class ParseBuildTest(unittest.TestCase):
             build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
 
             function = build_result.module.declarations.functions[0]
-            self.assertEqual(function.cpp.doc.brief, "Build one widget from the current state.")
-            self.assertEqual(function.cpp.doc.parameters["value"], "Value from the definition.")
-            self.assertEqual(function.cpp.doc.returns, "One widget.")
+            self.assertEqual(function.cpp.doc.parsed.brief, "Build one widget from the current state.")
+            self.assertEqual(function.cpp.doc.parsed.parameters["value"], "Value from the definition.")
+            self.assertEqual(function.cpp.doc.parsed.returns, "One widget.")
 
 
 class ParseTypesTest(unittest.TestCase):

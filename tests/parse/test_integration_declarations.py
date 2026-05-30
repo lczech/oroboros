@@ -404,13 +404,13 @@ class ParseIntegrationDeclarationTest(unittest.TestCase):
         union_ = wrapper.declarations.classes[0]
 
         self.assertEqual(union_.cpp.kind, "union")
-        self.assertIsNotNone(union_.cpp.attached_comment)
-        self.assertIn("Store one active payload variant.", union_.cpp.attached_comment)
+        self.assertIsNotNone(union_.cpp.doc.attached_comment)
+        self.assertIn("Store one active payload variant.", union_.cpp.doc.attached_comment)
         self.assertIsNotNone(union_.cpp.doc)
-        self.assertEqual(union_.cpp.doc.brief, "Store one active payload variant.")
+        self.assertEqual(union_.cpp.doc.parsed.brief, "Store one active payload variant.")
         self.assertEqual([variable.name for variable in union_.declarations.variables], ["count", "weight"])
-        self.assertIn("Current element count.", union_.declarations.variables[0].cpp.attached_comment)
-        self.assertIn("Current floating payload.", union_.declarations.variables[1].cpp.attached_comment)
+        self.assertIn("Current element count.", union_.declarations.variables[0].cpp.doc.attached_comment)
+        self.assertIn("Current floating payload.", union_.declarations.variables[1].cpp.doc.attached_comment)
 
     def test_parse_headers_materialize_union_templates_as_class_templates(self) -> None:
         source = """
@@ -557,8 +557,8 @@ class ParseIntegrationDeclarationTest(unittest.TestCase):
         namespace = result.module.declarations.namespaces[0]
         self.assertEqual(namespace.name, "demo")
         self.assertEqual(len(namespace.cpp.location.declarations), 2)
-        self.assertIsNotNone(namespace.cpp.attached_comment)
-        self.assertIn("Namespace docs.", namespace.cpp.attached_comment)
+        self.assertIsNotNone(namespace.cpp.doc.attached_comment)
+        self.assertIn("Namespace docs.", namespace.cpp.doc.attached_comment)
         self.assertEqual(len(namespace.declarations.classes), 1)
         self.assertEqual(namespace.declarations.classes[0].name, "Widget")
         self.assertEqual(len(namespace.declarations.functions), 1)
@@ -597,8 +597,8 @@ class ParseIntegrationDeclarationTest(unittest.TestCase):
 
         self.assertEqual(len(namespace.declarations.classes), 2)
         self.assertEqual(len(widget.cpp.location.declarations), 2)
-        self.assertIsNotNone(widget.cpp.attached_comment)
-        self.assertIn("Forward declaration docs.", widget.cpp.attached_comment)
+        self.assertIsNotNone(widget.cpp.doc.attached_comment)
+        self.assertIn("Forward declaration docs.", widget.cpp.doc.attached_comment)
         self.assertEqual(len(widget.cpp.bases), 1)
         self.assertIsInstance(widget.cpp.bases[0].type, NamedCppType)
         self.assertIs(widget.cpp.bases[0].type.declaration, base)
@@ -776,16 +776,16 @@ class ParseIntegrationDeclarationTest(unittest.TestCase):
         self.assertIsInstance(widget_handle, CppAlias)
         self.assertEqual(widget_handle.qualified_name, "demo::WidgetHandle")
         self.assertEqual(widget_handle.cpp.kind, "using")
-        self.assertIsNotNone(widget_handle.cpp.attached_comment)
-        self.assertIn("handle-style APIs", widget_handle.cpp.attached_comment)
+        self.assertIsNotNone(widget_handle.cpp.doc.attached_comment)
+        self.assertIn("handle-style APIs", widget_handle.cpp.doc.attached_comment)
         self.assertIsInstance(widget_handle.cpp.target, NamedCppType)
         self.assertIs(widget_handle.cpp.target.declaration, widget)
 
         self.assertIsInstance(local_widget, CppAlias)
         self.assertEqual(local_widget.qualified_name, "demo::Holder::LocalWidget")
         self.assertEqual(local_widget.cpp.kind, "using")
-        self.assertIsNotNone(local_widget.cpp.attached_comment)
-        self.assertIn("holder declarations", local_widget.cpp.attached_comment)
+        self.assertIsNotNone(local_widget.cpp.doc.attached_comment)
+        self.assertIn("holder declarations", local_widget.cpp.doc.attached_comment)
         self.assertIsInstance(local_widget.cpp.target, NamedCppType)
         self.assertIs(local_widget.cpp.target.declaration, widget)
 

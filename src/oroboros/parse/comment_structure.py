@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Normalize one raw attached comment block into a structured ``CppDoc``.
+"""Normalize one raw attached comment block into a structured ``CppParsedDoc``.
 
 This module assumes comment attachment has already been decided elsewhere. Its job
 is to take one raw comment string, strip comment delimiters, normalize indentation,
@@ -8,7 +8,7 @@ recognize common Doxygen or Qt-style tags, and convert the result into the
 structured documentation model used by Oroboros.
 
 Known structural tags such as ``@brief``, ``@param``, ``@return``, ``@tparam``,
-``@note``, and related variants are parsed into dedicated ``CppDoc`` fields. Plain
+``@note``, and related variants are parsed into dedicated ``CppParsedDoc`` fields. Plain
 prose comments are split into brief and description paragraphs best-effort, and
 unknown tags are preserved in the normalized prose instead of being discarded.
 Inline markup and code blocks are also rendered into a Python-doc-friendly Markdown
@@ -18,7 +18,7 @@ style so later translation can reuse that normalized text directly.
 from collections.abc import Iterable
 import re
 
-from ..model import CppDoc
+from ..model import CppParsedDoc
 
 
 _RECOGNIZED_TAGS = frozenset({
@@ -52,7 +52,7 @@ _INLINE_CODE_RE = re.compile(r"(?P<prefix>\s|^)[@\\][cp]\s+(?P<target>\S+)")
 # ==================================================================================================
 
 
-def parse_cpp_doc(raw_comment: str | None) -> CppDoc | None:
+def parse_cpp_doc(raw_comment: str | None) -> CppParsedDoc | None:
     """Parse one clang-attached raw comment block into structured documentation."""
 
     if raw_comment is None:
@@ -110,7 +110,7 @@ def _comment_syntax_rank(raw_comment: str) -> int:
     return 0
 
 
-def _structured_doc_rank(cpp_doc: CppDoc | None) -> int:
+def _structured_doc_rank(cpp_doc: CppParsedDoc | None) -> int:
     """Return one structured-content score for a parsed documentation block."""
 
     if cpp_doc is None:
@@ -201,10 +201,10 @@ def _normalize_comment_lines(lines: Iterable[str]) -> list[str]:
 # ==================================================================================================
 
 
-def _parse_doc_sections(lines: list[str]) -> CppDoc:
+def _parse_doc_sections(lines: list[str]) -> CppParsedDoc:
     """Parse normalized comment lines into one structured documentation object."""
 
-    doc = CppDoc()
+    doc = CppParsedDoc()
     prose_sections: list[str] = []
 
     current_tag: str | None = None

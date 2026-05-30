@@ -8,8 +8,8 @@ from tests.support.model_builders import make_class, make_class_template_declara
 
 
 class ModelTypeTest(unittest.TestCase):
-    def test_build_py_doc_from_cpp_doc_copies_nested_data(self) -> None:
-        cpp_doc = CppDoc(
+    def test_build_py_doc_from_parsed_doc_copies_nested_data(self) -> None:
+        parsed_doc = CppParsedDoc(
             brief="Create a widget.",
             description="Build a widget from one integer seed.\n\n```cpp\nWidget widget;\n```",
             parameters={"seed": "Seed value used by the constructor."},
@@ -22,7 +22,7 @@ class ModelTypeTest(unittest.TestCase):
             see_also=["demo::Widget"],
         )
 
-        py_doc = build_py_doc_from_cpp_doc(cpp_doc)
+        py_doc = build_py_doc_from_parsed_doc(parsed_doc)
 
         self.assertIsNotNone(py_doc)
         self.assertEqual(py_doc.summary, "Create a widget.")
@@ -41,10 +41,10 @@ class ModelTypeTest(unittest.TestCase):
         )
         self.assertEqual(py_doc.deprecated, "Prefer create_widget_v2().")
 
-        cpp_doc.parameters["seed"] = "Changed"
-        cpp_doc.template_parameters["Factory"] = "Changed"
-        cpp_doc.return_values["true"] = "Changed"
-        cpp_doc.notes.append("Changed")
+        parsed_doc.parameters["seed"] = "Changed"
+        parsed_doc.template_parameters["Factory"] = "Changed"
+        parsed_doc.return_values["true"] = "Changed"
+        parsed_doc.notes.append("Changed")
         self.assertEqual(py_doc.parameters["seed"], "Seed value used by the constructor.")
         self.assertEqual(
             py_doc.template_parameters["Factory"],

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """Merge and warning helpers for repeated clang declarations."""
 
+from copy import deepcopy
 from pprint import pformat
 from typing import TYPE_CHECKING, Any, Callable, Iterable
 
@@ -29,7 +30,7 @@ def merge_common_cpp_fields(
     context: BuildContext,
     cursor: Any,
     *,
-    comment_field_name: str | None = "attached_comment",
+    merge_documentation: bool = True,
     merge_original_name: bool = True,
 ) -> None:
     """Merge common parsed fields from one repeated declaration into an element."""
@@ -45,16 +46,38 @@ def merge_common_cpp_fields(
             context,
             cursor,
         )
-    if comment_field_name is not None and hasattr(element.cpp, comment_field_name):
-        merged_comment = resolve_comment_conflict(
-            existing_comment=getattr(element.cpp, comment_field_name),
-            new_comment=getattr(candidate_cpp, comment_field_name, None),
-            context=context,
-            cursor=cursor,
-        )
-        setattr(element.cpp, comment_field_name, merged_comment)
-        if hasattr(element.cpp, "doc"):
-            element.cpp.doc = parse_cpp_doc(merged_comment)
+    if merge_documentation and hasattr(element.cpp, "doc"):
+        merge_cpp_documentation(element, candidate_cpp, context, cursor)
+
+
+def merge_cpp_documentation(
+    element: CppElement,
+    candidate_cpp: Any,
+    context: BuildContext,
+    cursor: Any,
+) -> None:
+    """Merge attached-comment provenance and parsed documentation conservatively."""
+
+    candidate_doc = getattr(candidate_cpp, "doc", None)
+    if candidate_doc is None:
+        return
+
+    current_doc = getattr(element.cpp, "doc", None)
+    if current_doc is None:
+        element.cpp.doc = deepcopy(candidate_doc)
+        return
+
+    merged_attached_comment = resolve_comment_conflict(
+        existing_comment=current_doc.attached_comment,
+        new_comment=candidate_doc.attached_comment,
+        context=context,
+        cursor=cursor,
+    )
+    current_doc.attached_comment = merged_attached_comment
+    current_doc.parsed = parse_cpp_doc(merged_attached_comment)
+
+    if current_doc.clang_raw_comment is None and candidate_doc.clang_raw_comment is not None:
+        current_doc.clang_raw_comment = candidate_doc.clang_raw_comment
 
 
 def merge_cpp_scalar(
@@ -232,7 +255,7 @@ def merge_callable_parameter_children(
             candidate_cpp,
             context,
             parameter_cursor,
-            comment_field_name=None,
+            merge_documentation=False,
             merge_original_name=False,
         )
         merge_cpp_scalar(

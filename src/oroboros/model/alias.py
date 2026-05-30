@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
 from .availability import CppAvailability
-from .comment import CppDoc, PyDoc
+from .documentation import CppDocumentation, PyDoc
 from .element import CppElement
 from .location import CppLocationInfo
 from .type import CppType, NamedCppType, cpp_types_equivalent
@@ -31,12 +31,8 @@ class CppAliasCppFacet:
     target: CppType | None = None
     # Source locations where this alias was declared.
     location: CppLocationInfo = field(default_factory=CppLocationInfo)
-    # Parser-selected comment text attached to this alias declaration.
-    attached_comment: str | None = None
-    # Raw comment text reported by clang for provenance and debugging.
-    clang_raw_comment: str | None = None
-    # Normalized structured documentation parsed from `attached_comment`.
-    doc: CppDoc | None = None
+    # Attached-comment provenance plus normalized parsed documentation for this alias.
+    doc: CppDocumentation | None = None
     # Availability annotations such as deprecation attached to this alias.
     availability: CppAvailability | None = None
     # Declared member visibility when clang exposes it.

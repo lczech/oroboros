@@ -10,7 +10,7 @@ Libclang's ``raw_comment`` is preserved only as provenance. It is intentionally
 not used as an attachment source because it can become stale or over-attached
 across declarations and even across files in one combined translation unit.
 
-The selected attached comment is later parsed into ``CppDoc`` by ``comment_structure``,
+The selected attached comment is later parsed into ``CppParsedDoc`` by ``comment_structure``,
 and repeated declarations are still merged afterwards by the normal redeclaration
 merge layer. In other words, this module chooses the best local comment per cursor,
 while later merge policy chooses among comments across declaration sites.
@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from clang.cindex import TokenKind
 
-from ..model import SourceLocation
+from ..model import CppParsedDoc, SourceLocation
 from .comment_structure import comment_preference_key, parse_cpp_doc
 from .cursor_data import CursorTokenInfo, cursor_raw_comment, cursor_source_location, file_cursor_tokens
 
@@ -64,8 +64,8 @@ class CursorCommentResolution:
 
     location: SourceLocation | None = None
     clang_raw_comment: str | None = None
-    selected_comment: str | None = None
-    selected_doc: Any = None
+    selected_attached_comment: str | None = None
+    selected_attached_doc: CppParsedDoc | None = None
     selection_reason: str = "missing"
 
 
@@ -77,8 +77,8 @@ def resolve_cursor_comment(cursor: Any, context: BuildContext | None) -> CursorC
     resolution = CursorCommentResolution(
         location=location,
         clang_raw_comment=clang_raw_comment,
-        selected_comment=None,
-        selected_doc=None,
+        selected_attached_comment=None,
+        selected_attached_doc=None,
         selection_reason="missing",
     )
     if context is None or context.translation_unit is None:
@@ -150,8 +150,8 @@ def _select_comment_resolution(
         recovered_candidates,
         key=lambda candidate: (_candidate_attachment_rank(candidate), comment_preference_key(candidate.text)),
     )
-    resolution.selected_comment = best_candidate.text
-    resolution.selected_doc = parse_cpp_doc(best_candidate.text)
+    resolution.selected_attached_comment = best_candidate.text
+    resolution.selected_attached_doc = parse_cpp_doc(best_candidate.text)
     resolution.selection_reason = f"recovered_{best_candidate.kind}"
     return resolution
 

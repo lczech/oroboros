@@ -77,7 +77,7 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         self.assertIsInstance(alias_template, CppAliasTemplate)
         self.assertEqual(alias_template.qualified_name, "demo::Vault::Handle")
         self.assertEqual(alias_template.declaration.cpp.visibility, CppVisibility.PROTECTED)
-        self.assertIn("Handle alias for the vault contents.", alias_template.declaration.cpp.attached_comment)
+        self.assertIn("Handle alias for the vault contents.", alias_template.declaration.cpp.doc.attached_comment)
         self.assertIsNotNone(alias_template.declaration.cpp.doc)
         self.assertIsInstance(alias_template.declaration.cpp.target, PointerCppType)
         self.assertIsInstance(alias_template.declaration.cpp.target.pointee, NamedCppType)
@@ -1336,14 +1336,14 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         self.assertEqual(declaration.parameters[0].name, "value")
         self.assertEqual(declaration.parameters[0].cpp.default_value, "T{}")
         self.assertEqual(
-            declaration.cpp.doc.brief,
+            declaration.cpp.doc.parsed.brief,
             "Parse one value from the richer definition path.",
         )
         self.assertEqual(
-            declaration.cpp.doc.parameters["value"],
+            declaration.cpp.doc.parsed.parameters["value"],
             "Value from the definition.",
         )
-        self.assertEqual(declaration.cpp.doc.returns, "One parsed value.")
+        self.assertEqual(declaration.cpp.doc.parsed.returns, "One parsed value.")
         self.assertEqual(declaration.parameters[0].cpp.doc, "Value from the definition.")
 
     def test_parse_headers_merge_method_template_docs_defaults_and_definition_locations(self) -> None:
@@ -1397,14 +1397,14 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         self.assertEqual(method_declaration.parameters[0].name, "value")
         self.assertEqual(method_declaration.parameters[0].cpp.default_value, "U{}")
         self.assertEqual(
-            method_declaration.cpp.doc.brief,
+            method_declaration.cpp.doc.parsed.brief,
             "Convert one value from the richer definition path.",
         )
         self.assertEqual(
-            method_declaration.cpp.doc.parameters["value"],
+            method_declaration.cpp.doc.parsed.parameters["value"],
             "Value from the definition.",
         )
-        self.assertEqual(method_declaration.cpp.doc.returns, "One converted value.")
+        self.assertEqual(method_declaration.cpp.doc.parsed.returns, "One converted value.")
         self.assertEqual(method_declaration.parameters[0].cpp.doc, "Value from the definition.")
 
     def test_parse_headers_keeps_mixed_overload_groups_with_templates_across_reopened_namespaces(self) -> None:

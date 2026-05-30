@@ -64,7 +64,7 @@ class ParseCommentIntegrationTest(unittest.TestCase):
 
         resolution = resolve_cursor_comment(cursor, context)
 
-        self.assertEqual(resolution.selected_comment, recovered_comment)
+        self.assertEqual(resolution.selected_attached_comment, recovered_comment)
         self.assertEqual(resolution.selection_reason, "recovered_leading_block")
         self.assertFalse(context.report.diagnostics)
 
@@ -92,23 +92,23 @@ Widget make_widget(int value);
         widget = namespace.declarations.classes[0]
         function = namespace.declarations.functions[0]
 
-        self.assertIsNotNone(widget.cpp.attached_comment)
-        self.assertIsNotNone(widget.cpp.clang_raw_comment)
-        self.assertIn("Represent one widget", widget.cpp.attached_comment)
-        self.assertIn("Represent one widget", widget.cpp.clang_raw_comment)
+        self.assertIsNotNone(widget.cpp.doc.attached_comment)
+        self.assertIsNotNone(widget.cpp.doc.clang_raw_comment)
+        self.assertIn("Represent one widget", widget.cpp.doc.attached_comment)
+        self.assertIn("Represent one widget", widget.cpp.doc.clang_raw_comment)
         self.assertIsNotNone(widget.cpp.doc)
-        self.assertEqual(widget.cpp.doc.brief, "Represent one widget in the real parsed headers.")
-        self.assertIsNotNone(function.cpp.attached_comment)
-        self.assertIsNotNone(function.cpp.clang_raw_comment)
-        self.assertIn("Build one widget", function.cpp.attached_comment)
-        self.assertIn("@return One newly created widget.", function.cpp.attached_comment)
+        self.assertEqual(widget.cpp.doc.parsed.brief, "Represent one widget in the real parsed headers.")
+        self.assertIsNotNone(function.cpp.doc.attached_comment)
+        self.assertIsNotNone(function.cpp.doc.clang_raw_comment)
+        self.assertIn("Build one widget", function.cpp.doc.attached_comment)
+        self.assertIn("@return One newly created widget.", function.cpp.doc.attached_comment)
         self.assertIsNotNone(function.cpp.doc)
-        self.assertEqual(function.cpp.doc.brief, "Build one widget from the current demo state.")
+        self.assertEqual(function.cpp.doc.parsed.brief, "Build one widget from the current demo state.")
         self.assertEqual(
-            function.cpp.doc.parameters["value"],
+            function.cpp.doc.parsed.parameters["value"],
             "Input value used by the example builder.",
         )
-        self.assertEqual(function.cpp.doc.returns, "One newly created widget.")
+        self.assertEqual(function.cpp.doc.parsed.returns, "One newly created widget.")
         self.assertEqual(function.parameters[0].cpp.doc, "Input value used by the example builder.")
 
     def test_parse_headers_extracts_plain_comments_into_normalized_docs(self) -> None:
@@ -127,10 +127,10 @@ struct Widget {};
 
         widget = result.module.declarations.namespaces[0].declarations.classes[0]
 
-        self.assertIsNotNone(widget.cpp.attached_comment)
+        self.assertIsNotNone(widget.cpp.doc.attached_comment)
         self.assertIsNotNone(widget.cpp.doc)
-        self.assertEqual(widget.cpp.doc.brief, "Represent one widget.")
-        self.assertEqual(widget.cpp.doc.description, "Used by the demo API.")
+        self.assertEqual(widget.cpp.doc.parsed.brief, "Represent one widget.")
+        self.assertEqual(widget.cpp.doc.parsed.description, "Used by the demo API.")
 
     def test_parse_headers_normalize_brief_details_multiline_params_and_links(self) -> None:
         source = r"""
@@ -153,16 +153,16 @@ Widget make_widget(int value);
         function = result.module.declarations.namespaces[0].declarations.functions[0]
 
         self.assertIsNotNone(function.cpp.doc)
-        self.assertEqual(function.cpp.doc.brief, "Build one widget.")
+        self.assertEqual(function.cpp.doc.parsed.brief, "Build one widget.")
         self.assertEqual(
-            function.cpp.doc.description,
+            function.cpp.doc.parsed.description,
             "Use the widget API (demo::Widget) for advanced flows.",
         )
         self.assertEqual(
-            function.cpp.doc.parameters["value"],
+            function.cpp.doc.parsed.parameters["value"],
             "Input value used by the factory and reused by the fallback path.",
         )
-        self.assertEqual(function.cpp.doc.returns, "One widget.")
+        self.assertEqual(function.cpp.doc.parsed.returns, "One widget.")
         self.assertEqual(
             function.parameters[0].cpp.doc,
             "Input value used by the factory and reused by the fallback path.",
@@ -190,11 +190,11 @@ Widget make_widget();
 
         self.assertIsNotNone(function.cpp.doc)
         self.assertEqual(
-            function.cpp.doc.brief,
+            function.cpp.doc.parsed.brief,
             "Build one widget from the current state and cached factory configuration.",
         )
         self.assertEqual(
-            function.cpp.doc.description,
+            function.cpp.doc.parsed.description,
             "Use this overload for the common path. It keeps the default ownership rules.",
         )
 
@@ -218,10 +218,10 @@ Widget make_widget();
         function = result.module.declarations.namespaces[0].declarations.functions[0]
 
         self.assertIsNotNone(function.cpp.doc)
-        self.assertEqual(function.cpp.doc.brief, "Build one widget.")
-        self.assertEqual(function.cpp.doc.warnings, ["Avoid reused state."])
+        self.assertEqual(function.cpp.doc.parsed.brief, "Build one widget.")
+        self.assertEqual(function.cpp.doc.parsed.warnings, ["Avoid reused state."])
         self.assertEqual(
-            function.cpp.doc.see_also,
+            function.cpp.doc.parsed.see_also,
             ["demo::make_other_widget", "demo::Widget"],
         )
 
@@ -248,19 +248,19 @@ bool build_widget();
         function = function_template.declaration
 
         self.assertIsNotNone(function.cpp.doc)
-        self.assertEqual(function.cpp.doc.brief, "Build one widget.")
+        self.assertEqual(function.cpp.doc.parsed.brief, "Build one widget.")
         self.assertEqual(
-            function.cpp.doc.template_parameters["Factory"],
+            function.cpp.doc.parsed.template_parameters["Factory"],
             "Factory type used to create the widget.",
         )
         self.assertEqual(
-            function.cpp.doc.return_values,
+            function.cpp.doc.parsed.return_values,
             {
                 "true": "A widget was created successfully.",
                 "false": "No widget could be created.",
             },
         )
-        self.assertEqual(function.cpp.doc.deprecated, "Prefer build_widget_v2().")
+        self.assertEqual(function.cpp.doc.parsed.deprecated, "Prefer build_widget_v2().")
 
     def test_parse_headers_attach_trailing_comments_to_member_variables_and_enumerators(self) -> None:
         source = """
@@ -285,17 +285,17 @@ enum class Mode {
         widget = namespace.declarations.classes[0]
         mode = namespace.declarations.enums[0]
 
-        self.assertIsNotNone(widget.declarations.variables[0].cpp.attached_comment)
-        self.assertEqual(widget.declarations.variables[0].cpp.doc.brief, "Current size in elements.")
-        self.assertIsNotNone(widget.declarations.variables[1].cpp.attached_comment)
+        self.assertIsNotNone(widget.declarations.variables[0].cpp.doc.attached_comment)
+        self.assertEqual(widget.declarations.variables[0].cpp.doc.parsed.brief, "Current size in elements.")
+        self.assertIsNotNone(widget.declarations.variables[1].cpp.doc.attached_comment)
         self.assertEqual(
-            widget.declarations.variables[1].cpp.doc.brief,
+            widget.declarations.variables[1].cpp.doc.parsed.brief,
             "Total number of stored entries.",
         )
-        self.assertIsNotNone(mode.enumerators[0].cpp.attached_comment)
-        self.assertEqual(mode.enumerators[0].cpp.doc.brief, "Fast mode.")
-        self.assertIsNotNone(mode.enumerators[1].cpp.attached_comment)
-        self.assertEqual(mode.enumerators[1].cpp.doc.brief, "Slow mode.")
+        self.assertIsNotNone(mode.enumerators[0].cpp.doc.attached_comment)
+        self.assertEqual(mode.enumerators[0].cpp.doc.parsed.brief, "Fast mode.")
+        self.assertIsNotNone(mode.enumerators[1].cpp.doc.attached_comment)
+        self.assertEqual(mode.enumerators[1].cpp.doc.parsed.brief, "Slow mode.")
 
     def test_parse_headers_attach_comments_to_enum_declarations_and_nested_class_scope(self) -> None:
         source = """
@@ -337,13 +337,13 @@ struct Widget {
         method = widget.declarations.methods[0]
         nested_state = widget.declarations.enums[0]
 
-        self.assertEqual(mode.cpp.doc.brief, "Top-level mode docs.")
-        self.assertEqual(widget.cpp.doc.brief, "Widget docs.")
-        self.assertEqual(helper.cpp.doc.brief, "Nested helper docs.")
-        self.assertEqual(widget.declarations.variables[0].cpp.doc.brief, "Current size in elements.")
-        self.assertEqual(method.cpp.doc.brief, "Execute the widget operation.")
-        self.assertEqual(nested_state.cpp.doc.brief, "Nested state docs.")
-        self.assertEqual(nested_state.enumerators[0].cpp.doc.brief, "Idle state.")
+        self.assertEqual(mode.cpp.doc.parsed.brief, "Top-level mode docs.")
+        self.assertEqual(widget.cpp.doc.parsed.brief, "Widget docs.")
+        self.assertEqual(helper.cpp.doc.parsed.brief, "Nested helper docs.")
+        self.assertEqual(widget.declarations.variables[0].cpp.doc.parsed.brief, "Current size in elements.")
+        self.assertEqual(method.cpp.doc.parsed.brief, "Execute the widget operation.")
+        self.assertEqual(nested_state.cpp.doc.parsed.brief, "Nested state docs.")
+        self.assertEqual(nested_state.enumerators[0].cpp.doc.parsed.brief, "Idle state.")
 
     def test_parse_headers_do_not_attach_closing_namespace_comments_as_namespace_docs(self) -> None:
         source = """
@@ -363,10 +363,10 @@ struct Widget {};
         namespace = result.module.declarations.namespaces[0].declarations.namespaces[0]
         widget = namespace.declarations.classes[0]
 
-        self.assertIsNotNone(namespace.cpp.attached_comment)
-        self.assertNotIn("namespace demo::detail", namespace.cpp.attached_comment)
-        self.assertIn("demo::detail", namespace.cpp.attached_comment)
-        self.assertEqual(widget.cpp.doc.brief, "Widget docs.")
+        self.assertIsNotNone(namespace.cpp.doc.attached_comment)
+        self.assertNotIn("namespace demo::detail", namespace.cpp.doc.attached_comment)
+        self.assertIn("demo::detail", namespace.cpp.doc.attached_comment)
+        self.assertEqual(widget.cpp.doc.parsed.brief, "Widget docs.")
         self.assertFalse(any("Recovered attached comment" in warning.message for warning in result.report.warnings))
 
     def test_parse_headers_attach_plain_trailing_comments_and_indented_code_blocks(self) -> None:
@@ -401,15 +401,15 @@ enum class Mode {
         function = namespace.declarations.functions[0]
         mode = namespace.declarations.enums[0]
 
-        self.assertIsNotNone(widget.declarations.variables[0].cpp.attached_comment)
-        self.assertEqual(widget.declarations.variables[0].cpp.doc.brief, "Current size in elements.")
+        self.assertIsNotNone(widget.declarations.variables[0].cpp.doc.attached_comment)
+        self.assertEqual(widget.declarations.variables[0].cpp.doc.parsed.brief, "Current size in elements.")
         self.assertIsNotNone(function.cpp.doc)
         self.assertEqual(
-            function.cpp.doc.description,
+            function.cpp.doc.parsed.description,
             "Example usage:\n\n```\nWidget widget;\nwidget.build();\n```",
         )
-        self.assertIsNotNone(mode.enumerators[0].cpp.attached_comment)
-        self.assertEqual(mode.enumerators[0].cpp.doc.brief, "Fast mode.")
+        self.assertIsNotNone(mode.enumerators[0].cpp.doc.attached_comment)
+        self.assertEqual(mode.enumerators[0].cpp.doc.parsed.brief, "Fast mode.")
 
     def test_parse_headers_do_not_warn_for_indentation_only_recovery_difference(self) -> None:
         source = """
@@ -427,10 +427,10 @@ struct BlockSlotBits {};
 
         block_slot_bits = result.module.declarations.namespaces[0].declarations.classes[0]
 
-        self.assertIsNotNone(block_slot_bits.cpp.attached_comment)
+        self.assertIsNotNone(block_slot_bits.cpp.doc.attached_comment)
         self.assertIsNotNone(block_slot_bits.cpp.doc)
         self.assertEqual(
-            block_slot_bits.cpp.doc.brief,
+            block_slot_bits.cpp.doc.parsed.brief,
             "We use the slots as indicators which elements in the slots of a block have been set already. Using 64 slots fixed for now, for efficiency. Might parameterize as template param, so that the buffer can be made smaller if needed for large elements instead.",
         )
         self.assertFalse(any(warning.code == "parse.comment_recovery.mismatch" for warning in result.report.warnings))
@@ -461,7 +461,7 @@ Widget make_widget();
 
         self.assertIsNotNone(function.cpp.doc)
         self.assertEqual(
-            function.cpp.doc.description,
+            function.cpp.doc.parsed.description,
             "Example usage:\n\n```\nWidget widget;\n\nwidget.build();\n```\n\nContinue with normal prose afterwards.",
         )
 
@@ -486,10 +486,10 @@ int make_widget();
         widget = namespace.declarations.classes[0]
         function = namespace.declarations.functions[0]
 
-        self.assertIsNone(widget.cpp.attached_comment)
-        self.assertIsNone(widget.cpp.doc)
-        self.assertIsNone(function.cpp.attached_comment)
-        self.assertIsNone(function.cpp.doc)
+        self.assertTrue(widget.cpp.doc is None or widget.cpp.doc.attached_comment is None)
+        self.assertTrue(widget.cpp.doc is None or widget.cpp.doc.parsed is None)
+        self.assertTrue(function.cpp.doc is None or function.cpp.doc.attached_comment is None)
+        self.assertTrue(function.cpp.doc is None or function.cpp.doc.parsed is None)
         self.assertFalse(any("Recovered attached comment" in warning.message for warning in result.report.warnings))
 
     def test_parse_headers_suppress_detached_namespace_banner_warnings(self) -> None:
@@ -510,8 +510,8 @@ struct Widget {};
         namespace = result.module.declarations.namespaces[0]
         widget = namespace.declarations.classes[0]
 
-        self.assertIsNone(namespace.cpp.attached_comment)
-        self.assertIsNone(namespace.cpp.doc)
+        self.assertTrue(namespace.cpp.doc is None or namespace.cpp.doc.attached_comment is None)
+        self.assertTrue(namespace.cpp.doc is None or namespace.cpp.doc.parsed is None)
         self.assertEqual(widget.name, "Widget")
         self.assertFalse(any("Recovered attached comment" in warning.message for warning in result.report.warnings))
 
@@ -535,8 +535,8 @@ struct Widget {};
         namespace = result.module.declarations.namespaces[0]
         widget = namespace.declarations.classes[0]
 
-        self.assertIsNone(namespace.cpp.attached_comment)
-        self.assertIsNone(namespace.cpp.doc)
+        self.assertTrue(namespace.cpp.doc is None or namespace.cpp.doc.attached_comment is None)
+        self.assertTrue(namespace.cpp.doc is None or namespace.cpp.doc.parsed is None)
         self.assertEqual(widget.name, "Widget")
         self.assertFalse(any(warning.code == "parse.merge.conflicting_comments" for warning in result.report.warnings))
 
@@ -579,7 +579,7 @@ struct Third {};
 
         namespace = result.module.declarations.namespaces[0]
 
-        self.assertEqual(namespace.cpp.doc.brief, "Container namespace for all demo symbols.")
+        self.assertEqual(namespace.cpp.doc.parsed.brief, "Container namespace for all demo symbols.")
         self.assertEqual(
             [declaration.name for declaration in namespace.declarations.classes],
             ["First", "Second", "Third"],
@@ -638,16 +638,16 @@ int Box<T>::measure() const {
         constructor = class_template.declaration.declarations.constructors[0]
         method = class_template.declaration.declarations.methods[0]
 
-        self.assertEqual(namespace.cpp.doc.brief, "Demo namespace docs.")
-        self.assertEqual(widget_handle.cpp.doc.brief, "Widget handle alias.")
-        self.assertEqual(widget_id.cpp.doc.brief, "Widget typedef alias.")
-        self.assertEqual(class_template.declaration.cpp.doc.brief, "Widget template docs.")
+        self.assertEqual(namespace.cpp.doc.parsed.brief, "Demo namespace docs.")
+        self.assertEqual(widget_handle.cpp.doc.parsed.brief, "Widget handle alias.")
+        self.assertEqual(widget_id.cpp.doc.parsed.brief, "Widget typedef alias.")
+        self.assertEqual(class_template.declaration.cpp.doc.parsed.brief, "Widget template docs.")
         self.assertEqual(
-            class_template.declaration.cpp.doc.template_parameters["T"],
+            class_template.declaration.cpp.doc.parsed.template_parameters["T"],
             "Stored value type.",
         )
-        self.assertEqual(constructor.cpp.doc.brief, "Construct one box.")
-        self.assertEqual(method.cpp.doc.brief, "Measure the stored value.")
+        self.assertEqual(constructor.cpp.doc.parsed.brief, "Construct one box.")
+        self.assertEqual(method.cpp.doc.parsed.brief, "Measure the stored value.")
 
     def test_parse_headers_prefer_definition_comment_over_forward_declaration_comment(self) -> None:
         source = """
@@ -672,10 +672,10 @@ public:
         abc = result.module.declarations.namespaces[0].declarations.classes[0]
 
         self.assertEqual(
-            abc.cpp.attached_comment,
+            abc.cpp.doc.attached_comment,
             "/**\n * @brief The class does cool things.\n */",
         )
-        self.assertEqual(abc.cpp.doc.brief, "The class does cool things.")
+        self.assertEqual(abc.cpp.doc.parsed.brief, "The class does cool things.")
         mismatch_warnings = [
             warning
             for warning in result.report.warnings
@@ -729,10 +729,10 @@ public:
 
         self.assertEqual(len(widget.cpp.location.declarations), 2)
         self.assertEqual(
-            widget.cpp.attached_comment,
+            widget.cpp.doc.attached_comment,
             "/**\n * @brief Widget docs from the richer definition path.\n */",
         )
-        self.assertEqual(widget.cpp.doc.brief, "Widget docs from the richer definition path.")
+        self.assertEqual(widget.cpp.doc.parsed.brief, "Widget docs from the richer definition path.")
         self.assertEqual(len(widget.declarations.variables), 1)
         self.assertEqual(widget.declarations.variables[0].name, "value")
 
@@ -764,8 +764,8 @@ struct Widget;
         widget = result.module.declarations.namespaces[0].declarations.classes[0]
 
         self.assertEqual(len(widget.cpp.location.declarations), 2)
-        self.assertEqual(widget.cpp.attached_comment, "/// Second forward docs are longer.")
-        self.assertEqual(widget.cpp.doc.brief, "Second forward docs are longer.")
+        self.assertEqual(widget.cpp.doc.attached_comment, "/// Second forward docs are longer.")
+        self.assertEqual(widget.cpp.doc.parsed.brief, "Second forward docs are longer.")
 
     def test_parse_headers_preserve_attached_structured_docs_across_redeclarations(self) -> None:
         result = _parse_headers_from_sources(
@@ -800,11 +800,11 @@ int make_widget(int value);
         function = result.module.declarations.namespaces[0].declarations.functions[0]
 
         self.assertEqual(
-            function.cpp.doc.brief,
+            function.cpp.doc.parsed.brief,
             "Build one widget from the current state and the richer rebuilt definition docs.",
         )
-        self.assertEqual(function.cpp.doc.parameters["value"], "Value from the definition.")
-        self.assertEqual(function.cpp.doc.returns, "One widget.")
+        self.assertEqual(function.cpp.doc.parsed.parameters["value"], "Value from the definition.")
+        self.assertEqual(function.cpp.doc.parsed.returns, "One widget.")
         self.assertEqual(function.parameters[0].cpp.doc, "Value from the definition.")
 
     def test_parse_headers_merges_template_provenance_and_comments_across_headers(self) -> None:
@@ -838,8 +838,8 @@ struct Box {
 
         self.assertEqual(class_template.name, "Box")
         self.assertEqual(len(class_template.declaration.cpp.location.declarations), 2)
-        self.assertIsNotNone(class_template.declaration.cpp.attached_comment)
-        self.assertIn("Forward declaration docs.", class_template.declaration.cpp.attached_comment)
+        self.assertIsNotNone(class_template.declaration.cpp.doc.attached_comment)
+        self.assertIn("Forward declaration docs.", class_template.declaration.cpp.doc.attached_comment)
         self.assertEqual(len(class_template.declaration.declarations.variables), 1)
         self.assertEqual(class_template.declaration.declarations.variables[0].name, "value")
 

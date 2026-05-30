@@ -123,11 +123,11 @@ class ParseIntegrationCallableTest(unittest.TestCase):
         self.assertEqual(call.parameters[0].name, "value")
         self.assertEqual(call.parameters[0].cpp.default_value, "7")
         self.assertEqual(
-            call.cpp.doc.brief,
+            call.cpp.doc.parsed.brief,
             "Invoke one widget from the richer definition path.",
         )
-        self.assertEqual(call.cpp.doc.parameters["value"], "Value from the definition.")
-        self.assertEqual(call.cpp.doc.returns, "One invoked value.")
+        self.assertEqual(call.cpp.doc.parsed.parameters["value"], "Value from the definition.")
+        self.assertEqual(call.cpp.doc.parsed.returns, "One invoked value.")
         self.assertEqual(call.parameters[0].cpp.doc, "Value from the definition.")
 
         self.assertEqual(conversion.cpp.operator.kind, "conversion")

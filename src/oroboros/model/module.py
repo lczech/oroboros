@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .comment import CppDoc, PyDoc
+from .documentation import CppDocumentation, PyDoc
 from .element import CppElement
 from .lookup import make_named_child_view
 from .namespace import CppScopeDeclarations
@@ -33,12 +33,8 @@ class CppModuleCppFacet:
 
     # Header files that were active when this semantic module was parsed.
     header_files: list[Path] = field(default_factory=list)
-    # Parser-selected comment text attached to the module root.
-    attached_comment: str | None = None
-    # Raw comment text reported by clang for provenance and debugging.
-    clang_raw_comment: str | None = None
-    # Normalized structured documentation parsed from `attached_comment`.
-    doc: CppDoc | None = None
+    # Attached-comment provenance plus normalized parsed documentation for this module.
+    doc: CppDocumentation | None = None
 
 
 @dataclass(slots=True)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """Attach and reuse semantic elements during clang model building."""
 
+from copy import deepcopy
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from ..model import CppElement, CppNamespace
@@ -63,7 +64,12 @@ def _inherit_compact_namespace_comment(owner: CppElement, candidate_cpp: Any) ->
 
     if not isinstance(owner, CppNamespace):
         return
-    if candidate_cpp.attached_comment is not None or owner.cpp.attached_comment is None:
+
+    candidate_doc = getattr(candidate_cpp, "doc", None)
+    owner_doc = getattr(owner.cpp, "doc", None)
+    if candidate_doc is not None and candidate_doc.attached_comment is not None:
+        return
+    if owner_doc is None or owner_doc.attached_comment is None:
         return
 
     owner_location = owner.cpp.location.primary
@@ -73,8 +79,7 @@ def _inherit_compact_namespace_comment(owner: CppElement, candidate_cpp: Any) ->
     if owner_location.file != candidate_location.file or owner_location.line != candidate_location.line:
         return
 
-    candidate_cpp.attached_comment = owner.cpp.attached_comment
-    candidate_cpp.doc = owner.cpp.doc
+    candidate_cpp.doc = deepcopy(owner_doc)
 
 
 def attach_element(

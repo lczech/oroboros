@@ -489,12 +489,13 @@ def visit_non_parameter_children(
 def apply_parameter_docs(callable_element: Any) -> None:
     """Copy callable-level parameter docs onto the owned parameter nodes."""
 
-    cpp_doc = getattr(getattr(callable_element, "cpp", None), "doc", None)
+    documentation = getattr(getattr(callable_element, "cpp", None), "doc", None)
     parameters = getattr(callable_element, "parameters", None)
-    if cpp_doc is None or parameters is None:
+    if documentation is None or parameters is None:
         return
 
-    parameter_docs = getattr(cpp_doc, "parameters", {})
+    parsed_doc = getattr(documentation, "parsed", None)
+    parameter_docs = {} if parsed_doc is None else parsed_doc.parameters
     for parameter in parameters:
         if not parameter.name:
             parameter.cpp.doc = None

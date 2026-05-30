@@ -12,7 +12,7 @@ from .class_ import (
     CppClassDefaults,
     CppClassPyFacet,
 )
-from .comment import CppDoc, PyDoc, build_py_doc_from_cpp_doc
+from .documentation import CppDocumentation, CppParsedDoc, PyDoc, build_py_doc_from_parsed_doc
 from .element import CppElement, ModelValidationError
 from .enum import (
     CppEnum,
@@ -169,7 +169,7 @@ __all__ = [
     "CppConstructorPyFacet",
     "CppDestructor",
     "CppDestructorCppFacet",
-    "CppDoc",
+    "CppDocumentation",
     "CppElement",
     "CppEnum",
     "CppEnumBindFacet",
@@ -273,7 +273,8 @@ __all__ = [
     "add_function_template_instance",
     "add_method_template_instance",
     "add_observed_template_instances",
-    "build_py_doc_from_cpp_doc",
+    "CppParsedDoc",
+    "build_py_doc_from_parsed_doc",
     "cpp_types_equivalent",
     "find_aliases",
     "summarize_tree",
