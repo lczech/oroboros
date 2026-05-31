@@ -8,13 +8,15 @@ import sys
 from oroboros import (
     HeaderFile,
     HeaderSelection,
-    ParserConfig,
     find_included_headers,
+    infer_parser_config_from_compilation_database,
     parse_header_selection,
     print_parse_result,
+    print_parser_config,
     print_update_report,
     update_activation_header,
 )
+from oroboros.diagnostics import print_report
 
 
 def _discover_parser_inventory(header_dir: Path, root_header: Path) -> list[HeaderFile]:
@@ -69,12 +71,28 @@ def main() -> int:
     sys.stdout.flush()
 
     try:
-        parser_config = ParserConfig(
-            include_dirs=[header_dir],
-            cxx_standard="c++20",
-            auto_detect_toolchain=True,
-            suppress_diagnostics=["parse.merge.preferred_comments"],
+        # Get a parser config inferred from the compilation database (CMake + clang build).
+        inference_result = infer_parser_config_from_compilation_database(
+            build_dir,
+            source_roots=[header_dir / "genesis"],
         )
+        if inference_result.report.diagnostics:
+            print_report(inference_result.report, color=None)
+            print("")
+        if inference_result.report.has_errors():
+            print("Parser config inference failed.", file=sys.stderr)
+            return 1
+        parser_config = inference_result.config
+        # print_parser_config(parser_config, color=None)
+        # print("")
+
+        # Override some config settings for this example.
+        parser_config.auto_detect_toolchain = True
+        parser_config.suppress_diagnostics = ["parse.merge.preferred_comments"]
+        print_parser_config(parser_config, color=None, include_clang_arguments=True)
+        print("")
+
+        # Run the parser on the active headers.
         parse_result = parse_header_selection(
             HeaderSelection(update_result.header_files),
             parser_config,
@@ -83,6 +101,7 @@ def main() -> int:
         print(f"Parser setup error: {error}", file=sys.stderr)
         return 1
 
+    # Print the parse result with diagnostics, but without the semantic tree for brevity.
     print_parse_result(parse_result, include_headers=False, include_tree=False)
 
     return 0

@@ -12,7 +12,7 @@ else:
 
 
 DiagnosticSeverity = Literal["note", "warning", "error", "fatal"]
-DiagnosticStage = Literal["headers", "clang", "parse", "validation"]
+DiagnosticStage = Literal["config", "headers", "clang", "parse", "validation"]
 
 
 @dataclass(slots=True)

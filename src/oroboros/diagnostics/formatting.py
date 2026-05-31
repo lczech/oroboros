@@ -92,6 +92,7 @@ def format_report(
 
     render_options = options or DiagnosticRenderOptions(include_detail=True)
     titles = {
+        "config": "Config diagnostics:",
         "headers": "Header diagnostics:",
         "clang": "Clang diagnostics:",
         "parse": "Parser diagnostics:",
@@ -107,7 +108,7 @@ def format_report(
         )
 
     grouped: OrderedDict[str, list[Diagnostic]] = OrderedDict()
-    for stage in ("headers", "clang", "parse", "validation"):
+    for stage in ("config", "headers", "clang", "parse", "validation"):
         diagnostics = report.by_stage(stage)
         if diagnostics:
             grouped[stage] = diagnostics

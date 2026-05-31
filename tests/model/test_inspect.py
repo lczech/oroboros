@@ -13,8 +13,14 @@ from oroboros.diagnostics import (
 )
 from oroboros.model import *
 from oroboros.model.inspect import format_element, format_tree, summarize_tree
-from oroboros.parse import ParseResult
-from oroboros.parse.inspect import format_parse_result, print_parse_result, summarize_parse_result
+from oroboros.parse import ParseResult, ParserConfig
+from oroboros.parse.inspect import (
+    format_parse_result,
+    format_parser_config,
+    print_parse_result,
+    print_parser_config,
+    summarize_parse_result,
+)
 
 
 class ModelInspectTest(unittest.TestCase):
@@ -91,6 +97,50 @@ class ModelInspectTest(unittest.TestCase):
 
 
 class ParseInspectTest(unittest.TestCase):
+    def test_format_parser_config_renders_key_fields(self) -> None:
+        config = ParserConfig(
+            include_dirs=[Path("/tmp/project/include")],
+            system_include_dirs=[Path("/tmp/project/sys")],
+            defines=["FOO=1"],
+            undefines=["BAR"],
+            extra_args=["-target", "x86_64-linux-gnu"],
+            cxx_standard="c++20",
+            auto_detect_toolchain=False,
+        )
+
+        rendered = format_parser_config(config)
+
+        self.assertIn("Parser config:", rendered)
+        self.assertIn("language: c++", rendered)
+        self.assertIn("cxx standard: c++20", rendered)
+        self.assertIn("/tmp/project/include", rendered)
+        self.assertIn("/tmp/project/sys", rendered)
+        self.assertIn("FOO=1", rendered)
+        self.assertIn("BAR", rendered)
+        self.assertIn("-target", rendered)
+
+    def test_print_parser_config_can_include_rendered_clang_arguments(self) -> None:
+        config = ParserConfig(
+            include_dirs=[Path("/tmp/project/include")],
+            cxx_standard="c++20",
+            resource_dir=Path("/tmp/clang-resource"),
+        )
+        output = StringIO()
+
+        print_parser_config(
+            config,
+            stream=output,
+            color=False,
+            include_clang_arguments=True,
+        )
+
+        rendered = output.getvalue()
+        self.assertIn("rendered clang args:", rendered)
+        self.assertIn("-xc++", rendered)
+        self.assertIn("-std=c++20", rendered)
+        self.assertIn("-resource-dir=/tmp/clang-resource", rendered)
+        self.assertIn("-I/tmp/project/include", rendered)
+
     def test_format_diagnostics_renders_empty_and_non_empty_lists(self) -> None:
         self.assertEqual(
             format_diagnostics(
@@ -201,7 +251,7 @@ class ParseInspectTest(unittest.TestCase):
         self.assertIn("input headers: 1", summary)
         self.assertIn("clang diagnostics: 2", summary)
         self.assertIn("reported diagnostics: 3", summary)
-        self.assertIn("parser/header/validation diagnostics: 1", summary)
+        self.assertIn("non-clang diagnostics: 1", summary)
         self.assertIn("errors: 1", summary)
         self.assertIn("warnings: 2", summary)
         self.assertIn("functions: 1", summary)

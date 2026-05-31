@@ -6,10 +6,14 @@ from typing import TYPE_CHECKING, Any, Iterable
 
 from clang.cindex import CursorKind
 
-from ..model import CppClassTemplate, CppElement, CppModule, CppNamespace
+from ..model import CppClassTemplate, CppElement
 from .cursor_data import cursor_is_from_active_header, cursor_kind_name, cursor_usr, is_base_specifier_cursor
 from .merge_properties import merge_common_cpp_fields, merge_cpp_scalar
-from .element_registry import ensure_namespace
+from .element_registry import (
+    ensure_namespace,
+    element_matches_semantic_parent,
+    find_registered_semantic_owner,
+)
 from . import process_cursors
 
 if TYPE_CHECKING:
@@ -76,7 +80,12 @@ def _visit_namespace_cursor(
         merge_cpp_scalar=merge_cpp_scalar,
     )
     if namespace is not None:
-        visit_children(cursor.get_children(), namespace, context)
+        for child_cursor in cursor.get_children():
+            visit_cursor(
+                child_cursor,
+                _semantic_owner_for_cursor(child_cursor, namespace, context),
+                context,
+            )
 
 
 def _visit_declaration_cursor(
@@ -188,7 +197,12 @@ def _visit_linkage_spec_cursor(
 ) -> None:
     """Visit the declarations nested under one linkage-spec wrapper cursor."""
 
-    visit_children(cursor.get_children(), owner, context)
+    for child_cursor in cursor.get_children():
+        visit_cursor(
+            child_cursor,
+            _semantic_owner_for_cursor(child_cursor, owner, context),
+            context,
+        )
 
 
 # ==================================================================================================
@@ -293,6 +307,10 @@ def _semantic_owner_for_cursor(
         if semantic_owner is not None:
             return semantic_owner
 
+    matched_registered_owner = find_registered_semantic_owner(semantic_parent, context)
+    if matched_registered_owner is not None:
+        return matched_registered_owner
+
     matched_ancestor = _matching_owner_ancestor(semantic_parent, fallback_owner)
     if matched_ancestor is not None:
         return matched_ancestor
@@ -308,24 +326,7 @@ def _matching_owner_ancestor(
 
     current: CppElement | None = owner
     while current is not None:
-        if _element_matches_semantic_parent(current, semantic_parent):
+        if element_matches_semantic_parent(current, semantic_parent):
             return current
         current = current.owner
     return None
-
-
-def _element_matches_semantic_parent(
-    element: CppElement,
-    semantic_parent: Any,
-) -> bool:
-    """Return whether one semantic element corresponds to one clang semantic parent."""
-
-    parent_kind = getattr(semantic_parent, "kind", None)
-    if parent_kind == CursorKind.TRANSLATION_UNIT:
-        return isinstance(element, CppModule)
-
-    parent_name = getattr(semantic_parent, "spelling", None)
-    if parent_kind == CursorKind.NAMESPACE:
-        return isinstance(element, CppNamespace) and element.name == parent_name
-
-    return getattr(element, "name", None) == parent_name

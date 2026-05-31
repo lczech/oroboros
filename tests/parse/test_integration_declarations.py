@@ -476,6 +476,201 @@ class ParseIntegrationDeclarationTest(unittest.TestCase):
         self.assertTrue(method.cpp.is_const)
         self.assertIsNotNone(method.cpp.location.definition)
 
+    def test_parse_headers_merge_class_template_out_of_line_members(self) -> None:
+        source = """
+            namespace demo {
+
+            template <typename T, typename U>
+            class PairBox {
+            public:
+                PairBox();
+                int size() const;
+            private:
+                int size_ = 0;
+            };
+
+            template <typename T, typename U>
+            PairBox<T, U>::PairBox() = default;
+
+            template <typename T, typename U>
+            int PairBox<T, U>::size() const {
+                return size_;
+            }
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        class_template = namespace.declarations.class_templates[0]
+        declaration = class_template.declaration
+
+        self.assertEqual(class_template.name, "PairBox")
+        self.assertEqual(len(declaration.declarations.constructors), 1)
+        self.assertEqual(len(declaration.declarations.methods), 1)
+        self.assertIsNotNone(declaration.declarations.methods[0].cpp.location.definition)
+        self.assertEqual(declaration.declarations.methods[0].name, "size")
+
+    def test_parse_headers_merge_out_of_line_destructors(self) -> None:
+        source = """
+            namespace demo {
+
+            struct Widget {
+                ~Widget();
+            };
+
+            Widget::~Widget() = default;
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        widget = result.module.declarations.namespaces[0].declarations.classes[0]
+
+        self.assertIsNotNone(widget.declarations.destructor)
+        self.assertEqual(widget.declarations.destructor.name, "~Widget")
+        self.assertIsNotNone(widget.declarations.destructor.cpp.location.definition)
+
+    def test_parse_headers_merge_out_of_line_method_templates(self) -> None:
+        source = """
+            namespace demo {
+
+            struct Widget {
+                template <typename T>
+                T echo(T value) const;
+            };
+
+            template <typename T>
+            T Widget::echo(T value) const {
+                return value;
+            }
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        widget = result.module.declarations.namespaces[0].declarations.classes[0]
+        method_template = widget.declarations.method_templates[0]
+
+        self.assertEqual(len(widget.declarations.method_templates), 1)
+        self.assertEqual(method_template.name, "echo")
+        self.assertEqual(len(method_template.declaration.parameters), 1)
+        self.assertIsNotNone(method_template.declaration.cpp.location.definition)
+
+    def test_parse_headers_merge_out_of_line_method_templates_for_class_templates(self) -> None:
+        source = """
+            namespace demo {
+
+            template <typename T>
+            struct Widget {
+                template <typename U>
+                U echo(U value) const;
+            };
+
+            template <typename T>
+            template <typename U>
+            U Widget<T>::echo(U value) const {
+                return value;
+            }
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        declaration = result.module.declarations.namespaces[0].declarations.class_templates[0].declaration
+        method_template = declaration.declarations.method_templates[0]
+
+        self.assertEqual(len(declaration.declarations.method_templates), 1)
+        self.assertEqual(method_template.name, "echo")
+        self.assertEqual(len(method_template.declaration.parameters), 1)
+        self.assertIsNotNone(method_template.declaration.cpp.location.definition)
+
+    def test_parse_headers_merge_out_of_line_members_for_nested_classes(self) -> None:
+        source = """
+            namespace demo {
+
+            struct Outer {
+                struct Inner {
+                    int size() const;
+                };
+            };
+
+            int Outer::Inner::size() const {
+                return 1;
+            }
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        outer = result.module.declarations.namespaces[0].declarations.classes[0]
+        inner = outer.declarations.classes[0]
+
+        self.assertEqual(inner.name, "Inner")
+        self.assertEqual(len(inner.declarations.methods), 1)
+        self.assertEqual(inner.declarations.methods[0].name, "size")
+        self.assertIsNotNone(inner.declarations.methods[0].cpp.location.definition)
+
+    def test_parse_headers_merge_out_of_line_members_for_nested_class_templates(self) -> None:
+        source = """
+            namespace demo {
+
+            template <typename T>
+            struct Outer {
+                struct Inner {
+                    int size() const;
+                };
+            };
+
+            template <typename T>
+            int Outer<T>::Inner::size() const {
+                return 1;
+            }
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        declaration = result.module.declarations.namespaces[0].declarations.class_templates[0].declaration
+        inner = declaration.declarations.classes[0]
+
+        self.assertEqual(inner.name, "Inner")
+        self.assertEqual(len(inner.declarations.methods), 1)
+        self.assertEqual(inner.declarations.methods[0].name, "size")
+        self.assertIsNotNone(inner.declarations.methods[0].cpp.location.definition)
+
+    def test_parse_headers_merge_out_of_line_members_across_linkage_wrappers(self) -> None:
+        source = """
+            namespace demo {
+
+            extern "C++" {
+            struct Widget {
+                int size() const;
+            };
+            }
+
+            int Widget::size() const {
+                return 1;
+            }
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        widget = result.module.declarations.namespaces[0].declarations.classes[0]
+
+        self.assertEqual(widget.name, "Widget")
+        self.assertEqual(len(widget.declarations.methods), 1)
+        self.assertEqual(widget.declarations.methods[0].name, "size")
+        self.assertIsNotNone(widget.declarations.methods[0].cpp.location.definition)
+
     def test_parse_headers_preserve_nested_union_visibility(self) -> None:
         source = """
             namespace demo {

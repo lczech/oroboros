@@ -25,6 +25,8 @@ from ..model import (
     CppMethod,
     CppMethodTemplate,
     CppMethodTemplateDeclaration,
+    CppModule,
+    CppNamespace,
     CppObservedTemplateInstance,
     CppParameter,
     CppTemplateArgument,
@@ -1062,7 +1064,77 @@ def _lookup_semantic_owner_for_cursor(
         return semantic_owner.declaration
     if isinstance(semantic_owner, CppClassMembers):
         return semantic_owner
+
+    return _matching_registered_semantic_owner(cursor, context)
+
+
+def _matching_registered_semantic_owner(
+    cursor: Any,
+    context: BuildContext,
+) -> CppClassMembers | None:
+    """Match one class-like semantic owner by scope/name when parent USRs differ."""
+
+    semantic_parent = getattr(cursor, "semantic_parent", None)
+    seen_ids: set[int] = set()
+    for element in context.usr_to_element.values():
+        if id(element) in seen_ids:
+            continue
+        seen_ids.add(id(element))
+
+        candidate = element.declaration if isinstance(element, CppClassTemplate) else element
+        if not isinstance(candidate, CppClassMembers):
+            continue
+        if not _element_matches_semantic_parent(candidate, semantic_parent):
+            continue
+        if _semantic_parent_chain_matches(candidate.owner, getattr(semantic_parent, "semantic_parent", None)):
+            return candidate
+
     return None
+
+
+def _element_matches_semantic_parent(
+    element: CppElement,
+    semantic_parent: Any,
+) -> bool:
+    """Return whether one semantic element corresponds to one clang semantic parent."""
+
+    parent_kind = getattr(semantic_parent, "kind", None)
+    if parent_kind == CursorKind.TRANSLATION_UNIT:
+        return isinstance(element, CppModule)
+
+    parent_name = getattr(semantic_parent, "spelling", None)
+    if parent_kind == CursorKind.NAMESPACE:
+        return isinstance(element, CppNamespace) and element.name == parent_name
+
+    return getattr(element, "name", None) == parent_name
+
+
+def _semantic_parent_chain_matches(
+    owner: CppElement | None,
+    semantic_parent: Any,
+) -> bool:
+    """Return whether one clang semantic-parent chain matches one model-owner chain."""
+
+    owner = _normalize_owner_for_semantic_match(owner)
+    if semantic_parent is None:
+        return owner is None
+    if owner is None:
+        return False
+    if not _element_matches_semantic_parent(owner, semantic_parent):
+        return False
+
+    next_semantic_parent = getattr(semantic_parent, "semantic_parent", None)
+    if getattr(semantic_parent, "kind", None) == CursorKind.TRANSLATION_UNIT:
+        return True
+    return _semantic_parent_chain_matches(owner.owner, next_semantic_parent)
+
+
+def _normalize_owner_for_semantic_match(owner: CppElement | None) -> CppElement | None:
+    """Skip wrapper elements that do not correspond to clang semantic-parent scopes."""
+
+    if isinstance(owner, CppClassTemplate):
+        return owner.owner
+    return owner
 
 
 def _strip_trailing_template_arguments(name: str) -> str:
