@@ -84,6 +84,10 @@ def format_parser_config(
         f"{config.validate_model}"
     )
     lines.append(
+        f"  {style_muted('unsupported cursor reporting:', color=color)} "
+        f"{config.unsupported_cursor_reporting}"
+    )
+    lines.append(
         f"  {style_muted('warn std explicit specializations:', color=color)} "
         f"{config.warn_std_explicit_class_template_specializations}"
     )

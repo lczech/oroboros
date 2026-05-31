@@ -9,9 +9,10 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from ..diagnostics import Diagnostic
 from ..diagnostics.report import DiagnosticSeverity
-from ..model import CppElement, CppLocationInfo, SourceLocation, format_element_scope
+from ..model import CppElement, CppLocationInfo, CppNamespace, CppParameter, SourceLocation, format_element_scope
 from .comment_structure import comment_preference_key, comments_are_equivalent, parse_cpp_doc
 from .cursor_data import cursor_kind_name, cursor_source_location
+from .result import ParserInvariantError
 
 if TYPE_CHECKING:
     from .build_model import BuildContext
@@ -35,7 +36,7 @@ def merge_common_cpp_fields(
 
     if merge_original_name:
         merge_cpp_scalar(element, "original_name", getattr(candidate_cpp, "original_name", None), context, cursor)
-    merge_location_info(element.cpp.location, candidate_cpp.location)
+    merge_location_info(element, candidate_cpp.location)
     if hasattr(element.cpp, "availability"):
         merge_cpp_scalar(
             element,
@@ -213,13 +214,24 @@ def merge_template_parameters(
     )
 
 
-def merge_location_info(existing: Any, new: Any) -> None:
+def merge_location_info(element: CppElement, new: Any) -> None:
     """Merge source provenance from one repeated declaration cursor."""
 
+    existing = element.cpp.location
     if existing.primary is None and new.primary is not None:
         existing.primary = new.primary
 
     if new.definition is not None:
+        if (
+            existing.definition is not None
+            and existing.definition != new.definition
+            and not isinstance(element, (CppNamespace, CppParameter))
+        ):
+            raise ParserInvariantError(
+                "Encountered conflicting definition locations while merging repeated "
+                f"declarations for {format_element_scope(element)}. "
+                f"existing: {existing.definition}; new: {new.definition}"
+            )
         existing.definition = new.definition
         existing.primary = new.definition
 

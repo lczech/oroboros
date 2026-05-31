@@ -8,9 +8,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Sequence
 
 from ..diagnostics import Diagnostic, DiagnosticReport
-from ..model import CppElement, CppModule, NamedCppType
+from ..model import CppElement, CppModule, NamedCppType, SourceLocation
 from .config import ParserConfig
 from .clang_walk import visit_cursor
+from .result import ParserInvariantError
 
 if TYPE_CHECKING:
     from .cursor_data import CursorTokenInfo
@@ -56,6 +57,8 @@ class BuildContext:
     report: DiagnosticReport = field(default_factory=DiagnosticReport)
     # Counts of unsupported libclang cursor kinds skipped during the walk.
     skipped_kind_counts: Counter[str] = field(default_factory=Counter)
+    # Short example strings for unsupported cursor kinds when requested.
+    skipped_kind_examples: dict[str, list[str]] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -74,6 +77,9 @@ class PendingTypeDeclarationLink:
 
     cpp_type: NamedCppType
     declaration_usr: str
+    source_location: SourceLocation | None = None
+    declaration_location: SourceLocation | None = None
+    must_resolve_in_active_headers: bool = False
 
 
 # ==================================================================================================
@@ -126,6 +132,13 @@ def _resolve_pending_type_declaration_links(context: BuildContext) -> None:
 
         declaration = context.usr_to_element.get(pending_link.declaration_usr)
         if declaration is None:
+            if pending_link.must_resolve_in_active_headers:
+                raise ParserInvariantError(
+                    "Failed to resolve an internal named-type declaration link for "
+                    f"{pending_link.cpp_type.name!r} (USR {pending_link.declaration_usr!r}). "
+                    f"use site: {pending_link.source_location}; "
+                    f"declaration site: {pending_link.declaration_location}"
+                )
             continue
 
         pending_link.cpp_type.declaration = declaration
@@ -141,11 +154,19 @@ def _record_skipped_cursor_kind_warning(context: BuildContext) -> None:
         f"{kind_name} ({count})"
         for kind_name, count in sorted(context.skipped_kind_counts.items())
     )
+    detail = None
+    if context.config.unsupported_cursor_reporting == "examples" and context.skipped_kind_examples:
+        detail_lines = ["examples:"]
+        for kind_name, examples in sorted(context.skipped_kind_examples.items()):
+            detail_lines.append(f"  {kind_name}:")
+            detail_lines.extend(f"    {example}" for example in examples)
+        detail = "\n".join(detail_lines)
     context.report.add(
         Diagnostic(
             severity="warning",
             stage="parse",
             code="parse.skipped_cursor_kinds",
             message=f"Skipped unsupported libclang cursor kinds: {rendered_counts}",
+            detail=detail,
         )
     )

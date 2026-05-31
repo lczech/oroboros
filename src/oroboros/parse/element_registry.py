@@ -9,7 +9,7 @@ from clang.cindex import CursorKind
 
 from ..model import CppClassMembers, CppClassTemplate, CppElement, CppModule, CppNamespace
 from .extract_cpp_facets import extract_namespace_cpp_facet
-from .cursor_data import cursor_usr
+from .cursor_data import cursor_source_location, cursor_usr
 
 if TYPE_CHECKING:
     from .build_model import BuildContext
@@ -114,6 +114,67 @@ def register_element_for_cursor(
     context.usr_to_element.setdefault(usr, element)
 
 
+# ==================================================================================================
+#     Semantic Owner Resolution
+# ==================================================================================================
+
+
+def resolve_semantic_owner(
+    cursor: Any,
+    fallback_owner: CppElement,
+    context: BuildContext,
+) -> CppElement:
+    """Resolve the semantic owner that should receive one visited child cursor."""
+
+    semantic_parent = getattr(cursor, "semantic_parent", None)
+    semantic_owner = _semantic_owner_from_usr(semantic_parent, context)
+    if semantic_owner is not None:
+        return semantic_owner
+
+    matched_registered_owner = find_registered_semantic_owner(semantic_parent, context)
+    if matched_registered_owner is not None:
+        return matched_registered_owner
+
+    matched_ancestor = matching_owner_ancestor(semantic_parent, fallback_owner)
+    if matched_ancestor is not None:
+        return matched_ancestor
+
+    return fallback_owner
+
+
+def resolve_class_semantic_owner(
+    cursor: Any,
+    context: BuildContext,
+) -> CppClassMembers | None:
+    """Return the class-like semantic owner of one cursor when already materialized."""
+
+    semantic_parent = getattr(cursor, "semantic_parent", None)
+    semantic_owner = _semantic_owner_from_usr(semantic_parent, context)
+    if isinstance(semantic_owner, CppClassMembers):
+        return semantic_owner
+
+    matched_registered_owner = find_registered_semantic_owner(semantic_parent, context)
+    if isinstance(matched_registered_owner, CppClassMembers):
+        return matched_registered_owner
+    return None
+
+
+def _semantic_owner_from_usr(
+    semantic_parent: Any,
+    context: BuildContext,
+) -> CppElement | None:
+    """Return the registered semantic owner for one semantic-parent cursor USR."""
+
+    semantic_parent_usr = cursor_usr(semantic_parent)
+    if semantic_parent_usr is None:
+        return None
+
+    semantic_owner = context.usr_to_element.get(semantic_parent_usr)
+    if isinstance(semantic_owner, CppClassTemplate):
+        return semantic_owner.declaration
+    return semantic_owner
+
+
 def find_registered_semantic_owner(
     semantic_parent: Any,
     context: BuildContext,
@@ -178,3 +239,39 @@ def _normalize_owner_for_semantic_match(owner: CppElement | None) -> CppElement 
     if isinstance(owner, CppClassTemplate):
         return owner.owner
     return owner
+
+
+def matching_owner_ancestor(
+    semantic_parent: Any,
+    owner: CppElement,
+) -> CppElement | None:
+    """Find one already-materialized ancestor matching a child cursor semantic parent."""
+
+    current: CppElement | None = owner
+    while current is not None:
+        if element_matches_semantic_parent(current, semantic_parent):
+            return current
+        current = current.owner
+    return None
+
+
+# ==================================================================================================
+#     Unsupported Cursor Reporting
+# ==================================================================================================
+
+
+def record_skipped_cursor_example(cursor: Any, context: BuildContext) -> None:
+    """Capture a short example for one unsupported cursor kind when requested."""
+
+    if context.config.unsupported_cursor_reporting != "examples":
+        return
+
+    kind_name = str(getattr(getattr(cursor, "kind", None), "name", "<unknown>"))
+    examples = context.skipped_kind_examples.setdefault(kind_name, [])
+    if len(examples) >= 3:
+        return
+
+    location = cursor_source_location(cursor)
+    location_text = "<unknown location>" if location is None else str(location)
+    spelling = getattr(cursor, "spelling", "") or "<anonymous>"
+    examples.append(f"{spelling} @ {location_text}")

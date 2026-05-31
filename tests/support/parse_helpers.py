@@ -54,7 +54,6 @@ def parse_headers_from_sources(
             HeaderSelection(header_files=header_files),
             parser_config
             or ParserConfig(
-                auto_detect_toolchain=False,
                 cxx_standard="c++20",
             ),
         )

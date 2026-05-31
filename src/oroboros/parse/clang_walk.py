@@ -6,13 +6,13 @@ from typing import TYPE_CHECKING, Any, Iterable
 
 from clang.cindex import CursorKind
 
-from ..model import CppClassTemplate, CppElement
-from .cursor_data import cursor_is_from_active_header, cursor_kind_name, cursor_usr, is_base_specifier_cursor
+from ..model import CppElement
+from .cursor_data import cursor_is_from_active_header, cursor_kind_name, is_base_specifier_cursor
 from .merge_properties import merge_common_cpp_fields, merge_cpp_scalar
 from .element_registry import (
     ensure_namespace,
-    element_matches_semantic_parent,
-    find_registered_semantic_owner,
+    record_skipped_cursor_example,
+    resolve_semantic_owner,
 )
 from . import process_cursors
 
@@ -83,7 +83,7 @@ def _visit_namespace_cursor(
         for child_cursor in cursor.get_children():
             visit_cursor(
                 child_cursor,
-                _semantic_owner_for_cursor(child_cursor, namespace, context),
+                resolve_semantic_owner(child_cursor, namespace, context),
                 context,
             )
 
@@ -173,6 +173,7 @@ def _record_skipped_cursor_kind(cursor: Any, context: BuildContext) -> None:
     """Record one unsupported cursor kind in the parser summary."""
 
     context.skipped_kind_counts[cursor_kind_name(cursor)] += 1
+    record_skipped_cursor_example(cursor, context)
 
 
 def _visit_friend_cursor(
@@ -185,7 +186,7 @@ def _visit_friend_cursor(
     for child_cursor in cursor.get_children():
         visit_cursor(
             child_cursor,
-            _semantic_owner_for_cursor(child_cursor, owner, context),
+            resolve_semantic_owner(child_cursor, owner, context),
             context,
         )
 
@@ -200,7 +201,7 @@ def _visit_linkage_spec_cursor(
     for child_cursor in cursor.get_children():
         visit_cursor(
             child_cursor,
-            _semantic_owner_for_cursor(child_cursor, owner, context),
+            resolve_semantic_owner(child_cursor, owner, context),
             context,
         )
 
@@ -289,44 +290,3 @@ _IGNORED_DECLARATION_KINDS = frozenset({
 })
 
 _CLASS_CURSOR_KINDS = frozenset({CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL, CursorKind.UNION_DECL})
-
-
-def _semantic_owner_for_cursor(
-    cursor: Any,
-    fallback_owner: CppElement,
-    context: BuildContext,
-) -> CppElement:
-    """Resolve the semantic owner that should receive one visited child cursor."""
-
-    semantic_parent = getattr(cursor, "semantic_parent", None)
-    semantic_parent_usr = cursor_usr(semantic_parent)
-    if semantic_parent_usr is not None:
-        semantic_owner = context.usr_to_element.get(semantic_parent_usr)
-        if isinstance(semantic_owner, CppClassTemplate):
-            return semantic_owner.declaration
-        if semantic_owner is not None:
-            return semantic_owner
-
-    matched_registered_owner = find_registered_semantic_owner(semantic_parent, context)
-    if matched_registered_owner is not None:
-        return matched_registered_owner
-
-    matched_ancestor = _matching_owner_ancestor(semantic_parent, fallback_owner)
-    if matched_ancestor is not None:
-        return matched_ancestor
-
-    return fallback_owner
-
-
-def _matching_owner_ancestor(
-    semantic_parent: Any,
-    owner: CppElement,
-) -> CppElement | None:
-    """Find one already-materialized ancestor matching a child cursor semantic parent."""
-
-    current: CppElement | None = owner
-    while current is not None:
-        if element_matches_semantic_parent(current, semantic_parent):
-            return current
-        current = current.owner
-    return None

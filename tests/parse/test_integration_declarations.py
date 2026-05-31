@@ -295,7 +295,6 @@ class ParseIntegrationDeclarationTest(unittest.TestCase):
         result = _parse_headers_from_sources(
             {"demo.hpp": source},
             parser_config=ParserConfig(
-                auto_detect_toolchain=False,
                 cxx_standard="c++20",
                 warn_std_explicit_class_template_specializations=True,
             ),

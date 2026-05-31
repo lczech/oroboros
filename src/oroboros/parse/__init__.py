@@ -14,7 +14,7 @@ from .inspect import (
     print_parser_config,
     summarize_parse_result,
 )
-from .result import ParseResult
+from .result import ParseResult, ParserInvariantError
 from .toolchain import CompilerToolchain, detect_compiler_toolchain
 from ..diagnostics import Diagnostic, DiagnosticReport
 
@@ -25,6 +25,7 @@ __all__ = [
     "ParserConfig",
     "ParserConfigInferenceResult",
     "ParseResult",
+    "ParserInvariantError",
     "detect_compiler_toolchain",
     "format_parse_result",
     "format_parser_config",

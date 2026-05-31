@@ -179,6 +179,77 @@ class CompilationDatabaseInferenceTest(unittest.TestCase):
         )
         self.assertEqual(result.report.errors, [])
 
+    def test_missing_scalar_values_do_not_conflict_when_one_concrete_value_exists(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            build_dir = project_root / "build"
+            build_dir.mkdir()
+
+            first_source = project_root / "src" / "alpha.cpp"
+            second_source = project_root / "src" / "beta.cpp"
+            self._write_compilation_database(
+                build_dir,
+                entries=[
+                    self._entry(
+                        directory=project_root,
+                        file=first_source,
+                        arguments=[
+                            "/usr/bin/c++",
+                            "-std=c++20",
+                            "-c",
+                            str(first_source),
+                        ],
+                    ),
+                    self._entry(
+                        directory=project_root,
+                        file=second_source,
+                        arguments=[
+                            "/usr/bin/c++",
+                            "-c",
+                            str(second_source),
+                        ],
+                    ),
+                ],
+            )
+
+            result = infer_parser_config_from_compilation_database(build_dir)
+
+        self.assertEqual(result.config.cxx_standard, "c++20")
+        self.assertEqual(result.report.warnings, [])
+
+    def test_reports_ignored_arguments_and_handles_compiler_wrappers(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            build_dir = project_root / "build"
+            build_dir.mkdir()
+
+            source_file = project_root / "src" / "alpha.cpp"
+            self._write_compilation_database(
+                build_dir,
+                entries=[
+                    self._entry(
+                        directory=project_root,
+                        file=source_file,
+                        arguments=[
+                            "/usr/bin/ccache",
+                            "/usr/bin/c++",
+                            "-pthread",
+                            "-c",
+                            str(source_file),
+                        ],
+                    ),
+                ],
+            )
+
+            result = infer_parser_config_from_compilation_database(build_dir)
+
+        self.assertEqual(result.config.toolchain_compiler, "/usr/bin/c++")
+        self.assertIn("-pthread", result.ignored_arguments)
+        self.assertEqual(
+            [diagnostic.code for diagnostic in result.report.warnings],
+            ["config.compdb.unhandled_arguments"],
+        )
+
     def test_strict_policy_reports_errors_and_omits_conflicting_scalar_extra_args(self) -> None:
         with TemporaryDirectory() as temp_dir:
             project_root = Path(temp_dir)

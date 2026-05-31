@@ -36,6 +36,7 @@ from .merge_properties import (
     merge_template_parameters,
     warn_unexpected_repeated_declaration,
 )
+from .result import ParserInvariantError
 
 if TYPE_CHECKING:
     from .build_model import BuildContext
@@ -359,7 +360,12 @@ def merge_callable_parameter_children(
     existing_parameters = list(getattr(callable_element, "parameters", []))
 
     if len(existing_parameters) != len(parameter_cursors):
-        return
+        raise ParserInvariantError(
+            "Repeated callable declaration matched the same semantic element but exposed "
+            "a different parameter count. "
+            f"existing: {len(existing_parameters)}; new: {len(parameter_cursors)}; "
+            f"callable: {format_element_scope(callable_element)}"
+        )
 
     for existing_parameter, parameter_cursor in zip(
         existing_parameters,

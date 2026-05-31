@@ -303,3 +303,34 @@ some trailer
             unittest.mock.ANY,
             known_project_headers=[active_header.resolve(), inactive_header.resolve()],
         )
+
+    def test_parse_header_selection_skips_model_build_after_clang_errors(self) -> None:
+        diagnostics = [
+            Diagnostic(
+                severity="error",
+                stage="clang",
+                code="clang.diagnostic",
+                message="fatal parse error",
+            )
+        ]
+        driver_result = SimpleNamespace(translation_unit=object(), diagnostics=diagnostics)
+
+        with (
+            patch("oroboros.parse.api.parse_with_clang", return_value=driver_result),
+            patch("oroboros.parse.api.build_module_from_clang") as build_module,
+        ):
+            result = parse_header_selection(
+                HeaderSelection(
+                    header_files=[
+                        HeaderFile(
+                            full_path=Path("/tmp/project/demo.hpp"),
+                            relative_path=Path("demo.hpp"),
+                        )
+                    ]
+                ),
+                ParserConfig(),
+            )
+
+        build_module.assert_not_called()
+        self.assertEqual(result.report.errors, diagnostics)
+        self.assertEqual(result.module.declarations.namespaces, [])

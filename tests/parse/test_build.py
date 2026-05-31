@@ -8,7 +8,7 @@ import unittest
 from clang.cindex import CursorKind, TokenKind, TypeKind
 
 from oroboros.model import *
-from oroboros.parse import ParserConfig
+from oroboros.parse import ParserConfig, ParserInvariantError
 from oroboros.parse.build_model import BuildContext, build_module_from_clang
 from oroboros.parse.merge_properties import (
     merge_class_bases,
@@ -1341,6 +1341,204 @@ class ParseBuildTest(unittest.TestCase):
             self.assertEqual(function.cpp.doc.parsed.parameters["value"], "Value from the definition.")
             self.assertEqual(function.cpp.doc.parsed.returns, "One widget.")
 
+    def test_build_module_from_clang_raises_for_unresolved_active_type_link(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        missing_declaration_cursor = _fake_cursor(
+            "CLASS_DECL",
+            "Widget",
+            file=active_header,
+            usr="c:@N@demo@S@Widget",
+        )
+        translation_unit = SimpleNamespace(
+            cursor=_fake_cursor(
+                "TRANSLATION_UNIT",
+                "",
+                file=active_header,
+                children=[
+                    _fake_cursor(
+                        "NAMESPACE",
+                        "demo",
+                        file=active_header,
+                        children=[
+                            _fake_cursor(
+                                "FUNCTION_DECL",
+                                "take_widget",
+                                file=active_header,
+                                result_type=_fake_type("VOID", "void"),
+                                children=[
+                                    _fake_cursor(
+                                        "PARM_DECL",
+                                        "value",
+                                        file=active_header,
+                                        type=_fake_type(
+                                            "ELABORATED",
+                                            "Widget",
+                                            declaration_cursor=missing_declaration_cursor,
+                                        ),
+                                    ),
+                                ],
+                            ),
+                        ],
+                    )
+                ],
+            )
+        )
+
+        with self.assertRaisesRegex(ParserInvariantError, "Failed to resolve an internal named-type"):
+            build_module_from_clang(translation_unit, [active_header], ParserConfig())
+
+    def test_build_module_from_clang_raises_on_callable_parameter_count_mismatch(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        translation_unit = SimpleNamespace(
+            cursor=_fake_cursor(
+                "TRANSLATION_UNIT",
+                "",
+                file=active_header,
+                children=[
+                    _fake_cursor(
+                        "FUNCTION_DECL",
+                        "make_widget",
+                        file=active_header,
+                        usr="c:@F@make_widget#",
+                        result_type=_fake_type("INT", "int"),
+                    ),
+                    _fake_cursor(
+                        "FUNCTION_DECL",
+                        "make_widget",
+                        file=active_header,
+                        usr="c:@F@make_widget#",
+                        result_type=_fake_type("INT", "int"),
+                        children=[
+                            _fake_cursor(
+                                "PARM_DECL",
+                                "value",
+                                file=active_header,
+                                usr="c:@F@make_widget#@value",
+                                type=_fake_type("INT", "int"),
+                            )
+                        ],
+                    ),
+                ],
+            )
+        )
+
+        with self.assertRaisesRegex(ParserInvariantError, "different parameter count"):
+            build_module_from_clang(translation_unit, [active_header], ParserConfig())
+
+    def test_process_variable_cursor_raises_on_unexpected_owner(self) -> None:
+        from oroboros.parse import process_cursors
+
+        context = BuildContext(
+            active_headers=set(),
+            known_project_headers=set(),
+            config=ParserConfig(),
+        )
+        cursor = _fake_cursor(
+            "VAR_DECL",
+            "local_value",
+            file=Path("/tmp/project/demo.hpp"),
+            type=_fake_type("INT", "int"),
+        )
+
+        with self.assertRaisesRegex(ParserInvariantError, "unexpected semantic owner"):
+            process_cursors.process_variable_cursor(cursor, CppEnum(name="Kind"), context)
+
+    def test_build_module_from_clang_records_example_skipped_cursors_when_requested(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        translation_unit = SimpleNamespace(
+            cursor=_fake_cursor(
+                "TRANSLATION_UNIT",
+                "",
+                file=active_header,
+                children=[
+                    _fake_cursor("MACRO_DEFINITION", "DEMO_MACRO", file=active_header),
+                ],
+            )
+        )
+
+        build_result = build_module_from_clang(
+            translation_unit,
+            [active_header],
+            ParserConfig(unsupported_cursor_reporting="examples"),
+        )
+
+        warning = build_result.report.warnings[0]
+        self.assertEqual(warning.code, "parse.skipped_cursor_kinds")
+        self.assertIsNotNone(warning.detail)
+        self.assertIn("DEMO_MACRO", warning.detail)
+
+    def test_build_module_from_clang_completes_missing_non_type_observed_template_arguments(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        template_cursor = _fake_cursor(
+            "CLASS_TEMPLATE",
+            "Box",
+            file=active_header,
+            usr="c:@ST>1#T@Box",
+            children=[
+                _fake_cursor("TEMPLATE_TYPE_PARAMETER", "T", file=active_header),
+                _fake_cursor(
+                    "TEMPLATE_NON_TYPE_PARAMETER",
+                    "is_const",
+                    file=active_header,
+                    type=_fake_type("BOOL", "bool"),
+                ),
+            ],
+        )
+        specialization_cursor = _fake_cursor(
+            "CLASS_DECL",
+            "Box",
+            file=active_header,
+            usr="c:@S@Box>#I#b",
+            methods={
+                "get_num_template_arguments": 2,
+                "get_template_argument_type": lambda index: [
+                    _fake_type("INT", "int"),
+                    None,
+                ][index],
+                "get_template_argument_value": lambda index: [0, 1][index],
+                "get_template_argument_unsigned_value": lambda index: [0, 1][index],
+            },
+        )
+        specialization_cursor.specialized_template = template_cursor
+
+        translation_unit = SimpleNamespace(
+            cursor=_fake_cursor(
+                "TRANSLATION_UNIT",
+                "",
+                file=active_header,
+                children=[
+                    template_cursor,
+                    _fake_cursor(
+                        "FUNCTION_DECL",
+                        "take_box",
+                        file=active_header,
+                        result_type=_fake_type("VOID", "void"),
+                        children=[
+                            _fake_cursor(
+                                "PARM_DECL",
+                                "value",
+                                file=active_header,
+                                type=_fake_type(
+                                    "UNEXPOSED",
+                                    "Box<int>",
+                                    template_argument_types=[_fake_type("INT", "int")],
+                                    declaration_cursor=specialization_cursor,
+                                ),
+                            )
+                        ],
+                    ),
+                ],
+            )
+        )
+
+        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
+        observed_instances = build_result.module.declarations.class_templates[0].declaration.cpp.observed_instances
+
+        self.assertEqual(len(observed_instances), 1)
+        self.assertEqual(len(observed_instances[0].arguments), 2)
+        self.assertIsInstance(observed_instances[0].arguments[1], CppNonTypeTemplateArgument)
+        self.assertEqual(observed_instances[0].arguments[1].value, "true")
+
 
 class ParseTypesTest(unittest.TestCase):
     def test_build_cpp_type_preserves_named_alias_and_canonical_template(self) -> None:
@@ -1469,7 +1667,10 @@ def _fake_cursor(
         get_usr=lambda: usr,
     )
     for method_name, method_result in (methods or {}).items():
-        setattr(cursor, method_name, lambda result=method_result: result)
+        if callable(method_result):
+            setattr(cursor, method_name, method_result)
+        else:
+            setattr(cursor, method_name, lambda result=method_result: result)
     return cursor
 
 

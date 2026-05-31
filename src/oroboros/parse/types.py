@@ -653,6 +653,7 @@ def _record_named_type_declaration_link(
         return
 
     declaration_location = cursor_source_location(declaration_cursor)
+    must_resolve_in_active_headers = False
     if declaration_location is not None:
         declaration_file = declaration_location.file.resolve()
         if (
@@ -666,6 +667,7 @@ def _record_named_type_declaration_link(
                 context=context,
             )
             return
+        must_resolve_in_active_headers = declaration_file in context.active_headers
 
     declaration_usr = _cursor_usr(declaration_cursor)
     if declaration_usr is None:
@@ -677,6 +679,9 @@ def _record_named_type_declaration_link(
         PendingTypeDeclarationLink(
             cpp_type=cpp_type,
             declaration_usr=declaration_usr,
+            source_location=cursor_source_location(source_cursor) if source_cursor is not None else None,
+            declaration_location=declaration_location,
+            must_resolve_in_active_headers=must_resolve_in_active_headers,
         )
     )
 
@@ -931,7 +936,7 @@ def _complete_observed_template_arguments_from_clang(
     parameters: list[Any],
     context: BuildContext | None,
 ) -> list[CppTemplateArgument]:
-    """Fill trailing observed type arguments from clang when source spelling omits defaults."""
+    """Fill trailing observed arguments from clang when source spelling omits defaults."""
 
     complete_arguments = [
         _coerce_observed_template_argument_to_parameter_kind(
@@ -939,31 +944,26 @@ def _complete_observed_template_arguments_from_clang(
         )
         for index, argument in enumerate(arguments)
     ]
-    clang_argument_types = _template_argument_types_with_canonical_fallback(clang_type)
-    clang_missing_count = len(clang_argument_types) - len(complete_arguments)
+    clang_argument_infos = _template_argument_infos_with_canonical_fallback(clang_type)
+    clang_missing_count = len(clang_argument_infos) - len(complete_arguments)
     if clang_missing_count > 0:
         missing_parameters = parameters[
             len(complete_arguments) : len(complete_arguments) + clang_missing_count
         ]
         if len(missing_parameters) == clang_missing_count:
-            for parameter, clang_argument_type in zip(
+            for parameter, clang_argument_info in zip(
                 missing_parameters,
-                clang_argument_types[len(complete_arguments) :],
+                clang_argument_infos[len(complete_arguments) :],
                 strict=True,
             ):
-                if not isinstance(parameter, CppTypeTemplateParameter):
-                    break
-
-                complete_arguments.append(
-                    CppTypeTemplateArgument(
-                        type=_build_cpp_type(
-                            clang_argument_type,
-                            allow_canonical=True,
-                            context=context,
-                            source_cursor=None,
-                        )
-                    )
+                missing_argument = _build_missing_observed_template_argument(
+                    parameter,
+                    clang_argument_info,
+                    context=context,
                 )
+                if missing_argument is None:
+                    break
+                complete_arguments.append(missing_argument)
 
     for parameter in parameters[len(complete_arguments):]:
         default_argument = getattr(parameter, "default", None)
@@ -1017,6 +1017,152 @@ def _template_argument_types_with_canonical_fallback(clang_type: Any) -> list[An
         return canonical_argument_types
 
     return argument_types
+
+
+def _template_argument_infos_with_canonical_fallback(
+    clang_type: Any,
+) -> list[dict[str, Any]]:
+    """Return specialization cursor template-argument info, with canonical fallback."""
+
+    argument_infos = _template_argument_infos(clang_type)
+    canonical_type = _call_optional_method(clang_type, "get_canonical")
+    if canonical_type is None or _same_type_identity(clang_type, canonical_type):
+        return argument_infos
+
+    canonical_argument_infos = _template_argument_infos(canonical_type)
+    if len(canonical_argument_infos) > len(argument_infos):
+        return canonical_argument_infos
+    return argument_infos
+
+
+def _template_argument_infos(clang_type: Any) -> list[dict[str, Any]]:
+    """Return one concrete specialization cursor's template-argument metadata."""
+
+    declaration_cursor = _call_optional_method(clang_type, "get_declaration")
+    if declaration_cursor is None:
+        return []
+
+    get_num_template_arguments = getattr(declaration_cursor, "get_num_template_arguments", None)
+    if not callable(get_num_template_arguments):
+        return []
+
+    argument_count = get_num_template_arguments()
+    if not isinstance(argument_count, int) or argument_count <= 0:
+        return []
+
+    return [
+        {
+            "kind": _template_argument_kind_name(declaration_cursor, index),
+            "type": _template_argument_type_or_none(declaration_cursor, index),
+            "signed_value": _template_argument_signed_value_or_none(declaration_cursor, index),
+            "unsigned_value": _template_argument_unsigned_value_or_none(declaration_cursor, index),
+        }
+        for index in range(argument_count)
+    ]
+
+
+def _build_missing_observed_template_argument(
+    parameter: Any,
+    clang_argument_info: dict[str, Any],
+    *,
+    context: BuildContext | None,
+) -> CppTemplateArgument | None:
+    """Build one missing observed argument from clang according to the parameter kind."""
+
+    if isinstance(parameter, CppTypeTemplateParameter):
+        clang_argument_type = clang_argument_info.get("type")
+        if clang_argument_type is None:
+            return None
+        return CppTypeTemplateArgument(
+            type=_build_cpp_type(
+                clang_argument_type,
+                allow_canonical=True,
+                context=context,
+                source_cursor=None,
+            )
+        )
+
+    if isinstance(parameter, CppNonTypeTemplateParameter):
+        rendered_value = _render_non_type_template_argument_value(parameter, clang_argument_info)
+        if rendered_value is None:
+            return None
+        return CppNonTypeTemplateArgument(
+            value=rendered_value,
+            type=deepcopy(parameter.type),
+        )
+
+    if isinstance(parameter, CppTemplateTemplateParameter):
+        clang_argument_type = clang_argument_info.get("type")
+        built_type = _build_cpp_type(
+            clang_argument_type,
+            allow_canonical=True,
+            context=context,
+            source_cursor=None,
+        ) if clang_argument_type is not None else None
+        if isinstance(built_type, NamedCppType) and built_type.name:
+            return CppTemplateTemplateArgument(
+                name=built_type.name,
+                parameters=deepcopy(parameter.parameters),
+            )
+        return None
+
+    return None
+
+
+def _render_non_type_template_argument_value(
+    parameter: CppNonTypeTemplateParameter,
+    clang_argument_info: dict[str, Any],
+) -> str | None:
+    """Render one non-type template argument value from clang cursor metadata."""
+
+    signed_value = clang_argument_info.get("signed_value")
+    unsigned_value = clang_argument_info.get("unsigned_value")
+    numeric_value = signed_value if signed_value is not None else unsigned_value
+    if numeric_value is None:
+        return None
+
+    parameter_type = getattr(parameter, "type", None)
+    parameter_kind = getattr(parameter_type, "kind", None)
+    if parameter_kind == "bool":
+        return "true" if bool(numeric_value) else "false"
+    return str(numeric_value)
+
+
+def _template_argument_kind_name(cursor: Any, index: int) -> str | None:
+    """Return one specialization cursor template-argument kind name when available."""
+
+    get_kind = getattr(cursor, "get_template_argument_kind", None)
+    if not callable(get_kind):
+        return None
+    kind = get_kind(index)
+    return getattr(kind, "name", str(kind)) if kind is not None else None
+
+
+def _template_argument_type_or_none(cursor: Any, index: int) -> Any | None:
+    """Return one specialization cursor template-argument type when available."""
+
+    get_type = getattr(cursor, "get_template_argument_type", None)
+    if not callable(get_type):
+        return None
+    return get_type(index)
+
+
+def _template_argument_signed_value_or_none(cursor: Any, index: int) -> int | None:
+    """Return one specialization cursor signed template-argument value when available."""
+
+    get_value = getattr(cursor, "get_template_argument_value", None)
+    if not callable(get_value):
+        return None
+    return get_value(index)
+
+
+def _template_argument_unsigned_value_or_none(cursor: Any, index: int) -> int | None:
+    """Return one specialization cursor unsigned template-argument value when available."""
+
+    get_value = getattr(cursor, "get_template_argument_unsigned_value", None)
+    if not callable(get_value):
+        return None
+    return get_value(index)
 
 
 def _specialized_template_cursor(clang_type: Any) -> Any | None:

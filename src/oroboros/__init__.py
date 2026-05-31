@@ -10,6 +10,7 @@ __all__ = [
     "HeaderFile",
     "HeaderSelection",
     "ParserConfigInferenceResult",
+    "ParserInvariantError",
     "ParseResult",
     "ParserConfig",
     "CompilerToolchain",
@@ -49,6 +50,7 @@ if TYPE_CHECKING:
     from .parse import (
         CompilerToolchain,
         ParserConfigInferenceResult,
+        ParserInvariantError,
         ParseResult,
         ParserConfig,
         detect_compiler_toolchain,
@@ -82,6 +84,7 @@ def __getattr__(name: str) -> Any:
     from .parse import (
         CompilerToolchain,
         ParserConfigInferenceResult,
+        ParserInvariantError,
         ParseResult,
         ParserConfig,
         detect_compiler_toolchain,
@@ -101,6 +104,7 @@ def __getattr__(name: str) -> Any:
         "HeaderFile": HeaderFile,
         "HeaderSelection": HeaderSelection,
         "ParserConfigInferenceResult": ParserConfigInferenceResult,
+        "ParserInvariantError": ParserInvariantError,
         "ParseResult": ParseResult,
         "ParserConfig": ParserConfig,
         "detect_compiler_toolchain": detect_compiler_toolchain,

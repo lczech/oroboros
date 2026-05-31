@@ -50,13 +50,19 @@ def _parse_active_headers(
         return ParseResult(report=report)
 
     driver_result = parse_with_clang(normalized_headers, config)
+    report.extend(driver_result.diagnostics)
+    if any(diagnostic.severity in {"error", "fatal"} for diagnostic in driver_result.diagnostics):
+        return ParseResult(
+            report=report,
+            headers=normalized_headers,
+        )
+
     build_result = build_module_from_clang(
         driver_result.translation_unit,
         normalized_headers,
         config,
         known_project_headers=normalized_known_project_headers,
     )
-    report.extend(driver_result.diagnostics)
     report.extend(build_result.report.diagnostics)
 
     if config.validate_model and isinstance(build_result.module, CppElement):

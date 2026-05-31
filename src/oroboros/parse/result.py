@@ -9,6 +9,10 @@ from ..diagnostics import DiagnosticReport
 from ..model import CppModule
 
 
+class ParserInvariantError(RuntimeError):
+    """Raise when the parser reaches a state that should be impossible internally."""
+
+
 @dataclass(slots=True)
 class ParseResult:
     """Store the semantic module plus diagnostics from one parse run."""

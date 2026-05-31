@@ -136,6 +136,8 @@ struct Widget {};
         source = r"""
 namespace demo {
 
+struct Widget;
+
 /**
  * @brief Build one widget.
  * @details Use @link demo::Widget the widget API @endlink for advanced flows.
@@ -172,6 +174,8 @@ Widget make_widget(int value);
         source = """
 namespace demo {
 
+struct Widget;
+
 /**
  * @brief Build one widget from the current
  * state and cached factory configuration.
@@ -202,6 +206,8 @@ Widget make_widget();
         source = r"""
 namespace demo {
 
+struct Widget;
+
 /**
  * @brief Build one widget.
  * @warning Avoid reused state.
@@ -228,6 +234,8 @@ Widget make_widget();
     def test_parse_headers_extract_template_return_value_and_deprecated_docs(self) -> None:
         source = """
 namespace demo {
+
+struct Widget;
 
 /**
  * @brief Build one widget.
@@ -438,6 +446,8 @@ struct BlockSlotBits {};
     def test_parse_headers_keep_blank_lines_inside_indented_code_blocks(self) -> None:
         source = """
 namespace demo {
+
+struct Widget;
 
 /**
  * Build one widget.
@@ -895,7 +905,6 @@ def _parse_headers_from_sources(
             HeaderSelection(header_files=header_files),
             parser_config
             or ParserConfig(
-                auto_detect_toolchain=False,
                 cxx_standard="c++20",
             ),
         )

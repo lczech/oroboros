@@ -8,6 +8,7 @@ import sys
 from oroboros import (
     HeaderFile,
     HeaderSelection,
+    ParserInvariantError,
     find_included_headers,
     infer_parser_config_from_compilation_database,
     parse_header_selection,
@@ -83,6 +84,8 @@ def main() -> int:
             print("Parser config inference failed.", file=sys.stderr)
             return 1
         parser_config = inference_result.config
+
+        # Print the inferred config, if needed.
         # print_parser_config(parser_config, color=None)
         # print("")
 
@@ -97,12 +100,23 @@ def main() -> int:
             HeaderSelection(update_result.header_files),
             parser_config,
         )
+    except ParserInvariantError as error:
+        print(f"Parser invariant error: {error}", file=sys.stderr)
+        return 1
     except RuntimeError as error:
         print(f"Parser setup error: {error}", file=sys.stderr)
         return 1
 
     # Print the parse result with diagnostics, but without the semantic tree for brevity.
     print_parse_result(parse_result, include_headers=False, include_tree=False)
+    clang_errors = [
+        diagnostic
+        for diagnostic in parse_result.report.by_stage("clang")
+        if diagnostic.severity in {"error", "fatal"}
+    ]
+    if clang_errors:
+        print("Clang reported parse errors; model build was skipped.", file=sys.stderr)
+        return 1
 
     return 0
 

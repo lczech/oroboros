@@ -31,6 +31,7 @@ class ParserConfigInferenceResult:
 
     config: ParserConfig = field(default_factory=ParserConfig)
     report: DiagnosticReport = field(default_factory=DiagnosticReport)
+    ignored_arguments: dict[str, list[Path]] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -48,6 +49,7 @@ class _ParsedCompileCommand:
     undefines: list[str] = field(default_factory=list)
     repeatable_extra_args: list[tuple[str, str]] = field(default_factory=list)
     scalar_extra_args: dict[str, str | bool] = field(default_factory=dict)
+    ignored_arguments: list[str] = field(default_factory=list)
 
 
 def infer_parser_config_from_compilation_database(
@@ -85,6 +87,8 @@ def infer_parser_config_from_compilation_database(
         return ParserConfigInferenceResult(report=report)
 
     parsed_commands = [_parse_compile_command(command) for command in selected_commands]
+    ignored_arguments = _collect_ignored_arguments(parsed_commands)
+    _record_ignored_argument_diagnostic(ignored_arguments, report)
     inferred_config = _merge_parsed_compile_commands(
         parsed_commands,
         conflict_policy=conflict_policy,
@@ -93,6 +97,7 @@ def infer_parser_config_from_compilation_database(
     return ParserConfigInferenceResult(
         config=inferred_config,
         report=report,
+        ignored_arguments=ignored_arguments,
     )
 
 
@@ -317,13 +322,14 @@ def _parse_compile_command(command: Any) -> _ParsedCompileCommand:
     source_file = _resolve_command_path(command.directory, command.filename)
     arguments = list(command.arguments)
 
+    compiler, option_start_index = _compiler_argument_info(arguments)
     parsed = _ParsedCompileCommand(
         filename=source_file,
         directory=working_directory,
-        compiler=_normalize_compiler_argument(arguments),
+        compiler=compiler,
     )
 
-    index = 1
+    index = option_start_index
     while index < len(arguments):
         argument = arguments[index]
 
@@ -395,6 +401,10 @@ def _parse_compile_command(command: Any) -> _ParsedCompileCommand:
             index += 1
             continue
 
+        if argument.startswith("--driver-mode="):
+            index += 1
+            continue
+
         if argument.startswith("--sysroot="):
             parsed.scalar_extra_args["sysroot"] = str(
                 _resolve_argument_path(working_directory, argument.partition("=")[2])
@@ -411,6 +421,8 @@ def _parse_compile_command(command: Any) -> _ParsedCompileCommand:
             index += 1
             continue
 
+        if argument.startswith("-"):
+            parsed.ignored_arguments.append(argument)
         index += 1
 
     return parsed
@@ -658,8 +670,7 @@ def _merge_scalar_field(
         return None
 
     unique_concrete_values = list(OrderedDict.fromkeys(concrete_values))
-    missing_count = sum(value is None for value in observed_values)
-    if len(unique_concrete_values) == 1 and missing_count == 0:
+    if len(unique_concrete_values) == 1:
         return unique_concrete_values[0]
 
     chosen_value = getattr(anchor_command, field_name)
@@ -726,8 +737,7 @@ def _merge_scalar_extra_args(
             if not concrete_values:
                 continue
             unique_concrete_values = list(OrderedDict.fromkeys(concrete_values))
-            missing_count = sum(value is None for value in observed_values)
-            if len(unique_concrete_values) == 1 and missing_count == 0:
+            if len(unique_concrete_values) == 1:
                 merged_values[key] = unique_concrete_values[0]
                 continue
 
@@ -918,6 +928,43 @@ def _format_macro_conflict_detail(
     return "\n".join(lines)
 
 
+def _collect_ignored_arguments(
+    parsed_commands: Sequence[_ParsedCompileCommand],
+) -> dict[str, list[Path]]:
+    """Collect ignored compile-db arguments with source-file provenance."""
+
+    ignored_arguments: OrderedDict[str, list[Path]] = OrderedDict()
+    for command in parsed_commands:
+        for argument in command.ignored_arguments:
+            ignored_arguments.setdefault(argument, []).append(command.filename)
+    return dict(ignored_arguments)
+
+
+def _record_ignored_argument_diagnostic(
+    ignored_arguments: dict[str, list[Path]],
+    report: DiagnosticReport,
+) -> None:
+    """Record one aggregated diagnostic for ignored compile-db arguments."""
+
+    if not ignored_arguments:
+        return
+
+    ignored_argument_list = ", ".join(ignored_arguments)
+    report.add(
+        Diagnostic(
+            severity="warning",
+            stage="config",
+            code="config.compdb.unhandled_arguments",
+            message=(
+                "Some compile-command arguments were ignored during parser-config "
+                "inference. Usually this is because they are not relevant to parser "
+                "configuration, but may indicate a misconfiguration."
+            ),
+            detail=f"ignored arguments: {ignored_argument_list}",
+        )
+    )
+
+
 def _format_example_files(files: Sequence[Path], *, limit: int = 3) -> str:
     """Render a short provenance file sample for one diagnostic detail."""
 
@@ -951,19 +998,19 @@ def _resolve_argument_path(command_directory: Path, argument_value: str) -> Path
     return (command_directory / value_path).resolve()
 
 
-def _normalize_compiler_argument(arguments: Sequence[str]) -> str | None:
-    """Normalize one compiler argv prefix to the actual compiler executable when possible."""
+def _compiler_argument_info(arguments: Sequence[str]) -> tuple[str | None, int]:
+    """Return the normalized compiler executable and the first option index."""
 
     if not arguments:
-        return None
+        return None, 0
 
     compiler_argument = arguments[0]
     compiler_name = Path(compiler_argument).name
     if compiler_name not in _COMPILER_WRAPPER_NAMES:
-        return compiler_argument
+        return compiler_argument, 1
     if len(arguments) > 1:
-        return arguments[1]
-    return None
+        return arguments[1], 2
+    return None, 1
 
 
 def _scalar_extra_arg_key(option: str) -> str:
