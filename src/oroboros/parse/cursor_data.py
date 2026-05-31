@@ -100,6 +100,61 @@ def cursor_token_spellings(cursor: Any) -> list[str]:
     return [token.spelling for token in get_tokens()]
 
 
+def cursor_callable_signature(cursor: Any) -> str | None:
+    """Return a lexical parameter-type fingerprint for a callable cursor.
+
+    Joins the raw source tokens of each PARM_DECL child, after stripping the
+    parameter name and any default value. Uses lexical tokens rather than
+    resolved types so that the fingerprint is correct even when semantic type
+    resolution fails (e.g. missing system headers). Returns None when
+    get_children or get_tokens are unavailable.
+    """
+
+    get_children = getattr(cursor, "get_children", None)
+    if not callable(get_children):
+        return None
+
+    parts: list[str] = []
+    for child in get_children():
+        kind_name = getattr(getattr(child, "kind", None), "name", None)
+        if kind_name == "PARM_DECL":
+            parts.append(_param_type_token_fingerprint(child))
+
+    return "|".join(parts)
+
+
+def _param_type_token_fingerprint(param_cursor: Any) -> str:
+    """Return a fingerprint of the type tokens for one PARM_DECL cursor.
+
+    Strips the parameter name token and any default-value tokens so that
+    the fingerprint reflects only the parameter type.
+    """
+
+    get_tokens = getattr(param_cursor, "get_tokens", None)
+    if not callable(get_tokens):
+        return ""
+
+    tokens = [tok.spelling for tok in get_tokens()]
+
+    # Strip default value: drop everything from the first '=' token onwards.
+    try:
+        eq_idx = tokens.index("=")
+        tokens = tokens[:eq_idx]
+    except ValueError:
+        pass
+
+    # Strip the parameter name: find and remove the last token that matches
+    # the cursor spelling (the name is always the last identifier in the type).
+    name = getattr(param_cursor, "spelling", None)
+    if name:
+        for i in range(len(tokens) - 1, -1, -1):
+            if tokens[i] == name:
+                tokens = tokens[:i] + tokens[i + 1:]
+                break
+
+    return " ".join(tokens)
+
+
 def cursor_usr(cursor: Any) -> str | None:
     """Return one cursor USR when libclang exposes one for the entity."""
 

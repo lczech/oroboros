@@ -53,6 +53,15 @@ Important workflow decisions:
   `PYTHONPATH=src XDG_CACHE_HOME=/tmp/micromamba-cache MAMBA_ROOT_PREFIX=/home/lucas/Software/micromamba-envs micromamba run -n oroboros python -m unittest discover -s tests`
 - Prefer `unittest` unless `pytest` is known to be installed
 
+## Run tests
+
+Always run the tests after code changes:
+
+```
+micromamba activate oroboros
+PYTHONPATH=src python3 -m unittest discover -s tests
+```
+
 ## Current Architectural Decisions
 
 - Keep the backend split clean so pybind11 can be added later

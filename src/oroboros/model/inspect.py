@@ -32,6 +32,46 @@ def iter_subtree_elements(
         yield from iter_subtree_elements(child, include_root=False)
 
 
+def format_element_scope(element: CppElement) -> str:
+    """Format one element as a C++ scoped identifier with parameter types for diagnostics.
+
+    Callable elements include their parameter type list:
+    ``genesis::util::LightString::operator+(const LightString&)``.
+    Non-callable elements show only the qualified name: ``genesis::util::LightString``.
+    Falls back to the short label form when no qualified name is available.
+    """
+
+    qname = element.qualified_name
+    param_str = _format_callable_params(element)
+
+    if qname:
+        if param_str is not None:
+            return f"{qname}({param_str})"
+        return qname
+
+    label = format_element(element)
+    if param_str is not None:
+        return f"{label}({param_str})"
+    return label
+
+
+def _format_callable_params(element: CppElement) -> str | None:
+    """Return comma-separated parameter types for callable elements, or None."""
+
+    parameters = getattr(element, "parameters", None)
+    if parameters is None:
+        declaration = getattr(element, "declaration", None)
+        if declaration is not None:
+            parameters = getattr(declaration, "parameters", None)
+    if parameters is None:
+        return None
+    parts: list[str] = []
+    for param in parameters:
+        cpp_type = getattr(getattr(param, "cpp", None), "type", None)
+        parts.append(cpp_type.render() if cpp_type is not None else "?")
+    return ", ".join(parts)
+
+
 def format_element(element: CppElement) -> str:
     """Format one semantic element as a short human-readable label."""
 

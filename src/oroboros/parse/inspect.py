@@ -38,21 +38,33 @@ def summarize_parse_result(parse_result: ParseResult, *, color: bool = False) ->
     return "\n".join(lines)
 
 
-def format_parse_result(parse_result: ParseResult, *, color: bool = False) -> str:
+def format_parse_result(
+    parse_result: ParseResult,
+    *,
+    color: bool = False,
+    include_headers: bool = True,
+    include_tree: bool = True,
+) -> str:
     """Render one parse result with headers, tree, and diagnostics."""
 
-    header_lines = [style_title("Parser input headers:", color=color)]
-    if parse_result.headers:
-        header_lines.extend(f"  {header}" for header in parse_result.headers)
-    else:
-        header_lines.append(f"  {style_muted('<none>', color=color)}")
+    sections: list[str] = [summarize_parse_result(parse_result, color=color)]
 
-    tree_text = format_tree(parse_result.module, indent=1)
-    tree_lines = [style_title("Semantic tree:", color=color)]
-    if tree_text:
-        tree_lines.extend(tree_text.splitlines())
-    else:
-        tree_lines.append(f"  {style_muted('<empty>', color=color)}")
+    if include_headers:
+        header_lines = [style_title("Parser input headers:", color=color)]
+        if parse_result.headers:
+            header_lines.extend(f"  {header}" for header in parse_result.headers)
+        else:
+            header_lines.append(f"  {style_muted('<none>', color=color)}")
+        sections.append("\n".join(header_lines))
+
+    if include_tree:
+        tree_text = format_tree(parse_result.module, indent=1)
+        tree_lines = [style_title("Semantic tree:", color=color)]
+        if tree_text:
+            tree_lines.extend(tree_text.splitlines())
+        else:
+            tree_lines.append(f"  {style_muted('<empty>', color=color)}")
+        sections.append("\n".join(tree_lines))
 
     diagnostic_text = format_report(
         parse_result.report,
@@ -63,13 +75,9 @@ def format_parse_result(parse_result: ParseResult, *, color: bool = False) -> st
             color=color,
         ),
     )
+    sections.append(diagnostic_text)
 
-    return "\n\n".join([
-        summarize_parse_result(parse_result, color=color),
-        "\n".join(header_lines),
-        "\n".join(tree_lines),
-        diagnostic_text,
-    ])
+    return "\n\n".join(sections)
 
 
 def print_parse_result(
@@ -77,6 +85,8 @@ def print_parse_result(
     *,
     stream: TextIO | None = None,
     color: bool | None = None,
+    include_headers: bool = True,
+    include_tree: bool = True,
 ) -> None:
     """Print one formatted parse result."""
 
@@ -85,6 +95,8 @@ def print_parse_result(
         format_parse_result(
             parse_result,
             color=should_use_color(output_stream, color=color),
+            include_headers=include_headers,
+            include_tree=include_tree,
         ),
         file=output_stream,
     )

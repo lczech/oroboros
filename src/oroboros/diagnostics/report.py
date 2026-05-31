@@ -32,7 +32,7 @@ class Diagnostic:
     # One or more relevant source locations associated with this diagnostic.
     locations: list[SourceLocation] = field(default_factory=list)
     # Semantic-model access path when the issue refers to one model element/subtree.
-    model_path: str | None = None
+    element_path: str | None = None
 
 
 @dataclass(slots=True)

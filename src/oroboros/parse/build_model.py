@@ -40,6 +40,8 @@ class BuildContext:
 
     # Internal clang-USR registry for already materialized semantic elements.
     usr_to_element: dict[str, CppElement] = field(default_factory=dict)
+    # Lexical parameter-type fingerprints keyed by USR for callable collision detection.
+    usr_to_callable_signature: dict[str, str] = field(default_factory=dict)
     # Token cache grouped by source file for comment recovery and local syntax recovery.
     file_tokens_by_path: dict[Path, list[CursorTokenInfo]] = field(default_factory=dict)
     # Parsed clang translation unit used for token-based comment recovery.

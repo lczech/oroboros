@@ -29,6 +29,7 @@ from ..model import (
     CppParameter,
     CppTemplateArgument,
     CppVariable,
+    format_element_scope,
 )
 from ..model.template_ import _template_argument_key
 from ..model.type import TemplateInstanceCppType
@@ -68,9 +69,8 @@ from .merge_declarations import (
     merge_templated_constructor_declaration,
     merge_variable_declaration,
 )
-from .merge_properties import describe_cursor_entity, record_semantic_warning
-from .cursor_data import cursor_source_location
-from .cursor_data import cursor_usr
+from .merge_properties import _element_diagnostic_locations, describe_cursor_entity, record_semantic_warning
+from .cursor_data import cursor_callable_signature, cursor_source_location, cursor_usr
 from .element_registry import lookup_registered_element, register_element_for_cursor
 from .types import build_cpp_type
 
@@ -86,6 +86,61 @@ _TEMPLATE_PARAMETER_CURSOR_KINDS = frozenset({
 _PARAMETER_CURSOR_KINDS = frozenset({
     CursorKind.PARM_DECL,
 })
+
+
+# ==================================================================================================
+#     Callable USR Collision Detection
+# ==================================================================================================
+
+
+def _store_callable_signature(cursor: Any, context: BuildContext) -> None:
+    """Record the lexical parameter-type fingerprint for a freshly created callable element."""
+
+    usr = cursor_usr(cursor)
+    if usr is None:
+        return
+    signature = cursor_callable_signature(cursor)
+    if signature is not None:
+        context.usr_to_callable_signature.setdefault(usr, signature)
+
+
+def _detect_callable_usr_collision(cursor: Any, context: BuildContext) -> bool:
+    """Return True when the cursor's parameter tokens differ from the registered USR entry.
+
+    A mismatch means libclang assigned the same USR to two declarations with
+    genuinely different parameter types — typically caused by failed semantic
+    type resolution (e.g. missing system headers) collapsing distinct template
+    instantiations to the same canonical type.
+    """
+
+    usr = cursor_usr(cursor)
+    if usr is None:
+        return False
+
+    new_signature = cursor_callable_signature(cursor)
+    if new_signature is None:
+        return False
+
+    existing_signature = context.usr_to_callable_signature.get(usr)
+    if existing_signature is None:
+        return False
+
+    return new_signature != existing_signature
+
+
+def _warn_callable_usr_collision(cursor: Any, context: BuildContext, existing: Any) -> None:
+    """Emit a parse warning when a callable USR collision is detected."""
+
+    record_semantic_warning(
+        context,
+        f"Detected USR collision for {describe_cursor_entity(cursor)}: libclang assigned "
+        "the same USR to two declarations with different lexical parameter signatures. "
+        "This is usually caused by failed semantic type resolution (e.g. due to missing "
+        "headers). Treating this as a new overload rather than a redeclaration.",
+        code="parse.usr_collision",
+        locations=_element_diagnostic_locations(existing, cursor=cursor),
+        element_path=format_element_scope(existing),
+    )
 
 
 # ==================================================================================================
@@ -133,19 +188,23 @@ def process_constructor_cursor(
     candidate_cpp.original_name = constructor_name
     existing = lookup_registered_element(cursor, context, CppConstructor)
     if existing is not None:
-        merge_constructor_declaration(existing, candidate_cpp, cursor, context)
-        _merge_and_visit_callable_children(
-            existing,
-            cursor.get_children(),
-            context,
-            excluded_kinds=_PARAMETER_CURSOR_KINDS,
-        )
-        return
+        if _detect_callable_usr_collision(cursor, context):
+            _warn_callable_usr_collision(cursor, context, existing)
+        else:
+            merge_constructor_declaration(existing, candidate_cpp, cursor, context)
+            _merge_and_visit_callable_children(
+                existing,
+                cursor.get_children(),
+                context,
+                excluded_kinds=_PARAMETER_CURSOR_KINDS,
+            )
+            return
 
     constructor = CppConstructor(name=constructor_name, cpp=candidate_cpp)
     attached = owner.add_constructor(constructor)
     _refresh_scope_overload_indices(owner, "constructors")
     register_element_for_cursor(cursor, attached, context)
+    _store_callable_signature(cursor, context)
     visit_callable_children_and_docs(cursor.get_children(), attached, context)
 
 
@@ -191,19 +250,23 @@ def process_method_cursor(
     candidate_cpp = extract_method_cpp_facet(cursor, context=context)
     existing = lookup_registered_element(cursor, context, CppMethod)
     if existing is not None:
-        merge_method_declaration(existing, candidate_cpp, cursor, context)
-        _merge_and_visit_callable_children(
-            existing,
-            cursor.get_children(),
-            context,
-            excluded_kinds=_PARAMETER_CURSOR_KINDS,
-        )
-        return
+        if _detect_callable_usr_collision(cursor, context):
+            _warn_callable_usr_collision(cursor, context, existing)
+        else:
+            merge_method_declaration(existing, candidate_cpp, cursor, context)
+            _merge_and_visit_callable_children(
+                existing,
+                cursor.get_children(),
+                context,
+                excluded_kinds=_PARAMETER_CURSOR_KINDS,
+            )
+            return
 
     method = CppMethod(name=cursor.spelling, cpp=candidate_cpp)
     attached = owner.add_method(method)
     _refresh_scope_overload_indices(owner, "methods")
     register_element_for_cursor(cursor, attached, context)
+    _store_callable_signature(cursor, context)
     visit_callable_children_and_docs(cursor.get_children(), attached, context)
 
 
@@ -217,7 +280,7 @@ def process_field_cursor(
     candidate_cpp = extract_variable_cpp_facet(cursor, context=context, kind="member_variable")
     existing = lookup_registered_element(cursor, context, CppVariable)
     if existing is not None:
-        merge_field_declaration(context, cursor)
+        merge_field_declaration(context, cursor, existing)
         return
 
     variable = CppVariable(name=cursor.spelling, cpp=candidate_cpp)
@@ -353,19 +416,23 @@ def process_function_cursor(
     candidate_cpp = extract_function_cpp_facet(cursor, context=context)
     existing = lookup_registered_element(cursor, context, CppFunction)
     if existing is not None:
-        merge_function_declaration(existing, candidate_cpp, cursor, context)
-        _merge_and_visit_callable_children(
-            existing,
-            cursor.get_children(),
-            context,
-            excluded_kinds=_PARAMETER_CURSOR_KINDS,
-        )
-        return
+        if _detect_callable_usr_collision(cursor, context):
+            _warn_callable_usr_collision(cursor, context, existing)
+        else:
+            merge_function_declaration(existing, candidate_cpp, cursor, context)
+            _merge_and_visit_callable_children(
+                existing,
+                cursor.get_children(),
+                context,
+                excluded_kinds=_PARAMETER_CURSOR_KINDS,
+            )
+            return
 
     function = CppFunction(name=cursor.spelling, cpp=candidate_cpp)
     attached = owner.add_function(function)
     _refresh_scope_overload_indices(owner, "functions")
     register_element_for_cursor(cursor, attached, context)
+    _store_callable_signature(cursor, context)
     visit_callable_children_and_docs(cursor.get_children(), attached, context)
 
 
@@ -379,7 +446,7 @@ def process_parameter_cursor(
     candidate_cpp = extract_parameter_cpp_facet(cursor, context=context)
     existing = lookup_registered_element(cursor, context, CppParameter)
     if existing is not None:
-        merge_parameter_declaration(context, cursor)
+        merge_parameter_declaration(context, cursor, existing)
         return
 
     parameter = CppParameter(name=cursor.spelling, cpp=candidate_cpp)
@@ -421,14 +488,17 @@ def process_function_template_cursor(
     candidate_cpp = extract_function_template_declaration_cpp_facet(cursor, context=context)
     existing = lookup_registered_element(cursor, context, CppFunctionTemplate)
     if existing is not None:
-        merge_function_template_declaration(existing, candidate_cpp, cursor, context)
-        _merge_and_visit_callable_children(
-            existing.declaration,
-            child_cursors,
-            context,
-            excluded_kinds=_TEMPLATE_PARAMETER_CURSOR_KINDS,
-        )
-        return
+        if _detect_callable_usr_collision(cursor, context):
+            _warn_callable_usr_collision(cursor, context, existing)
+        else:
+            merge_function_template_declaration(existing, candidate_cpp, cursor, context)
+            _merge_and_visit_callable_children(
+                existing.declaration,
+                child_cursors,
+                context,
+                excluded_kinds=_TEMPLATE_PARAMETER_CURSOR_KINDS,
+            )
+            return
 
     template = CppFunctionTemplate(
         name=cursor.spelling,
@@ -444,6 +514,7 @@ def process_function_template_cursor(
         declaration_getter=lambda template: getattr(template, "declaration", None),
     )
     register_element_for_cursor(cursor, attached, context)
+    _store_callable_signature(cursor, context)
     visit_callable_children_and_docs(
         child_cursors,
         attached.declaration,
@@ -463,14 +534,17 @@ def process_method_template_cursor(
     candidate_cpp = extract_method_template_declaration_cpp_facet(cursor, context=context)
     existing = lookup_registered_element(cursor, context, CppMethodTemplate)
     if existing is not None:
-        merge_method_template_declaration(existing, candidate_cpp, cursor, context)
-        _merge_and_visit_callable_children(
-            existing.declaration,
-            child_cursors,
-            context,
-            excluded_kinds=_TEMPLATE_PARAMETER_CURSOR_KINDS,
-        )
-        return
+        if _detect_callable_usr_collision(cursor, context):
+            _warn_callable_usr_collision(cursor, context, existing)
+        else:
+            merge_method_template_declaration(existing, candidate_cpp, cursor, context)
+            _merge_and_visit_callable_children(
+                existing.declaration,
+                child_cursors,
+                context,
+                excluded_kinds=_TEMPLATE_PARAMETER_CURSOR_KINDS,
+            )
+            return
 
     template = CppMethodTemplate(
         name=cursor.spelling,
@@ -486,6 +560,7 @@ def process_method_template_cursor(
         declaration_getter=lambda template: getattr(template, "declaration", None),
     )
     register_element_for_cursor(cursor, attached, context)
+    _store_callable_signature(cursor, context)
     visit_callable_children_and_docs(
         child_cursors,
         attached.declaration,
@@ -529,7 +604,7 @@ def process_enumerator_cursor(
     candidate_cpp = extract_enumerator_cpp_facet(cursor, context=context)
     existing = lookup_registered_element(cursor, context, CppEnumerator)
     if existing is not None:
-        merge_enumerator_declaration(context, cursor)
+        merge_enumerator_declaration(context, cursor, existing)
         return
 
     enumerator = CppEnumerator(name=cursor.spelling, cpp=candidate_cpp)
@@ -552,7 +627,7 @@ def process_alias_cursor(
     candidate_cpp = extract_alias_cpp_facet(cursor, context=context)
     existing = lookup_registered_element(cursor, context, CppAlias)
     if existing is not None:
-        merge_alias_declaration(context, cursor)
+        merge_alias_declaration(context, cursor, existing, candidate_cpp)
         return
 
     alias = CppAlias(name=cursor.spelling, cpp=candidate_cpp)

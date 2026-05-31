@@ -39,8 +39,8 @@ def format_diagnostic(
         if diagnostic.locations
         else ["<unknown location>"]
     )
-    if diagnostic.model_path is not None:
-        lines.append(f"  {style_muted('model:', color=render_options.color)} {diagnostic.model_path}")
+    if diagnostic.element_path is not None:
+        lines.append(f"  {style_muted('element:', color=render_options.color)} {diagnostic.element_path}")
 
     label_parts = [diagnostic.severity]
     if render_options.include_stage:

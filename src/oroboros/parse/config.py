@@ -63,3 +63,6 @@ class ParserConfig:
     warn_std_explicit_class_template_specializations: bool = False
     # Whether to validate the resulting semantic model before returning it.
     validate_model: bool = True
+    # Diagnostic codes (or fnmatch patterns such as "parse.merge.*") to suppress entirely.
+    # Suppressed diagnostics are not recorded in the report at all.
+    suppress_diagnostics: list[str] = field(default_factory=list)

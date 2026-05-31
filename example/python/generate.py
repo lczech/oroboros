@@ -11,10 +11,10 @@ from oroboros import (
     ParserConfig,
     find_included_headers,
     parse_header_selection,
+    print_parse_result,
     print_update_report,
     update_activation_header,
 )
-from oroboros.parse.inspect import format_parse_result
 
 
 def _discover_parser_inventory(header_dir: Path, root_header: Path) -> list[HeaderFile]:
@@ -73,6 +73,7 @@ def main() -> int:
             include_dirs=[header_dir],
             cxx_standard="c++20",
             auto_detect_toolchain=True,
+            suppress_diagnostics=["parse.merge.preferred_comments"],
         )
         parse_result = parse_header_selection(
             HeaderSelection(update_result.header_files),
@@ -82,7 +83,7 @@ def main() -> int:
         print(f"Parser setup error: {error}", file=sys.stderr)
         return 1
 
-    print(format_parse_result(parse_result))
+    print_parse_result(parse_result, include_headers=False, include_tree=False)
 
     return 0
 

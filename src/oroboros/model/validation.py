@@ -1403,7 +1403,7 @@ def _append_validation_error(
             code="validation.error",
             message=detail,
             locations=rendered_locations,
-            model_path=path,
+            element_path=path,
         )
     )
 

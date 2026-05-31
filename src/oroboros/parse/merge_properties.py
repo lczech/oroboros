@@ -3,11 +3,13 @@ from __future__ import annotations
 """Low-level merge helpers for parsed declaration properties."""
 
 from copy import deepcopy
+from fnmatch import fnmatch
 from pprint import pformat
 from typing import TYPE_CHECKING, Any, Callable
 
 from ..diagnostics import Diagnostic
-from ..model import CppElement
+from ..diagnostics.report import DiagnosticSeverity
+from ..model import CppElement, CppLocationInfo, SourceLocation, format_element_scope
 from .comment_structure import comment_preference_key, comments_are_equivalent, parse_cpp_doc
 from .cursor_data import cursor_kind_name, cursor_source_location
 
@@ -68,6 +70,8 @@ def merge_cpp_documentation(
         new_comment=candidate_doc.attached_comment,
         context=context,
         cursor=cursor,
+        locations=_element_diagnostic_locations(element, cursor=cursor),
+        entity=format_element_scope(element),
     )
     current_doc.attached_comment = merged_attached_comment
     current_doc.parsed = parse_cpp_doc(merged_attached_comment)
@@ -105,10 +109,11 @@ def merge_cpp_scalar(
 
     record_semantic_warning(
         context,
-        f"Conflicting parsed {field_name!r} for {describe_cursor_entity(cursor)}; "
+        f"Conflicting parsed {field_name!r} for {format_element_scope(element)}; "
         "keeping the first value.",
         code="parse.merge.conflicting_scalar",
-        cursor=cursor,
+        locations=_element_diagnostic_locations(element, cursor=cursor),
+        element_path=format_element_scope(element),
         detail=_build_value_conflict_detail(
             current_value,
             new_value,
@@ -156,10 +161,11 @@ def merge_class_bases(
 
     record_semantic_warning(
         context,
-        f"Conflicting parsed 'bases' for {describe_cursor_entity(cursor)}; "
+        f"Conflicting parsed 'bases' for {format_element_scope(element)}; "
         "keeping the first value.",
         code="parse.merge.conflicting_bases",
-        cursor=cursor,
+        locations=_element_diagnostic_locations(element, cursor=cursor),
+        element_path=format_element_scope(element),
         detail=_build_value_conflict_detail(
             element.cpp.bases,
             new_bases,
@@ -175,6 +181,8 @@ def merge_template_parameters(
     new_parameters: list[Any],
     context: BuildContext,
     cursor: Any,
+    *,
+    entity: str | None = None,
 ) -> None:
     """Merge parsed template parameter lists conservatively across redeclarations."""
 
@@ -190,10 +198,11 @@ def merge_template_parameters(
 
     record_semantic_warning(
         context,
-        f"Conflicting parsed 'template_parameters' for {describe_cursor_entity(cursor)}; "
+        f"Conflicting parsed 'template_parameters' for {entity or describe_cursor_entity(cursor)}; "
         "keeping the first value.",
         code="parse.merge.conflicting_template_parameters",
         cursor=cursor,
+        element_path=entity,
         detail=_build_value_conflict_detail(
             existing_parameters,
             new_parameters,
@@ -236,6 +245,8 @@ def resolve_comment_conflict(
     new_comment: str | None,
     context: BuildContext,
     cursor: Any,
+    locations: list[SourceLocation] | None = None,
+    entity: str | None = None,
 ) -> str | None:
     """Resolve one repeated-declaration comment conflict using parser policy."""
 
@@ -247,12 +258,15 @@ def resolve_comment_conflict(
         return existing_comment
 
     resolved_comment = _resolve_comment_conflict_value(existing_comment, new_comment, context=context)
+    clear_winner = comment_preference_key(existing_comment)[:2] != comment_preference_key(new_comment)[:2]
     record_semantic_warning(
         context,
-        f"Conflicting parsed comments for {describe_cursor_entity(cursor)}; resolved via "
+        f"Conflicting parsed comments for {entity or describe_cursor_entity(cursor)}; resolved via "
         f"`comment_conflict_policy={context.config.comment_conflict_policy}`.",
-        code="parse.merge.conflicting_comments",
-        cursor=cursor,
+        code="parse.merge.preferred_comments" if clear_winner else "parse.merge.conflicting_comments",
+        severity="note" if clear_winner else "warning",
+        locations=locations,
+        element_path=entity,
         detail=_build_comment_conflict_detail(
             existing_comment,
             new_comment,
@@ -277,12 +291,16 @@ def record_semantic_warning(
     warning: str,
     *,
     code: str = "parse.warning",
+    severity: DiagnosticSeverity = "warning",
     cursor: Any | None = None,
     locations: list[Any] | None = None,
-    model_path: str | None = None,
+    element_path: str | None = None,
     detail: str | None = None,
 ) -> None:
-    """Append one parser-level semantic warning if it is not already present."""
+    """Append one parser-level semantic diagnostic if it is not suppressed."""
+
+    if any(fnmatch(code, pattern) for pattern in context.config.suppress_diagnostics):
+        return
 
     diagnostic_locations = list(locations or [])
     if not diagnostic_locations and cursor is not None:
@@ -292,13 +310,13 @@ def record_semantic_warning(
 
     context.report.add(
         Diagnostic(
-            severity="warning",
+            severity=severity,
             stage="parse",
             code=code,
             message=warning,
             detail=detail,
             locations=diagnostic_locations,
-            model_path=model_path,
+            element_path=element_path,
         )
     )
 
@@ -307,15 +325,23 @@ def warn_unexpected_repeated_declaration(
     context: BuildContext,
     cursor: Any,
     declaration_kind: str,
+    existing: CppElement | None = None,
 ) -> None:
     """Warn when a non-redeclarable declaration kind repeats by semantic identity."""
 
+    locations = (
+        _element_diagnostic_locations(existing, cursor=cursor)
+        if existing is not None
+        else None
+    )
     record_semantic_warning(
         context,
         f"Encountered repeated {declaration_kind} declaration for {describe_cursor_entity(cursor)}; "
         "keeping the first declaration.",
         code=f"parse.repeated_{declaration_kind}_declaration",
-        cursor=cursor,
+        cursor=cursor if locations is None else None,
+        locations=locations,
+        element_path=format_element_scope(existing) if existing is not None else None,
     )
 
 
@@ -324,6 +350,52 @@ def describe_cursor_entity(cursor: Any) -> str:
 
     spelling = getattr(cursor, "spelling", None) or "<anonymous>"
     return f"{cursor_kind_name(cursor)} {spelling!r}"
+
+
+def _element_diagnostic_locations(
+    element: CppElement,
+    *,
+    cursor: Any | None = None,
+) -> list[SourceLocation]:
+    """Return one unique provenance list for diagnostics about one semantic element."""
+
+    location_info = getattr(getattr(element, "cpp", None), "location", None)
+    return _location_info_diagnostic_locations(location_info, cursor=cursor)
+
+
+def _location_info_diagnostic_locations(
+    location_info: Any,
+    *,
+    cursor: Any | None = None,
+) -> list[SourceLocation]:
+    """Return unique declaration/definition locations plus an optional cursor site."""
+
+    locations: list[SourceLocation] = []
+    if isinstance(location_info, CppLocationInfo):
+        if location_info.primary is not None:
+            locations.append(location_info.primary)
+        if location_info.definition is not None:
+            locations.append(location_info.definition)
+        locations.extend(location_info.declarations)
+
+    cursor_location = cursor_source_location(cursor) if cursor is not None else None
+    if cursor_location is not None:
+        locations.append(cursor_location)
+    return _unique_source_locations(locations)
+
+
+def _unique_source_locations(locations: list[SourceLocation]) -> list[SourceLocation]:
+    """Preserve source order while removing duplicate locations."""
+
+    unique_locations: list[SourceLocation] = []
+    seen_keys: set[tuple[str, int, int]] = set()
+    for location in locations:
+        key = (str(location.file), location.line, location.column)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        unique_locations.append(location)
+    return unique_locations
 
 
 def _resolve_comment_conflict_value(

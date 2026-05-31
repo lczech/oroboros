@@ -22,6 +22,7 @@ from ..model import (
     CppMethodTemplate,
     CppParameter,
     CppVariable,
+    format_element_scope,
 )
 from ..model.type import cpp_types_equivalent
 from .extract_cpp_facets import extract_parameter_cpp_facet
@@ -74,6 +75,7 @@ def merge_constructor_declaration(
         candidate_cpp.template_parameters,
         context,
         cursor,
+        entity=format_element_scope(existing),
     )
     merge_cpp_scalar(existing, "special_member_kind", candidate_cpp.special_member_kind, context, cursor)
     merge_cpp_scalar(
@@ -150,10 +152,11 @@ def merge_method_declaration(
 def merge_field_declaration(
     context: BuildContext,
     cursor: Any,
+    existing: CppElement | None = None,
 ) -> None:
     """Handle one repeated field declaration."""
 
-    warn_unexpected_repeated_declaration(context, cursor, "variable")
+    warn_unexpected_repeated_declaration(context, cursor, "variable", existing)
 
 
 def merge_variable_declaration(
@@ -199,6 +202,7 @@ def merge_class_template_declaration(
         candidate_cpp.template_parameters,
         context,
         cursor,
+        entity=format_element_scope(existing),
     )
 
 
@@ -227,10 +231,11 @@ def merge_function_declaration(
 def merge_parameter_declaration(
     context: BuildContext,
     cursor: Any,
+    existing: CppElement | None = None,
 ) -> None:
     """Handle one repeated parameter declaration."""
 
-    warn_unexpected_repeated_declaration(context, cursor, "parameter")
+    warn_unexpected_repeated_declaration(context, cursor, "parameter", existing)
 
 
 def merge_function_template_declaration(
@@ -248,6 +253,7 @@ def merge_function_template_declaration(
         candidate_cpp.template_parameters,
         context,
         cursor,
+        entity=format_element_scope(existing),
     )
 
 
@@ -266,6 +272,7 @@ def merge_method_template_declaration(
         candidate_cpp.template_parameters,
         context,
         cursor,
+        entity=format_element_scope(existing),
     )
 
 
@@ -286,19 +293,25 @@ def merge_enum_declaration(
 def merge_enumerator_declaration(
     context: BuildContext,
     cursor: Any,
+    existing: CppElement | None = None,
 ) -> None:
     """Handle one repeated enumerator declaration."""
 
-    warn_unexpected_repeated_declaration(context, cursor, "enumerator")
+    warn_unexpected_repeated_declaration(context, cursor, "enumerator", existing)
 
 
 def merge_alias_declaration(
     context: BuildContext,
     cursor: Any,
+    existing: CppElement | None = None,
+    candidate_cpp: Any | None = None,
 ) -> None:
     """Handle one repeated alias declaration."""
 
-    warn_unexpected_repeated_declaration(context, cursor, "alias")
+    existing_target = getattr(getattr(existing, "cpp", None), "target", None)
+    candidate_target = getattr(candidate_cpp, "target", None)
+    if existing_target is None or candidate_target is None or not cpp_types_equivalent(existing_target, candidate_target):
+        warn_unexpected_repeated_declaration(context, cursor, "alias", existing)
 
 
 def merge_alias_template_declaration(
@@ -326,6 +339,7 @@ def merge_alias_template_declaration(
         candidate_cpp.template_parameters,
         context,
         cursor,
+        entity=format_element_scope(existing),
     )
 
 

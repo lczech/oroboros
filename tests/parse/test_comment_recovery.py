@@ -682,18 +682,23 @@ public:
             if "Recovered attached comment" in warning.message
         ]
         self.assertFalse(mismatch_warnings, msg=f"Expected no recovery warning, got: {result.report.warnings}")
-        merge_warnings = [
-            warning
-            for warning in result.report.warnings
-            if warning.code == "parse.merge.conflicting_comments"
+        merge_notes = [
+            note
+            for note in result.report.notes
+            if note.code == "parse.merge.preferred_comments"
         ]
-        self.assertTrue(merge_warnings, msg=f"Expected merge warning, got: {result.report.warnings}")
-        self.assertIsNotNone(merge_warnings[0].detail)
-        self.assertIn("existing parsed comment:", merge_warnings[0].detail)
-        self.assertIn("// Forward declaration of a type we need.", merge_warnings[0].detail)
-        self.assertIn("new parsed comment:", merge_warnings[0].detail)
-        self.assertIn("@brief The class does cool things.", merge_warnings[0].detail)
-        self.assertIn("selected: new", merge_warnings[0].detail)
+        self.assertTrue(merge_notes, msg=f"Expected merge note, got: {result.report.diagnostics}")
+        self.assertIsNotNone(merge_notes[0].detail)
+        self.assertEqual(len(merge_notes[0].locations), 2)
+        self.assertEqual(
+            sorted(location.line for location in merge_notes[0].locations),
+            [5, 10],
+        )
+        self.assertIn("existing parsed comment:", merge_notes[0].detail)
+        self.assertIn("// Forward declaration of a type we need.", merge_notes[0].detail)
+        self.assertIn("new parsed comment:", merge_notes[0].detail)
+        self.assertIn("@brief The class does cool things.", merge_notes[0].detail)
+        self.assertIn("selected: new", merge_notes[0].detail)
 
     def test_parse_headers_prefer_structured_definition_docs_for_redeclared_classes_across_headers(self) -> None:
         result = _parse_headers_from_sources(
