@@ -950,6 +950,7 @@ def _complete_observed_template_arguments_from_clang(
             len(complete_arguments) : len(complete_arguments) + clang_missing_count
         ]
         if len(missing_parameters) == clang_missing_count:
+            clang_additions: list[CppTemplateArgument] = []
             for parameter, clang_argument_info in zip(
                 missing_parameters,
                 clang_argument_infos[len(complete_arguments) :],
@@ -962,7 +963,9 @@ def _complete_observed_template_arguments_from_clang(
                 )
                 if missing_argument is None:
                     break
-                complete_arguments.append(missing_argument)
+                clang_additions.append(missing_argument)
+            else:
+                complete_arguments.extend(clang_additions)
 
     for parameter in parameters[len(complete_arguments):]:
         default_argument = getattr(parameter, "default", None)

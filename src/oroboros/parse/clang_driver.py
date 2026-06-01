@@ -100,6 +100,8 @@ def build_clang_arguments(config: ParserConfig) -> list[str]:
         arguments.extend(["-isystem", str(include_dir)])
     arguments.extend(f"-D{define}" for define in config.defines)
     arguments.extend(f"-U{undefine}" for undefine in config.undefines)
+    # extra_args are appended last and intentionally take precedence over all generated
+    # arguments above — a user-supplied -x or -std= will silently override ours.
     arguments.extend(config.extra_args)
     return arguments
 

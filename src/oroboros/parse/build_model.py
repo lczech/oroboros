@@ -149,6 +149,18 @@ def _resolve_pending_type_declaration_links(context: BuildContext) -> None:
                     f"use site: {pending_link.source_location}; "
                     f"declaration site: {pending_link.declaration_location}"
                 )
+            if pending_link.declaration_cursor is not None and pending_link.declaration_location is None:
+                locations = [pending_link.source_location] if pending_link.source_location is not None else []
+                context.report.add(Diagnostic(
+                    severity="note",
+                    stage="parse",
+                    code="parse.unresolved_type_declaration_link",
+                    message=(
+                        f"Could not resolve declaration link for {pending_link.cpp_type.name!r}: "
+                        "declaration cursor has no resolvable source location."
+                    ),
+                    locations=locations,
+                ))
             continue
 
         pending_link.cpp_type.declaration = declaration

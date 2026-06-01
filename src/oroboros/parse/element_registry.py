@@ -16,6 +16,7 @@ from ..model import (
     CppModule,
     CppNamespace,
 )
+from ..diagnostics import Diagnostic
 from ..model.alias_template import CppAliasTemplate
 from .extract_cpp_facets import extract_namespace_cpp_facet
 from .cursor_data import cursor_source_location, cursor_usr
@@ -120,7 +121,27 @@ def register_element_for_cursor(
     if usr is None:
         return
 
-    context.usr_to_element.setdefault(usr, element)
+    existing = context.usr_to_element.get(usr)
+    if existing is None:
+        context.usr_to_element[usr] = element
+        return
+    if existing is not element:
+        existing_name = getattr(existing, "name", None)
+        element_name = getattr(element, "name", None)
+        if type(existing) is not type(element) or (
+            existing_name and element_name and existing_name != element_name
+        ):
+            context.report.add(Diagnostic(
+                severity="warning",
+                stage="parse",
+                code="parse.non_callable_usr_collision",
+                message=(
+                    f"USR collision: different elements share the same USR "
+                    f"({type(existing).__name__} {existing_name!r} vs "
+                    f"{type(element).__name__} {element_name!r}); "
+                    "keeping first registration."
+                ),
+            ))
 
 
 # ==================================================================================================
@@ -286,7 +307,7 @@ def resolve_registered_declaration(
     if owner is None:
         return None
 
-    return _find_direct_declaration_match(owner, cursor)
+    return _find_direct_declaration_match(owner, cursor, context)
 
 
 def resolve_registered_template_family(
@@ -306,7 +327,7 @@ def resolve_registered_template_family(
     if owner is None:
         return None
 
-    return _find_direct_template_family_match(owner, cursor)
+    return _find_direct_template_family_match(owner, cursor, context)
 
 
 def _registered_element_from_usr(
@@ -352,6 +373,7 @@ def _normalize_registered_declaration(
 def _find_direct_declaration_match(
     owner: CppElement,
     cursor: Any,
+    context: BuildContext | None = None,
 ) -> CppElement | None:
     """Find the direct child declaration under one owner matching the clang cursor."""
 
@@ -391,6 +413,14 @@ def _find_direct_declaration_match(
         )
 
     if not candidate_collections:
+        if context is not None:
+            kind_name = str(getattr(getattr(cursor, "kind", None), "name", "<unknown>"))
+            context.report.add(Diagnostic(
+                severity="note",
+                stage="parse",
+                code="parse.declaration_link_unsupported_cursor_kind",
+                message=f"Cannot resolve declaration link via semantic path: cursor kind {kind_name!r} is not handled.",
+            ))
         return None
 
     matching_candidates = [
@@ -419,6 +449,7 @@ def _find_direct_declaration_match(
 def _find_direct_template_family_match(
     owner: CppElement,
     cursor: Any,
+    context: BuildContext | None = None,
 ) -> CppElement | None:
     """Find the direct child template family under one owner matching the clang cursor."""
 
@@ -441,6 +472,14 @@ def _find_direct_template_family_match(
         else:
             candidates = list(getattr(declarations, "function_templates", []))
     else:
+        if context is not None:
+            kind_name = str(getattr(getattr(cursor, "kind", None), "name", "<unknown>"))
+            context.report.add(Diagnostic(
+                severity="note",
+                stage="parse",
+                code="parse.declaration_link_unsupported_cursor_kind",
+                message=f"Cannot resolve template family via semantic path: cursor kind {kind_name!r} is not handled.",
+            ))
         return None
 
     matching_candidates = [

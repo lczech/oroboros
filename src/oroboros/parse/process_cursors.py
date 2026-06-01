@@ -932,7 +932,7 @@ def _warn_explicit_class_template_specialization(
 
     if template_family is None:
         family_hint = (
-            "The primary template is not active in the current parsed model, so this "
+            "The primary template was not found under the current scope, so this "
             "specialization is ignored entirely."
         )
     else:

@@ -62,6 +62,8 @@ micromamba activate oroboros
 PYTHONPATH=src python3 -m unittest discover -s tests
 ```
 
+Always add thorough tests for every functionality added or changed.
+
 ## Current Architectural Decisions
 
 - Keep the backend split clean so pybind11 can be added later
