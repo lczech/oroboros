@@ -77,6 +77,7 @@ class PendingTypeDeclarationLink:
 
     cpp_type: NamedCppType
     declaration_usr: str
+    declaration_cursor: Any | None = None
     source_location: SourceLocation | None = None
     declaration_location: SourceLocation | None = None
     must_resolve_in_active_headers: bool = False
@@ -126,11 +127,20 @@ def build_module_from_clang(
 def _resolve_pending_type_declaration_links(context: BuildContext) -> None:
     """Link deferred `NamedCppType` references to already built semantic declarations."""
 
+    from .element_registry import resolve_registered_declaration
+
     for pending_link in context.pending_type_declaration_links:
         if pending_link.cpp_type.declaration is not None:
             continue
 
         declaration = context.usr_to_element.get(pending_link.declaration_usr)
+        if declaration is not None and hasattr(declaration, "declaration"):
+            declaration = declaration.declaration
+        if declaration is None and pending_link.declaration_cursor is not None:
+            declaration = resolve_registered_declaration(
+                pending_link.declaration_cursor,
+                context,
+            )
         if declaration is None:
             if pending_link.must_resolve_in_active_headers:
                 raise ParserInvariantError(

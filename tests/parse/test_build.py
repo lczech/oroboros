@@ -1559,6 +1559,65 @@ class ParseTypesTest(unittest.TestCase):
         self.assertIsInstance(cpp_type.canonical.arguments[0].type, NamedCppType)
         self.assertEqual(cpp_type.canonical.arguments[0].type.name, "std::string")
 
+    def test_build_cpp_type_records_observed_class_template_instances_from_specialized_template_views(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        context = BuildContext(
+            active_headers={active_header},
+            known_project_headers={active_header},
+            config=ParserConfig(),
+        )
+        module = CppModule(name="module")
+        namespace = module.add_namespace(CppNamespace(name="demo"))
+        template = namespace.add_class_template(
+            CppClassTemplate(
+                name="Box",
+                declaration=CppClassTemplateDeclaration(
+                    name="Box",
+                    cpp=CppClassTemplateDeclarationCppFacet(
+                        template_parameters=[CppTypeTemplateParameter(name="T")],
+                    ),
+                ),
+            )
+        )
+        namespace_cursor = _fake_cursor(
+            "NAMESPACE",
+            "demo",
+            file=active_header,
+            usr="c:@N@demo",
+        )
+        context.usr_to_element[namespace_cursor.get_usr()] = namespace
+
+        specialized_box_cursor = _fake_cursor(
+            "CLASS_DECL",
+            "Box",
+            file=active_header,
+            usr="c:@N@demo@S@Box>#I",
+            line=10,
+        )
+        specialized_box_cursor.semantic_parent = namespace_cursor
+        specialized_box_cursor.get_specialized_cursor_template = lambda: specialized_box_cursor
+
+        clang_type = _fake_type(
+            "ELABORATED",
+            "demo::Box<int>",
+            declaration_cursor=specialized_box_cursor,
+            template_argument_types=[_fake_type("INT", "int")],
+        )
+
+        cpp_type = build_cpp_type(
+            clang_type,
+            context=context,
+            source_cursor=_fake_cursor("TYPE_ALIAS_DECL", "ObservedBox", file=active_header),
+        )
+
+        self.assertIsInstance(cpp_type, TemplateInstanceCppType)
+        self.assertEqual(len(template.declaration.cpp.observed_instances), 1)
+        observed_instance = template.declaration.cpp.observed_instances[0]
+        self.assertEqual(len(observed_instance.arguments), 1)
+        self.assertIsInstance(observed_instance.arguments[0], CppTypeTemplateArgument)
+        self.assertIsInstance(observed_instance.arguments[0].type, BuiltinCppType)
+        self.assertEqual(observed_instance.arguments[0].type.kind, "int")
+
     def test_build_cpp_type_parses_pointer_constness_correctly_in_template_argument_spellings(self) -> None:
         clang_type = _fake_type(
             "ELABORATED",

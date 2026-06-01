@@ -679,6 +679,7 @@ def _record_named_type_declaration_link(
         PendingTypeDeclarationLink(
             cpp_type=cpp_type,
             declaration_usr=declaration_usr,
+            declaration_cursor=declaration_cursor,
             source_location=cursor_source_location(source_cursor) if source_cursor is not None else None,
             declaration_location=declaration_location,
             must_resolve_in_active_headers=must_resolve_in_active_headers,
@@ -780,11 +781,9 @@ def _record_one_observed_template_instance(
     if template_cursor is None:
         return
 
-    template_usr = _cursor_usr(template_cursor)
-    if template_usr is None:
-        return
+    from .element_registry import resolve_registered_template_family
 
-    template_family = context.usr_to_element.get(template_usr)
+    template_family = resolve_registered_template_family(template_cursor, context)
     if template_family is None or not hasattr(template_family, "declaration"):
         return
 

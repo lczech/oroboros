@@ -7,7 +7,16 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 from clang.cindex import CursorKind
 
-from ..model import CppClassMembers, CppClassTemplate, CppElement, CppModule, CppNamespace
+from ..model import (
+    CppClassMembers,
+    CppClassTemplate,
+    CppElement,
+    CppFunctionTemplate,
+    CppMethodTemplate,
+    CppModule,
+    CppNamespace,
+)
+from ..model.alias_template import CppAliasTemplate
 from .extract_cpp_facets import extract_namespace_cpp_facet
 from .cursor_data import cursor_source_location, cursor_usr
 
@@ -253,6 +262,208 @@ def matching_owner_ancestor(
             return current
         current = current.owner
     return None
+
+
+# ==================================================================================================
+#     Declaration Resolution
+# ==================================================================================================
+
+
+def resolve_registered_declaration(
+    cursor: Any,
+    context: BuildContext,
+) -> CppElement | None:
+    """Return the already-built declaration matching one clang declaration cursor."""
+
+    declaration = _registered_element_from_usr(cursor, context)
+    if declaration is not None:
+        return declaration
+
+    semantic_parent = getattr(cursor, "semantic_parent", None)
+    owner = _semantic_owner_from_usr(semantic_parent, context)
+    if owner is None:
+        owner = find_registered_semantic_owner(semantic_parent, context)
+    if owner is None:
+        return None
+
+    return _find_direct_declaration_match(owner, cursor)
+
+
+def resolve_registered_template_family(
+    cursor: Any,
+    context: BuildContext,
+) -> CppElement | None:
+    """Return the already-built template family matching one clang template cursor."""
+
+    template_family = _registered_template_family_from_usr(cursor, context)
+    if template_family is not None:
+        return template_family
+
+    semantic_parent = getattr(cursor, "semantic_parent", None)
+    owner = _semantic_owner_from_usr(semantic_parent, context)
+    if owner is None:
+        owner = find_registered_semantic_owner(semantic_parent, context)
+    if owner is None:
+        return None
+
+    return _find_direct_template_family_match(owner, cursor)
+
+
+def _registered_element_from_usr(
+    cursor: Any,
+    context: BuildContext,
+) -> CppElement | None:
+    """Return one registered element for a cursor USR, normalizing template wrappers."""
+
+    usr = cursor_usr(cursor)
+    if usr is None:
+        return None
+
+    element = context.usr_to_element.get(usr)
+    return _normalize_registered_declaration(element)
+
+
+def _registered_template_family_from_usr(
+    cursor: Any,
+    context: BuildContext,
+) -> CppElement | None:
+    """Return one registered template-family wrapper for a cursor USR."""
+
+    usr = cursor_usr(cursor)
+    if usr is None:
+        return None
+
+    element = context.usr_to_element.get(usr)
+    if isinstance(element, (CppAliasTemplate, CppClassTemplate, CppFunctionTemplate, CppMethodTemplate)):
+        return element
+    return None
+
+
+def _normalize_registered_declaration(
+    element: CppElement | None,
+) -> CppElement | None:
+    """Map wrapper elements to their declaration node when a type link needs a declaration."""
+
+    if isinstance(element, (CppAliasTemplate, CppClassTemplate)):
+        return element.declaration
+    return element
+
+
+def _find_direct_declaration_match(
+    owner: CppElement,
+    cursor: Any,
+) -> CppElement | None:
+    """Find the direct child declaration under one owner matching the clang cursor."""
+
+    cursor_name = getattr(cursor, "spelling", None)
+    if not cursor_name:
+        return None
+
+    candidate_collections: list[list[CppElement]] = []
+    cursor_kind = getattr(cursor, "kind", None)
+    if cursor_kind in {CursorKind.TYPE_ALIAS_DECL, CursorKind.TYPEDEF_DECL}:
+        candidate_collections.append(list(getattr(getattr(owner, "declarations", None), "aliases", [])))
+        candidate_collections.extend(
+            [template.declaration]
+            for template in getattr(getattr(owner, "declarations", None), "alias_templates", [])
+            if getattr(template, "declaration", None) is not None
+        )
+    elif cursor_kind == CursorKind.ENUM_DECL:
+        candidate_collections.append(list(getattr(getattr(owner, "declarations", None), "enums", [])))
+    elif cursor_kind in {CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL, CursorKind.UNION_DECL}:
+        candidate_collections.append(list(getattr(getattr(owner, "declarations", None), "classes", [])))
+        candidate_collections.extend(
+            [template.declaration]
+            for template in getattr(getattr(owner, "declarations", None), "class_templates", [])
+            if getattr(template, "declaration", None) is not None
+        )
+    elif cursor_kind == CursorKind.CLASS_TEMPLATE:
+        candidate_collections.extend(
+            [template.declaration]
+            for template in getattr(getattr(owner, "declarations", None), "class_templates", [])
+            if getattr(template, "declaration", None) is not None
+        )
+    elif cursor_kind == CursorKind.TYPE_ALIAS_TEMPLATE_DECL:
+        candidate_collections.extend(
+            [template.declaration]
+            for template in getattr(getattr(owner, "declarations", None), "alias_templates", [])
+            if getattr(template, "declaration", None) is not None
+        )
+
+    if not candidate_collections:
+        return None
+
+    matching_candidates = [
+        candidate
+        for collection in candidate_collections
+        for candidate in collection
+        if getattr(candidate, "name", None) == cursor_name
+    ]
+    if not matching_candidates:
+        return None
+    if len(matching_candidates) == 1:
+        return matching_candidates[0]
+
+    cursor_location = cursor_source_location(cursor)
+    if cursor_location is None:
+        return matching_candidates[0]
+
+    for candidate in matching_candidates:
+        candidate_location = getattr(getattr(candidate, "cpp", None), "location", None)
+        candidate_primary = getattr(candidate_location, "primary", None)
+        if candidate_primary == cursor_location:
+            return candidate
+    return matching_candidates[0]
+
+
+def _find_direct_template_family_match(
+    owner: CppElement,
+    cursor: Any,
+) -> CppElement | None:
+    """Find the direct child template family under one owner matching the clang cursor."""
+
+    cursor_name = getattr(cursor, "spelling", None)
+    if not cursor_name:
+        return None
+
+    declarations = getattr(owner, "declarations", None)
+    if declarations is None:
+        return None
+
+    cursor_kind = getattr(cursor, "kind", None)
+    if cursor_kind in {CursorKind.CLASS_TEMPLATE, CursorKind.CLASS_DECL, CursorKind.STRUCT_DECL, CursorKind.UNION_DECL}:
+        candidates = list(getattr(declarations, "class_templates", []))
+    elif cursor_kind == CursorKind.TYPE_ALIAS_TEMPLATE_DECL:
+        candidates = list(getattr(declarations, "alias_templates", []))
+    elif cursor_kind == CursorKind.FUNCTION_TEMPLATE:
+        if isinstance(owner, CppClassMembers):
+            candidates = list(getattr(declarations, "method_templates", []))
+        else:
+            candidates = list(getattr(declarations, "function_templates", []))
+    else:
+        return None
+
+    matching_candidates = [
+        candidate
+        for candidate in candidates
+        if getattr(candidate, "name", None) == cursor_name
+    ]
+    if not matching_candidates:
+        return None
+    if len(matching_candidates) == 1:
+        return matching_candidates[0]
+
+    cursor_location = cursor_source_location(cursor)
+    if cursor_location is None:
+        return matching_candidates[0]
+
+    for candidate in matching_candidates:
+        declaration = getattr(candidate, "declaration", None)
+        candidate_location = getattr(getattr(declaration, "cpp", None), "location", None)
+        candidate_primary = getattr(candidate_location, "primary", None)
+        if candidate_primary == cursor_location:
+            return candidate
+    return matching_candidates[0]
 
 
 # ==================================================================================================

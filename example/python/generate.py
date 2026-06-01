@@ -39,6 +39,7 @@ def main() -> int:
 
     # Path setup for the example.
     repo_root = Path(__file__).resolve().parents[2]
+    build_dir = repo_root / "build"
     header_dir = repo_root / "example" / "inc"
     root_header = header_dir / "cosmos" / "cosmos.hpp"
     activation_header = repo_root / "example" / "python" / "active_headers.hpp"

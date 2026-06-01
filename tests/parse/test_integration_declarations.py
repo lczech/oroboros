@@ -729,6 +729,91 @@ class ParseIntegrationDeclarationTest(unittest.TestCase):
         self.assertTrue(method.parameters[0].cpp.type.referred.is_const)
         self.assertIs(method.parameters[0].cpp.type.referred.declaration, widget)
 
+    def test_parse_headers_resolve_nested_declarations_through_specialized_class_template_aliases(self) -> None:
+        source = """
+            namespace demo {
+
+            template <typename T, int Count>
+            struct Holder {
+                using value_type = T;
+
+                enum Kind {
+                    primary = Count,
+                };
+
+                struct Node {
+                    value_type value {};
+                };
+            };
+
+            using holder_type = Holder<int, 7>;
+            using nested_value_type = typename holder_type::value_type;
+            using nested_kind_type = typename holder_type::Kind;
+            using nested_node_type = typename holder_type::Node;
+
+            struct UsesNestedTypes {
+                nested_value_type value {};
+                nested_kind_type kind {};
+                nested_node_type node {};
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        holder_template = namespace.declarations.class_templates[0]
+        holder_declaration = holder_template.declaration
+        uses_nested_types = next(
+            class_
+            for class_ in namespace.declarations.classes
+            if class_.name == "UsesNestedTypes"
+        )
+        nested_value_alias = next(
+            alias
+            for alias in namespace.declarations.aliases
+            if alias.name == "nested_value_type"
+        )
+        nested_kind_alias = next(
+            alias
+            for alias in namespace.declarations.aliases
+            if alias.name == "nested_kind_type"
+        )
+        nested_node_alias = next(
+            alias
+            for alias in namespace.declarations.aliases
+            if alias.name == "nested_node_type"
+        )
+        value_type_alias = next(
+            alias
+            for alias in holder_declaration.declarations.aliases
+            if alias.name == "value_type"
+        )
+        kind_enum = next(
+            enum
+            for enum in holder_declaration.declarations.enums
+            if enum.name == "Kind"
+        )
+        node_class = next(
+            class_
+            for class_ in holder_declaration.declarations.classes
+            if class_.name == "Node"
+        )
+
+        self.assertIsInstance(nested_value_alias.cpp.target, NamedCppType)
+        self.assertIs(nested_value_alias.cpp.target.declaration, value_type_alias)
+        self.assertIsInstance(nested_kind_alias.cpp.target, NamedCppType)
+        self.assertIs(nested_kind_alias.cpp.target.declaration, kind_enum)
+        self.assertIsInstance(nested_node_alias.cpp.target, NamedCppType)
+        self.assertIs(nested_node_alias.cpp.target.declaration, node_class)
+        self.assertIsInstance(uses_nested_types.declarations.variables[0].cpp.type, NamedCppType)
+        self.assertIs(uses_nested_types.declarations.variables[0].cpp.type.declaration, nested_value_alias)
+        self.assertIsInstance(uses_nested_types.declarations.variables[1].cpp.type, NamedCppType)
+        self.assertIs(uses_nested_types.declarations.variables[1].cpp.type.declaration, nested_kind_alias)
+        self.assertIsInstance(uses_nested_types.declarations.variables[2].cpp.type, NamedCppType)
+        self.assertIs(uses_nested_types.declarations.variables[2].cpp.type.declaration, nested_node_alias)
+
     def test_parse_headers_reopens_namespaces_across_active_headers(self) -> None:
         result = _parse_headers_from_sources(
             {
