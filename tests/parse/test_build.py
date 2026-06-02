@@ -11,6 +11,7 @@ from oroboros.model import *
 from oroboros.parse import ParserConfig, ParserInvariantError
 from oroboros.parse.build_model import BuildContext, build_module_from_clang
 from oroboros.parse.merge_properties import (
+    _element_diagnostic_locations,
     merge_class_bases,
     merge_cpp_scalar,
     merge_template_parameters,
@@ -1425,6 +1426,37 @@ class ParseBuildTest(unittest.TestCase):
         with self.assertRaisesRegex(ParserInvariantError, "different parameter count"):
             build_module_from_clang(translation_unit, [active_header], ParserConfig())
 
+    def test_build_module_from_clang_raises_when_clang_diagnostics_contain_errors(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        translation_unit = SimpleNamespace(
+            cursor=_fake_cursor("TRANSLATION_UNIT", "", file=active_header),
+            diagnostics=[
+                SimpleNamespace(
+                    severity=3,
+                    spelling="fatal parse problem",
+                    location=SimpleNamespace(
+                        file=SimpleNamespace(name=str(active_header)),
+                        line=7,
+                        column=3,
+                    ),
+                )
+            ],
+        )
+
+        with self.assertRaisesRegex(ParserInvariantError, "Refusing to build a semantic model"):
+            build_module_from_clang(translation_unit, [active_header], ParserConfig())
+
+    def test_build_module_from_clang_allows_translation_units_without_diagnostics(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        translation_unit = SimpleNamespace(
+            cursor=_fake_cursor("TRANSLATION_UNIT", "", file=active_header),
+            diagnostics=None,
+        )
+
+        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
+
+        self.assertEqual(build_result.module.cpp.header_files, [active_header.resolve()])
+
     def test_process_variable_cursor_raises_on_unexpected_owner(self) -> None:
         from oroboros.parse import process_cursors
 
@@ -1585,6 +1617,148 @@ class ParseBuildTest(unittest.TestCase):
         self.assertIs(context.usr_to_element["c:@S@Widget"], widget_a)
         self.assertEqual(len(context.report.warnings), 1)
         self.assertEqual(context.report.warnings[0].code, "parse.non_callable_usr_collision")
+
+    def test_element_diagnostic_locations_fall_back_to_template_declaration_locations(self) -> None:
+        header = Path("/tmp/project/demo.hpp")
+        declaration_location = CppLocationInfo(
+            primary=SourceLocation(file=header, line=10, column=2),
+            declarations=[SourceLocation(file=header, line=10, column=2)],
+            definition=SourceLocation(file=header, line=24, column=7),
+        )
+        wrappers = [
+            CppClassTemplate(
+                name="Box",
+                declaration=CppClassTemplateDeclaration(
+                    name="Box",
+                    cpp=CppClassTemplateDeclarationCppFacet(location=declaration_location),
+                ),
+            ),
+            CppFunctionTemplate(
+                name="make_box",
+                declaration=CppFunctionTemplateDeclaration(
+                    name="make_box",
+                    cpp=CppFunctionTemplateDeclarationCppFacet(location=declaration_location),
+                ),
+            ),
+            CppMethodTemplate(
+                name="convert",
+                declaration=CppMethodTemplateDeclaration(
+                    name="convert",
+                    cpp=CppMethodTemplateDeclarationCppFacet(location=declaration_location),
+                ),
+            ),
+        ]
+
+        for wrapper in wrappers:
+            with self.subTest(wrapper=type(wrapper).__name__):
+                locations = _element_diagnostic_locations(wrapper)
+                self.assertEqual(
+                    [(location.file, location.line, location.column) for location in locations],
+                    [
+                        (header, 10, 2),
+                        (header, 24, 7),
+                    ],
+                )
+
+    def test_build_module_from_clang_merges_function_template_redeclarations_with_same_usr(self) -> None:
+        active_header = Path("/tmp/project/demo.hpp")
+        translation_unit = SimpleNamespace(
+            cursor=_fake_cursor(
+                "TRANSLATION_UNIT",
+                "",
+                file=active_header,
+                children=[
+                    _fake_cursor(
+                        "FUNCTION_TEMPLATE",
+                        "operator>>",
+                        file=active_header,
+                        usr="c:@F@operator>>",
+                        line=10,
+                        column=5,
+                        children=[
+                            _fake_cursor("TEMPLATE_TYPE_PARAMETER", "T", file=active_header, line=10, column=14),
+                            _fake_cursor(
+                                "PARM_DECL",
+                                "deserializer",
+                                file=active_header,
+                                line=11,
+                                column=9,
+                                tokens=[
+                                    "genesis", "::", "util", "::", "io", "::", "Deserializer", "&", "deserializer",
+                                ],
+                            ),
+                            _fake_cursor(
+                                "PARM_DECL",
+                                "mat",
+                                file=active_header,
+                                line=12,
+                                column=9,
+                                tokens=[
+                                    "genesis", "::", "util", "::", "container", "::", "Matrix",
+                                    "<", "T", ">", "&", "mat",
+                                ],
+                            ),
+                        ],
+                    ),
+                    _fake_cursor(
+                        "FUNCTION_TEMPLATE",
+                        "operator>>",
+                        file=active_header,
+                        usr="c:@F@operator>>",
+                        line=24,
+                        column=7,
+                        children=[
+                            _fake_cursor("TEMPLATE_TYPE_PARAMETER", "T", file=active_header, line=24, column=16),
+                            _fake_cursor(
+                                "PARM_DECL",
+                                "deserializer",
+                                file=active_header,
+                                line=25,
+                                column=9,
+                                tokens=[
+                                    "genesis", "::", "util", "::", "io", "::", "Deserializer", "&", "deserializer",
+                                ],
+                            ),
+                            _fake_cursor(
+                                "PARM_DECL",
+                                "mat",
+                                file=active_header,
+                                line=26,
+                                column=9,
+                                tokens=["Matrix", "<", "T", ">", "&", "mat"],
+                                methods={"is_definition": True},
+                            ),
+                        ],
+                        methods={"is_definition": True},
+                    ),
+                ],
+            )
+        )
+
+        build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
+        function_templates = build_result.module.declarations.function_templates
+        self.assertEqual(len(function_templates), 1)
+        declaration = function_templates[0].declaration
+        self.assertIsNotNone(declaration)
+        self.assertEqual(declaration.parameters[0].name, "deserializer")
+        self.assertEqual(declaration.parameters[1].name, "mat")
+        self.assertEqual(
+            [
+                (location.file, location.line, location.column)
+                for location in declaration.cpp.location.declarations
+            ],
+            [
+                (active_header.resolve(), 10, 5),
+                (active_header.resolve(), 24, 7),
+            ],
+        )
+        self.assertEqual(
+            [
+                diagnostic.code
+                for diagnostic in build_result.report.diagnostics
+            ],
+            [],
+        )
 
     def test_register_element_for_cursor_does_not_warn_when_same_element_reregistered(self) -> None:
         from oroboros.parse.element_registry import register_element_for_cursor

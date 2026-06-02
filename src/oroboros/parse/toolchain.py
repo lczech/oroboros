@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 
 from .config import ParserConfig
+from .result import ParseSetupError
 
 
 # ==================================================================================================
@@ -90,19 +91,23 @@ def _detect_resource_dir(compiler: str) -> Path | None:
             text=True,
         )
     except FileNotFoundError as error:
-        raise RuntimeError(
+        raise ParseSetupError(
             "Toolchain autodetection is enabled, but the compiler "
             f"{compiler!r} was not found while probing its clang resource "
             "directory. Install that compiler, point `toolchain_compiler` at "
             "a working compiler executable, or disable `auto_detect_toolchain` "
-            "and set `resource_dir` manually."
+            "and set `resource_dir` manually.",
+            stage="config",
+            code="config.toolchain_detection_failed",
         ) from error
     except (OSError, subprocess.CalledProcessError) as error:
         details = _format_subprocess_error(error)
-        raise RuntimeError(
+        raise ParseSetupError(
             "Failed to detect the parser clang resource directory from compiler "
             f"{compiler!r}.{details} Disable `auto_detect_toolchain` and set "
-            "`resource_dir` manually if needed."
+            "`resource_dir` manually if needed.",
+            stage="config",
+            code="config.toolchain_detection_failed",
         ) from error
 
     output = completed_process.stdout.strip()
@@ -117,19 +122,23 @@ def _detect_system_include_dirs(compiler: str, *, language: str) -> list[Path]:
     try:
         include_output = _run_compiler_include_probe(compiler, language=language)
     except FileNotFoundError as error:
-        raise RuntimeError(
+        raise ParseSetupError(
             "Toolchain autodetection is enabled, but the compiler "
             f"{compiler!r} was not found while probing its system include "
             "directories. Install that compiler, point `toolchain_compiler` at "
             "a working compiler executable, or disable `auto_detect_toolchain` "
-            "and set `system_include_dirs` manually."
+            "and set `system_include_dirs` manually.",
+            stage="config",
+            code="config.toolchain_detection_failed",
         ) from error
     except (OSError, subprocess.CalledProcessError) as error:
         details = _format_subprocess_error(error)
-        raise RuntimeError(
+        raise ParseSetupError(
             "Failed to detect parser system include directories from compiler "
             f"{compiler!r}.{details} Disable `auto_detect_toolchain` and set "
-            "`system_include_dirs` manually if needed."
+            "`system_include_dirs` manually if needed.",
+            stage="config",
+            code="config.toolchain_detection_failed",
         ) from error
 
     return _parse_system_include_dirs(include_output)

@@ -8,7 +8,6 @@ import sys
 from oroboros import (
     HeaderFile,
     HeaderSelection,
-    ParserInvariantError,
     find_included_headers,
     infer_parser_config_from_compilation_database,
     parse_header_selection,
@@ -72,54 +71,38 @@ def main() -> int:
 
     sys.stdout.flush()
 
-    try:
-        # Get a parser config inferred from the compilation database (CMake + clang build).
-        inference_result = infer_parser_config_from_compilation_database(
-            build_dir,
-            source_roots=[header_dir / "genesis"],
-        )
-        if inference_result.report.diagnostics:
-            print_report(inference_result.report, color=None)
-            print("")
-        if inference_result.report.has_errors():
-            print("Parser config inference failed.", file=sys.stderr)
-            return 1
-        parser_config = inference_result.config
-
-        # Print the inferred config, if needed.
-        # print_parser_config(parser_config, color=None)
-        # print("")
-
-        # Override some config settings for this example.
-        parser_config.auto_detect_toolchain = True
-        parser_config.suppress_diagnostics = ["parse.merge.preferred_comments"]
-        print_parser_config(parser_config, color=None, include_clang_arguments=True)
+    # Get a parser config inferred from the compilation database (CMake + clang build).
+    inference_result = infer_parser_config_from_compilation_database(
+        build_dir,
+        source_roots=[header_dir / "genesis"],
+    )
+    if inference_result.report.diagnostics:
+        print_report(inference_result.report, color=None)
         print("")
+    if inference_result.report.has_errors():
+        print("Parser config inference failed.", file=sys.stderr)
+        return 1
+    parser_config = inference_result.config
 
-        # Run the parser on the active headers.
-        parse_result = parse_header_selection(
-            HeaderSelection(update_result.header_files),
-            parser_config,
-        )
-    except ParserInvariantError as error:
-        print(f"Parser invariant error: {error}", file=sys.stderr)
-        return 1
-    except RuntimeError as error:
-        print(f"Parser setup error: {error}", file=sys.stderr)
-        return 1
+    # Print the inferred config, if needed.
+    # print_parser_config(parser_config, color=None)
+    # print("")
+
+    # Override some config settings for this example.
+    parser_config.auto_detect_toolchain = True
+    parser_config.suppress_diagnostics = ["parse.merge.preferred_comments"]
+    print_parser_config(parser_config, color=None, include_clang_arguments=True)
+    print("")
+
+    # Run the parser on the active headers.
+    parse_result = parse_header_selection(
+        HeaderSelection(update_result.header_files),
+        parser_config,
+    )
 
     # Print the parse result with diagnostics, but without the semantic tree for brevity.
     print_parse_result(parse_result, include_headers=False, include_tree=False)
-    clang_errors = [
-        diagnostic
-        for diagnostic in parse_result.report.by_stage("clang")
-        if diagnostic.severity in {"error", "fatal"}
-    ]
-    if clang_errors:
-        print("Clang reported parse errors; model build was skipped.", file=sys.stderr)
-        return 1
-
-    return 0
+    return 1 if parse_result.report.has_errors() else 0
 
 
 if __name__ == "__main__":

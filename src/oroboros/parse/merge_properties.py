@@ -371,8 +371,23 @@ def _element_diagnostic_locations(
 ) -> list[SourceLocation]:
     """Return one unique provenance list for diagnostics about one semantic element."""
 
-    location_info = getattr(getattr(element, "cpp", None), "location", None)
+    location_info = _element_diagnostic_location_info(element)
     return _location_info_diagnostic_locations(location_info, cursor=cursor)
+
+
+def _element_diagnostic_location_info(element: CppElement) -> Any:
+    """Return the best available location info for one diagnostic target element."""
+
+    location_info = getattr(getattr(element, "cpp", None), "location", None)
+    if _location_info_has_locations(location_info):
+        return location_info
+
+    declaration = getattr(element, "declaration", None)
+    declaration_location_info = getattr(getattr(declaration, "cpp", None), "location", None)
+    if _location_info_has_locations(declaration_location_info):
+        return declaration_location_info
+
+    return location_info
 
 
 def _location_info_diagnostic_locations(
@@ -394,6 +409,16 @@ def _location_info_diagnostic_locations(
     if cursor_location is not None:
         locations.append(cursor_location)
     return _unique_source_locations(locations)
+
+
+def _location_info_has_locations(location_info: Any) -> bool:
+    """Return whether one location-info object carries any concrete source site."""
+
+    return isinstance(location_info, CppLocationInfo) and any([
+        location_info.primary is not None,
+        location_info.definition is not None,
+        bool(location_info.declarations),
+    ])
 
 
 def _unique_source_locations(locations: list[SourceLocation]) -> list[SourceLocation]:

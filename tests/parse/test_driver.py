@@ -9,7 +9,12 @@ from oroboros.diagnostics import Diagnostic, DiagnosticReport
 from oroboros.headers import HeaderFile, HeaderSelection
 from oroboros.parse import ParserConfig, parse_header_selection
 from oroboros.parse.build_model import BuildResult
-from oroboros.parse.clang_driver import build_clang_arguments, build_synthetic_include_source
+from oroboros.parse.clang_driver import (
+    build_clang_arguments,
+    build_synthetic_include_source,
+    clang_has_failed,
+)
+from oroboros.parse.result import ParseSetupError
 from oroboros.parse.toolchain import (
     _parse_system_include_dirs,
     _resolve_parser_config_toolchain,
@@ -334,3 +339,76 @@ some trailer
         build_module.assert_not_called()
         self.assertEqual(result.report.errors, diagnostics)
         self.assertEqual(result.module.declarations.namespaces, [])
+
+    def test_parse_header_selection_reports_toolchain_setup_failures_as_fatal_diagnostics(self) -> None:
+        with (
+            patch(
+                "oroboros.parse.api.parse_with_clang",
+                side_effect=ParseSetupError(
+                    "compiler was not found",
+                    stage="config",
+                    code="config.toolchain_detection_failed",
+                ),
+            ),
+            patch("oroboros.parse.api.build_module_from_clang") as build_module,
+        ):
+            result = parse_header_selection(
+                HeaderSelection(
+                    header_files=[
+                        HeaderFile(
+                            full_path=Path("/tmp/project/demo.hpp"),
+                            relative_path=Path("demo.hpp"),
+                        )
+                    ]
+                ),
+                ParserConfig(),
+            )
+
+        build_module.assert_not_called()
+        self.assertEqual(len(result.report.fatals), 1)
+        self.assertEqual(result.report.fatals[0].stage, "config")
+        self.assertEqual(result.report.fatals[0].code, "config.toolchain_detection_failed")
+        self.assertIn("compiler was not found", result.report.fatals[0].message)
+        self.assertEqual(result.headers, [Path("/tmp/project/demo.hpp").resolve()])
+
+    def test_parse_header_selection_reports_libclang_setup_failures_as_fatal_diagnostics(self) -> None:
+        with (
+            patch(
+                "oroboros.parse.api.parse_with_clang",
+                side_effect=ParseSetupError(
+                    "libclang Python bindings are not available.",
+                    stage="clang",
+                    code="clang.setup_failed",
+                ),
+            ),
+            patch("oroboros.parse.api.build_module_from_clang") as build_module,
+        ):
+            result = parse_header_selection(
+                HeaderSelection(
+                    header_files=[
+                        HeaderFile(
+                            full_path=Path("/tmp/project/demo.hpp"),
+                            relative_path=Path("demo.hpp"),
+                        )
+                    ]
+                ),
+                ParserConfig(),
+            )
+
+        build_module.assert_not_called()
+        self.assertEqual(len(result.report.fatals), 1)
+        self.assertEqual(result.report.fatals[0].stage, "clang")
+        self.assertEqual(result.report.fatals[0].code, "clang.setup_failed")
+
+    def test_clang_has_failed_accepts_public_and_raw_diagnostics(self) -> None:
+        self.assertTrue(clang_has_failed([
+            Diagnostic(
+                severity="fatal",
+                stage="clang",
+                code="clang.diagnostic",
+                message="fatal",
+            )
+        ]))
+        self.assertTrue(clang_has_failed([SimpleNamespace(severity=3)]))
+        self.assertFalse(clang_has_failed([SimpleNamespace(severity=2)]))
+        self.assertFalse(clang_has_failed(None))

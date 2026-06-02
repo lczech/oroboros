@@ -8,11 +8,12 @@ from typing import Sequence
 from ..diagnostics import DiagnosticReport
 from ..headers import HeaderSelection
 from ..model import CppElement
+from .clang_driver import clang_has_failed, diagnostic_from_parse_setup_error
 from .config import ParserConfig
 from .build_model import build_module_from_clang
 from .clang_driver import parse_with_clang
 from ..model.validation import collect_semantic_diagnostics, collect_tree_diagnostics
-from .result import ParseResult
+from .result import ParseResult, ParseSetupError
 
 
 def parse_header_selection(
@@ -49,9 +50,17 @@ def _parse_active_headers(
     if not normalized_headers:
         return ParseResult(report=report)
 
-    driver_result = parse_with_clang(normalized_headers, config)
+    try:
+        driver_result = parse_with_clang(normalized_headers, config)
+    except ParseSetupError as error:
+        report.add(diagnostic_from_parse_setup_error(error))
+        return ParseResult(
+            report=report,
+            headers=normalized_headers,
+        )
+
     report.extend(driver_result.diagnostics)
-    if any(diagnostic.severity in {"error", "fatal"} for diagnostic in driver_result.diagnostics):
+    if clang_has_failed(driver_result.diagnostics):
         return ParseResult(
             report=report,
             headers=normalized_headers,

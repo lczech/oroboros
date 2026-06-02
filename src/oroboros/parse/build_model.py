@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Sequence
 
 from ..diagnostics import Diagnostic, DiagnosticReport
 from ..model import CppElement, CppModule, NamedCppType, SourceLocation
+from .clang_driver import clang_has_failed
 from .config import ParserConfig
 from .clang_walk import visit_cursor
 from .result import ParserInvariantError
@@ -41,8 +42,6 @@ class BuildContext:
 
     # Internal clang-USR registry for already materialized semantic elements.
     usr_to_element: dict[str, CppElement] = field(default_factory=dict)
-    # Lexical parameter-type fingerprints keyed by USR for callable collision detection.
-    usr_to_callable_signature: dict[str, str] = field(default_factory=dict)
     # Token cache grouped by source file for comment recovery and local syntax recovery.
     file_tokens_by_path: dict[Path, list[CursorTokenInfo]] = field(default_factory=dict)
     # Parsed clang translation unit used for token-based comment recovery.
@@ -97,6 +96,8 @@ def build_module_from_clang(
 ) -> BuildResult:
     """Build one semantic module from a parsed clang translation unit."""
 
+    _raise_if_clang_diagnostics_failed(translation_unit)
+
     module = CppModule(name="module")
     normalized_headers = [header.resolve() for header in headers]
     normalized_known_project_headers = (
@@ -121,6 +122,20 @@ def build_module_from_clang(
     return BuildResult(
         module=module,
         report=context.report.copy(),
+    )
+
+
+def _raise_if_clang_diagnostics_failed(translation_unit: Any) -> None:
+    """Refuse to build from one translation unit that already has clang errors."""
+
+    diagnostics = getattr(translation_unit, "diagnostics", None)
+    if not clang_has_failed(diagnostics):
+        return
+
+    raise ParserInvariantError(
+        "Refusing to build a semantic model from a clang translation unit with "
+        "error or fatal diagnostics. Use `parse_header_selection()` or check the "
+        "clang diagnostics before calling `build_module_from_clang()` directly."
     )
 
 

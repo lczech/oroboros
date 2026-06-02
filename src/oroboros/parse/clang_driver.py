@@ -9,6 +9,7 @@ from typing import Any, Sequence
 from ..diagnostics import Diagnostic
 from ..model import SourceLocation
 from .config import ParserConfig
+from .result import ParseSetupError
 from .toolchain import _resolve_parser_config_toolchain
 
 
@@ -117,9 +118,11 @@ def _load_clang_cindex(config: ParserConfig) -> Any:
     try:
         from clang import cindex
     except ImportError as error:
-        raise RuntimeError(
+        raise ParseSetupError(
             "libclang Python bindings are not available. Install the 'clang' package "
-            "or configure a working Python environment for clang.cindex."
+            "or configure a working Python environment for clang.cindex.",
+            stage="clang",
+            code="clang.setup_failed",
         ) from error
 
     if config.clang_library_file is not None:
@@ -137,6 +140,34 @@ def _collect_diagnostics(diagnostics: Sequence[Any]) -> list[Diagnostic]:
     """Convert libclang diagnostics into small public diagnostic value objects."""
 
     return [_convert_diagnostic(diagnostic) for diagnostic in diagnostics]
+
+
+def clang_has_failed(diagnostics: Sequence[Any] | None) -> bool:
+    """Return whether one clang diagnostic sequence contains blocking errors."""
+
+    if diagnostics is None:
+        return False
+
+    for diagnostic in diagnostics:
+        severity = getattr(diagnostic, "severity", None)
+        if isinstance(severity, str):
+            if severity in {"error", "fatal"}:
+                return True
+            continue
+        if severity in {3, 4}:
+            return True
+    return False
+
+
+def diagnostic_from_parse_setup_error(error: ParseSetupError) -> Diagnostic:
+    """Convert one parse-setup failure into a structured fatal diagnostic."""
+
+    return Diagnostic(
+        severity="fatal",
+        stage=error.stage,
+        code=error.code,
+        message=str(error),
+    )
 
 
 def _convert_diagnostic(diagnostic: Any) -> Diagnostic:

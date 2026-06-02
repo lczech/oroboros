@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 from ..diagnostics import DiagnosticReport
 from ..model import CppModule
@@ -11,6 +12,21 @@ from ..model import CppModule
 
 class ParserInvariantError(RuntimeError):
     """Raise when the parser reaches a state that should be impossible internally."""
+
+
+class ParseSetupError(RuntimeError):
+    """Raise when parser setup fails before clang can produce diagnostics."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        stage: Literal["config", "clang"],
+        code: str,
+    ) -> None:
+        super().__init__(message)
+        self.stage = stage
+        self.code = code
 
 
 @dataclass(slots=True)
