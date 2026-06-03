@@ -476,13 +476,16 @@ def extract_alias_template_declaration_cpp_facet(
     documentation = _resolve_facet_documentation(cursor, context=context)
     target_cursor = cursor_alias_template_target_cursor(cursor)
 
+    body_type = build_cpp_type(
+        cursor_alias_template_target_type(cursor),
+        context=context,
+        source_cursor=target_cursor if target_cursor is not None else cursor,
+        record_observations=False,
+    )
+
     return CppAliasTemplateDeclarationCppFacet(
         original_name=cursor.spelling or None,
-        target=build_cpp_type(
-            cursor_alias_template_target_type(cursor),
-            context=context,
-            source_cursor=target_cursor if target_cursor is not None else cursor,
-        ),
+        target=body_type,
         location=extract_location_info(cursor),
         doc=documentation,
         availability=cursor_availability(cursor),

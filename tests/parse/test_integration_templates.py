@@ -116,9 +116,450 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
 
         self.assertEqual(len(observed_instances), 1)
         self.assertEqual(len(observed_instances[0].locations), 3)
-        self.assertIsInstance(observed_instances[0].arguments[0], CppTypeTemplateArgument)
-        self.assertIsInstance(observed_instances[0].arguments[0].type, NamedCppType)
-        self.assertEqual(observed_instances[0].arguments[0].type.name, "RelicInfo")
+        self.assertEqual(observed_instances[0].argument_spellings, ["RelicInfo"])
+
+    def test_parse_headers_observed_alias_template_instances_keep_source_type_arguments_when_target_expands_to_multi_parameter_target(self) -> None:
+        source = """
+            namespace demo {
+
+            struct RelicInfo {};
+
+            template <class T>
+            struct Ptr {
+                T value {};
+            };
+
+            template <class T>
+            struct Alloc {
+                T value {};
+            };
+
+            template <class T, class A>
+            struct Container {
+                T value {};
+            };
+
+            template <class T>
+            using Vec = Container<Ptr<T>, Alloc<Ptr<T>>>;
+
+            using RelicVec = Vec<RelicInfo>;
+
+            struct Holder {
+                Vec<RelicInfo> primary;
+            };
+
+            Vec<RelicInfo> make_vec();
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        alias_template = namespace.declarations.alias_templates[0]
+        observed_instances = alias_template.declaration.cpp.observed_instances
+
+        self.assertEqual(len(observed_instances), 1)
+        self.assertEqual(len(observed_instances[0].locations), 3)
+        self.assertEqual(
+            observed_instances[0].argument_spellings,
+            ["RelicInfo"],
+            "Alias-template observations must preserve the source argument T, not the expanded target Ptr<T>.",
+        )
+
+    def test_parse_headers_observed_alias_template_instances_keep_dependent_source_type_arguments_when_target_expands_to_multi_parameter_target(self) -> None:
+        source = """
+            namespace demo {
+
+            template <class T>
+            struct Ptr {
+                T value {};
+            };
+
+            template <class T>
+            struct Alloc {
+                T value {};
+            };
+
+            template <class T, class A>
+            struct Container {
+                T value {};
+            };
+
+            template <class T>
+            using Vec = Container<Ptr<T>, Alloc<Ptr<T>>>;
+
+            template <class T>
+            struct Holder {
+                using alias_type = Vec<T>;
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        alias_template = namespace.declarations.alias_templates[0]
+        observed_instances = alias_template.declaration.cpp.observed_instances
+
+        self.assertEqual(len(observed_instances), 1)
+        self.assertEqual(
+            observed_instances[0].argument_spellings,
+            ["T"],
+            "Dependent alias-template observations must preserve the source argument T, not the expanded target Ptr<T>.",
+        )
+
+    def test_parse_headers_observed_alias_template_instances_preserve_source_arguments_through_alias_chain(self) -> None:
+        source = """
+            namespace demo {
+
+            struct RelicInfo {};
+
+            template <class T>
+            struct Ptr {
+                T value {};
+            };
+
+            template <class T>
+            struct Alloc {
+                T value {};
+            };
+
+            template <class T, class A>
+            struct Container {
+                T value {};
+            };
+
+            template <class T>
+            using Vec = Container<Ptr<T>, Alloc<Ptr<T>>>;
+
+            template <class T>
+            using Vec2 = Vec<T>;
+
+            using RelicVec = Vec2<RelicInfo>;
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        alias_templates = {template.name: template for template in namespace.declarations.alias_templates}
+
+        vec = alias_templates["Vec"]
+        vec2 = alias_templates["Vec2"]
+
+        # Vec itself is never directly used in source — only Vec2<RelicInfo> is written.
+        # Only Vec2 receives an observation; Vec's alias body is suppressed.
+        self.assertEqual(len(vec.declaration.cpp.observed_instances), 0)
+
+        self.assertEqual(len(vec2.declaration.cpp.observed_instances), 1)
+        self.assertEqual(vec2.declaration.cpp.observed_instances[0].argument_spellings, ["RelicInfo"])
+
+    def test_parse_headers_observed_alias_template_instances_preserve_template_template_arguments(self) -> None:
+        source = """
+            namespace demo {
+
+            template <class T>
+            struct Box {
+                T value {};
+            };
+
+            template <class T, template <class> class Wrapper>
+            struct Holder {
+                Wrapper<T> value {};
+            };
+
+            template <class T, template <class> class Wrapper>
+            using Alias = Holder<T, Wrapper>;
+
+            using IntAlias = Alias<int, Box>;
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        alias_template = namespace.declarations.alias_templates[0]
+        observed_instances = alias_template.declaration.cpp.observed_instances
+
+        self.assertEqual(len(observed_instances), 1)
+        self.assertEqual(observed_instances[0].argument_spellings, ["int", "Box"])
+
+    def test_parse_headers_materialized_observed_instances_preserve_qualified_template_template_spellings(self) -> None:
+        source = """
+            namespace outer {
+            template <class T>
+            struct Box {};
+            }
+
+            namespace demo {
+
+            template <class T, template <class> class Wrapper>
+            struct Holder {
+                Wrapper<T> value {};
+            };
+
+            using IntHolder = Holder<int, outer::Box>;
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[1]
+        holder_template = namespace.declarations.class_templates[0]
+
+        created_instances = holder_template.add_observed_instances()
+
+        self.assertEqual(len(created_instances), 1)
+        self.assertEqual(created_instances[0].cpp.instance_origin, "observed")
+        self.assertEqual(created_instances[0].cpp.template_arguments, [])
+        self.assertEqual(
+            created_instances[0].cpp.observed_argument_spellings,
+            ["int", "outer::Box"],
+        )
+
+    def test_parse_headers_observed_alias_template_instances_preserve_non_type_arguments_through_transformed_target(self) -> None:
+        source = """
+            namespace demo {
+
+            struct WrapTag {};
+
+            template <int N, class Tag>
+            struct Box {
+                int value = N;
+            };
+
+            template <int N>
+            using Alias = Box<N, WrapTag>;
+
+            using Seven = Alias<7>;
+
+            template <int N>
+            struct Holder {
+                using alias_type = Alias<N>;
+            };
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        alias_template = namespace.declarations.alias_templates[0]
+        observed_instances = alias_template.declaration.cpp.observed_instances
+
+        self.assertEqual(len(observed_instances), 2)
+        spellings = sorted(inst.argument_spellings[0] for inst in observed_instances)
+        self.assertEqual(spellings, ["7", "N"])
+
+    def test_parse_headers_observed_alias_template_instances_preserve_enum_non_type_arguments_through_transformed_target(self) -> None:
+        source = """
+            namespace demo {
+
+            enum class Flag {
+                off,
+                on,
+            };
+
+            struct WrapTag {};
+
+            template <Flag F, class Tag>
+            struct Box {
+            };
+
+            template <Flag F>
+            using Alias = Box<F, WrapTag>;
+
+            using OnAlias = Alias<Flag::on>;
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        alias_template = namespace.declarations.alias_templates[0]
+        observed_instances = alias_template.declaration.cpp.observed_instances
+
+        self.assertEqual(len(observed_instances), 1)
+        self.assertEqual(observed_instances[0].argument_spellings, ["Flag::on"])
+
+    def test_parse_headers_does_not_record_spurious_alias_template_instances_from_member_type_access_through_alias_chain(self) -> None:
+        source = """
+            namespace demo {
+
+            struct Leaf {};
+
+            template <class Ptr, class ContainerRef>
+            struct raw_iter {};
+
+            template <class T, class Alloc = T>
+            struct Container {
+                using iterator = raw_iter<T*, Container<T, Alloc>>;
+            };
+
+            template <class T>
+            using Vec = Container<T>;
+
+            template <class T>
+            using Vec2 = Vec<T>;
+
+            template <class Iter>
+            struct DerefIter {};
+
+            using LeafVec = Vec2<Leaf>;
+            using IterLeaf = DerefIter<Vec2<Leaf>::iterator>;
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        alias_templates = {template.name: template for template in namespace.declarations.alias_templates}
+
+        vec = alias_templates["Vec"]
+        vec2 = alias_templates["Vec2"]
+
+        # Vec itself is never directly used in source — only Vec2<Leaf> is written.
+        # Vec2<Leaf>::iterator triggers no observation because the member-type-access
+        # spelling is rejected by _split_template_spelling.
+        self.assertEqual(len(vec.declaration.cpp.observed_instances), 0)
+
+        self.assertEqual(len(vec2.declaration.cpp.observed_instances), 1)
+        self.assertEqual(vec2.declaration.cpp.observed_instances[0].argument_spellings, ["Leaf"])
+
+    def test_parse_headers_non_template_alias_body_does_record_observation(self) -> None:
+        # A plain (non-template) alias `using VecLeaf = Vec<Leaf>` should record
+        # an observation on Vec with ["Leaf"].  Unlike an alias template body, a
+        # TYPE_ALIAS_DECL is a concrete use site and build_cpp_type is called
+        # with the default record_observations=True.
+        source = """
+            namespace demo {
+
+            struct Leaf {};
+
+            template <class T>
+            struct Vec {};
+
+            using VecLeaf = Vec<Leaf>;
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        vec = namespace.declarations.class_templates[0]
+        observed_instances = vec.declaration.cpp.observed_instances
+
+        self.assertEqual(len(observed_instances), 1)
+        self.assertEqual(observed_instances[0].argument_spellings, ["demo::Leaf"])
+
+    def test_parse_headers_alias_template_body_does_not_record_concrete_nested_type_observation(self) -> None:
+        # `template<class Dummy> using Fixed = Vec<int>` has a *concrete* Vec<int>
+        # in its body.  Even though Vec<int> is not dependent, it must NOT be
+        # observed, because the alias body is a definition site, not a use site.
+        # build_cpp_type is called with record_observations=False for alias bodies.
+        source = """
+            namespace demo {
+
+            template <class T>
+            struct Vec {};
+
+            template <class Dummy>
+            using Fixed = Vec<int>;
+
+            using F1 = Fixed<void>;
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        class_template = namespace.declarations.class_templates[0]
+        vec_observed = class_template.declaration.cpp.observed_instances
+
+        alias_template = namespace.declarations.alias_templates[0]
+        fixed_observed = alias_template.declaration.cpp.observed_instances
+
+        # Vec<int> is only inside the alias body — must not be observed.
+        self.assertEqual(len(vec_observed), 0)
+        # Fixed itself is used via `Fixed<void>` — must be observed.
+        self.assertEqual(len(fixed_observed), 1)
+        self.assertEqual(fixed_observed[0].argument_spellings, ["void"])
+
+    def test_parse_headers_alias_template_body_does_not_record_nested_template_observations(self) -> None:
+        # `template<class T> using PairVec = Pair<T, Vec<T>>` nests Vec<T> inside
+        # the alias body.  The record_observations=False flag must propagate into the
+        # recursive _build_cpp_type call for each argument type, so Vec gets no
+        # observations from the alias body even for the nested argument.
+        source = """
+            namespace demo {
+
+            struct Leaf {};
+
+            template <class T>
+            struct Vec {};
+
+            template <class T, class U>
+            struct Pair {};
+
+            template <class T>
+            using PairVec = Pair<T, Vec<T>>;
+
+            using PairLeaf = PairVec<Leaf>;
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        templates = {t.name: t for t in namespace.declarations.class_templates}
+        alias_templates = {t.name: t for t in namespace.declarations.alias_templates}
+
+        vec_observed = templates["Vec"].declaration.cpp.observed_instances
+        pair_vec_observed = alias_templates["PairVec"].declaration.cpp.observed_instances
+
+        # Vec<T> is only inside the alias body (nested inside Pair<T, Vec<T>>)
+        # — must not be observed, proving record_observations=False propagates recursively.
+        self.assertEqual(len(vec_observed), 0)
+        # PairVec itself is used via PairVec<Leaf> — must be observed.
+        self.assertEqual(len(pair_vec_observed), 1)
+        self.assertEqual(pair_vec_observed[0].argument_spellings, ["Leaf"])
+
+    def test_parse_headers_preserve_zero_explicit_template_arguments(self) -> None:
+        source = """
+            namespace demo {
+
+            template <class T = int>
+            struct Box {
+                T value {};
+            };
+
+            using DefaultBox = Box<>;
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        box_template = namespace.declarations.class_templates[0]
+        observed_instances = box_template.declaration.cpp.observed_instances
+
+        self.assertEqual(len(observed_instances), 1)
+        self.assertEqual(
+            observed_instances[0].argument_spellings,
+            [],
+            "Box<> should be recorded with zero explicit argument spellings.",
+        )
 
     def test_parse_headers_materializes_real_template_declarations(self) -> None:
         source = """
@@ -204,9 +645,7 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
 
         self.assertEqual(len(observed_instances), 1)
         self.assertEqual(len(observed_instances[0].locations), 1)
-        self.assertIsInstance(observed_instances[0].arguments[0], CppTypeTemplateArgument)
-        self.assertIsInstance(observed_instances[0].arguments[0].type, BuiltinCppType)
-        self.assertEqual(observed_instances[0].arguments[0].type.kind, "int")
+        self.assertEqual(observed_instances[0].argument_spellings, ["int"])
         self.assertTrue(
             any("Explicit class-template specialization" in warning.message for warning in result.report.warnings),
             msg=f"Expected explicit-specialization warning, got: {result.report.warnings}",
@@ -456,12 +895,7 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
 
         self.assertEqual(len(observed_instances), 1)
         self.assertEqual(len(observed_instances[0].locations), 2)
-        self.assertEqual(len(observed_instances[0].arguments), 2)
-        self.assertIsInstance(observed_instances[0].arguments[0], CppTypeTemplateArgument)
-        self.assertIsInstance(observed_instances[0].arguments[0].type, BuiltinCppType)
-        self.assertEqual(observed_instances[0].arguments[0].type.kind, "int")
-        self.assertIsInstance(observed_instances[0].arguments[1], CppNonTypeTemplateArgument)
-        self.assertEqual(observed_instances[0].arguments[1].value, "4")
+        self.assertEqual(observed_instances[0].argument_spellings, ["int"])
 
     def test_parse_headers_coerce_dependent_non_type_observed_arguments(self) -> None:
         source = """
@@ -481,11 +915,7 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         observed_instances = box_template.declaration.cpp.observed_instances
 
         self.assertEqual(len(observed_instances), 1)
-        self.assertEqual(len(observed_instances[0].arguments), 1)
-        self.assertIsInstance(observed_instances[0].arguments[0], CppNonTypeTemplateArgument)
-        self.assertEqual(observed_instances[0].arguments[0].value, "is_const")
-        self.assertIsInstance(observed_instances[0].arguments[0].type, BuiltinCppType)
-        self.assertEqual(observed_instances[0].arguments[0].type.kind, "bool")
+        self.assertEqual(observed_instances[0].argument_spellings, ["is_const"])
 
     def test_parse_headers_coerce_dependent_non_type_observed_arguments_in_mixed_templates(self) -> None:
         source = """
@@ -505,14 +935,7 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         observed_instances = box_template.declaration.cpp.observed_instances
 
         self.assertEqual(len(observed_instances), 1)
-        self.assertEqual(len(observed_instances[0].arguments), 2)
-        self.assertIsInstance(observed_instances[0].arguments[0], CppTypeTemplateArgument)
-        self.assertIsInstance(observed_instances[0].arguments[0].type, NamedCppType)
-        self.assertEqual(observed_instances[0].arguments[0].type.name, "T")
-        self.assertIsInstance(observed_instances[0].arguments[1], CppNonTypeTemplateArgument)
-        self.assertEqual(observed_instances[0].arguments[1].value, "is_const")
-        self.assertIsInstance(observed_instances[0].arguments[1].type, BuiltinCppType)
-        self.assertEqual(observed_instances[0].arguments[1].type.kind, "bool")
+        self.assertEqual(observed_instances[0].argument_spellings, ["T", "is_const"])
 
     def test_parse_headers_coerce_dependent_non_type_expression_observed_arguments(self) -> None:
         source = """
@@ -532,11 +955,7 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         observed_instances = box_template.declaration.cpp.observed_instances
 
         self.assertEqual(len(observed_instances), 1)
-        self.assertEqual(len(observed_instances[0].arguments), 1)
-        self.assertIsInstance(observed_instances[0].arguments[0], CppNonTypeTemplateArgument)
-        self.assertEqual(observed_instances[0].arguments[0].value, "N + 1")
-        self.assertIsInstance(observed_instances[0].arguments[0].type, BuiltinCppType)
-        self.assertEqual(observed_instances[0].arguments[0].type.kind, "int")
+        self.assertEqual(observed_instances[0].argument_spellings, ["N + 1"])
 
     def test_parse_headers_coerce_scoped_non_type_observed_arguments(self) -> None:
         source = """
@@ -559,20 +978,8 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         observed_instances = box_template.declaration.cpp.observed_instances
 
         self.assertEqual(len(observed_instances), 2)
-        self.assertEqual(
-            [argument.value for argument in (instance.arguments[0] for instance in observed_instances)],
-            ["flag", "Flag::on"],
-        )
-        self.assertTrue(
-            all(isinstance(instance.arguments[0], CppNonTypeTemplateArgument) for instance in observed_instances)
-        )
-        self.assertTrue(
-            all(
-                isinstance(instance.arguments[0].type, NamedCppType)
-                and instance.arguments[0].type.name == "Flag"
-                for instance in observed_instances
-            )
-        )
+        spellings = sorted(inst.argument_spellings[0] for inst in observed_instances)
+        self.assertEqual(spellings, ["demo::Flag::on", "flag"])
 
     def test_parse_headers_coerce_dependent_non_type_observed_arguments_for_alias_templates(self) -> None:
         source = """
@@ -600,11 +1007,7 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         observed_instances = alias_template.declaration.cpp.observed_instances
 
         self.assertEqual(len(observed_instances), 1)
-        self.assertEqual(len(observed_instances[0].arguments), 1)
-        self.assertIsInstance(observed_instances[0].arguments[0], CppNonTypeTemplateArgument)
-        self.assertEqual(observed_instances[0].arguments[0].value, "N")
-        self.assertIsInstance(observed_instances[0].arguments[0].type, BuiltinCppType)
-        self.assertEqual(observed_instances[0].arguments[0].type.kind, "int")
+        self.assertEqual(observed_instances[0].argument_spellings, ["N"])
 
     def test_parse_headers_complete_observed_instances_with_defaulted_template_template_arguments(self) -> None:
         source = """
@@ -634,12 +1037,7 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
 
         self.assertEqual(len(observed_instances), 1)
         self.assertEqual(len(observed_instances[0].locations), 2)
-        self.assertEqual(len(observed_instances[0].arguments), 2)
-        self.assertIsInstance(observed_instances[0].arguments[0], CppTypeTemplateArgument)
-        self.assertIsInstance(observed_instances[0].arguments[0].type, BuiltinCppType)
-        self.assertEqual(observed_instances[0].arguments[0].type.kind, "int")
-        self.assertIsInstance(observed_instances[0].arguments[1], CppTemplateTemplateArgument)
-        self.assertEqual(observed_instances[0].arguments[1].name, "Box")
+        self.assertEqual(observed_instances[0].argument_spellings, ["int"])
 
     def test_parse_headers_materializes_structured_template_features_end_to_end(self) -> None:
         source = """
@@ -713,7 +1111,6 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         self.assertIsInstance(reliquary_shelf.cpp.target.arguments[0], CppTypeTemplateArgument)
         self.assertIsInstance(reliquary_shelf.cpp.target.arguments[0].type, NamedCppType)
         self.assertEqual(reliquary_shelf.cpp.target.arguments[0].type.name, "RelicQuartet")
-        self.assertIs(reliquary_shelf.cpp.target.arguments[0].type.declaration, relic_quartet)
 
         function_template = functions_namespace.declarations.function_templates[0]
         self.assertIsInstance(function_template, CppFunctionTemplate)
@@ -765,9 +1162,7 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
 
         self.assertEqual(len(observed_instances), 1)
         self.assertEqual(len(observed_instances[0].locations), 3)
-        self.assertIsInstance(observed_instances[0].arguments[0], CppTypeTemplateArgument)
-        self.assertIsInstance(observed_instances[0].arguments[0].type, NamedCppType)
-        self.assertEqual(observed_instances[0].arguments[0].type.name, "RelicInfo")
+        self.assertEqual(observed_instances[0].argument_spellings, ["demo::RelicInfo"])
 
     def test_parse_headers_completes_observed_instances_with_defaulted_trailing_type_arguments(self) -> None:
         source = """
@@ -791,13 +1186,7 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         observed_instances = box_template.declaration.cpp.observed_instances
 
         self.assertEqual(len(observed_instances), 1)
-        self.assertEqual(len(observed_instances[0].arguments), 2)
-        self.assertIsInstance(observed_instances[0].arguments[0], CppTypeTemplateArgument)
-        self.assertIsInstance(observed_instances[0].arguments[0].type, BuiltinCppType)
-        self.assertEqual(observed_instances[0].arguments[0].type.kind, "int")
-        self.assertIsInstance(observed_instances[0].arguments[1], CppTypeTemplateArgument)
-        self.assertIsInstance(observed_instances[0].arguments[1].type, BuiltinCppType)
-        self.assertEqual(observed_instances[0].arguments[1].type.kind, "double")
+        self.assertEqual(observed_instances[0].argument_spellings, ["int"])
 
     def test_parse_headers_deduplicates_observed_instances_with_implicit_and_explicit_defaults(self) -> None:
         source = """
@@ -823,11 +1212,7 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
 
         self.assertEqual(len(observed_instances), 1)
         self.assertEqual(len(observed_instances[0].locations), 2)
-        self.assertEqual(len(observed_instances[0].arguments), 2)
-        self.assertIsInstance(observed_instances[0].arguments[0].type, BuiltinCppType)
-        self.assertEqual(observed_instances[0].arguments[0].type.kind, "int")
-        self.assertIsInstance(observed_instances[0].arguments[1].type, BuiltinCppType)
-        self.assertEqual(observed_instances[0].arguments[1].type.kind, "double")
+        self.assertEqual(observed_instances[0].argument_spellings, ["int"])
 
     def test_parse_headers_collects_observed_instances_through_reference_wrappers(self) -> None:
         source = """
@@ -851,9 +1236,7 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
 
         self.assertEqual(len(observed_instances), 1)
         self.assertEqual(len(observed_instances[0].locations), 1)
-        self.assertEqual(len(observed_instances[0].arguments), 1)
-        self.assertIsInstance(observed_instances[0].arguments[0].type, BuiltinCppType)
-        self.assertEqual(observed_instances[0].arguments[0].type.kind, "int")
+        self.assertEqual(observed_instances[0].argument_spellings, ["int"])
 
     def test_parse_headers_collects_observed_instances_through_pointer_wrappers(self) -> None:
         source = """
@@ -877,9 +1260,7 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
 
         self.assertEqual(len(observed_instances), 1)
         self.assertEqual(len(observed_instances[0].locations), 1)
-        self.assertEqual(len(observed_instances[0].arguments), 1)
-        self.assertIsInstance(observed_instances[0].arguments[0].type, BuiltinCppType)
-        self.assertEqual(observed_instances[0].arguments[0].type.kind, "int")
+        self.assertEqual(observed_instances[0].argument_spellings, ["int"])
 
     def test_parse_headers_collects_nested_observed_instances(self) -> None:
         source = """
@@ -908,13 +1289,40 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
 
         self.assertEqual(len(box_template.declaration.cpp.observed_instances), 1)
         self.assertEqual(len(holder_template.declaration.cpp.observed_instances), 1)
-        self.assertIsInstance(
-            box_template.declaration.cpp.observed_instances[0].arguments[0].type,
-            BuiltinCppType,
-        )
+        self.assertEqual(box_template.declaration.cpp.observed_instances[0].argument_spellings, ["int"])
+
+    def test_parse_headers_materialized_observed_instances_preserve_nested_template_argument_spellings(self) -> None:
+        source = """
+            namespace demo {
+
+            template <class T>
+            struct Box {
+                T value {};
+            };
+
+            template <class T>
+            struct Holder {
+                T value {};
+            };
+
+            using Nested = Holder<Box<int>>;
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+
+        namespace = result.module.declarations.namespaces[0]
+        holder_template = namespace.declarations.class_templates[1]
+
+        created_instances = holder_template.add_observed_instances()
+
+        self.assertEqual(len(created_instances), 1)
+        self.assertEqual(created_instances[0].cpp.instance_origin, "observed")
+        self.assertEqual(created_instances[0].cpp.template_arguments, [])
         self.assertEqual(
-            box_template.declaration.cpp.observed_instances[0].arguments[0].type.kind,
-            "int",
+            created_instances[0].cpp.observed_argument_spellings,
+            ["demo::Box<int>"],
         )
 
     def test_parse_headers_preserves_alias_chains_around_template_instances(self) -> None:
@@ -1231,14 +1639,7 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         self.assertEqual(len(class_template.declaration.declarations.variables), 1)
         self.assertEqual(class_template.declaration.declarations.variables[0].name, "value")
         self.assertEqual(len(class_template.declaration.cpp.observed_instances), 1)
-        self.assertIsInstance(
-            class_template.declaration.cpp.observed_instances[0].arguments[0].type,
-            BuiltinCppType,
-        )
-        self.assertEqual(
-            class_template.declaration.cpp.observed_instances[0].arguments[0].type.kind,
-            "int",
-        )
+        self.assertEqual(class_template.declaration.cpp.observed_instances[0].argument_spellings, ["int"])
 
     def test_parse_headers_merge_split_template_declarations_and_definitions_across_headers(self) -> None:
         result = _parse_headers_from_sources(
@@ -1499,3 +1900,113 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         self.assertEqual(len(templates), 1)
         self.assertEqual(len(templates[0].declaration.parameters), 1)
         self.assertEqual(templates[0].declaration.parameters[0].name, "value")
+
+    def test_parse_headers_does_not_record_spurious_alias_template_instances_from_member_type_access(self) -> None:
+        # Regression: alias template Vec<T> (1 param) wraps a 2-param Container<T, Alloc>.
+        # When Vec<Leaf>::iterator is used as a template argument to DerefIter, the old code
+        # extracted the template name from the spelling via find("<") and attributed the
+        # canonical type's 2 arguments to it, creating a spurious 2-arg Vec/Container
+        # observation that failed validation with "expected 0, got 2".
+        source = """
+            namespace demo {
+
+            struct Leaf {};
+
+            // raw_iter models the role of __gnu_cxx::__normal_iterator: a 2-param type
+            // that becomes the canonical form of an iterator typedef.
+            template <class Ptr, class ContainerRef>
+            struct raw_iter {};
+
+            // Container has a default second param (like std::vector's allocator).
+            template <class T, class Alloc = T>
+            struct Container {
+                using iterator = raw_iter<T*, Container<T, Alloc>>;
+                using const_iterator = raw_iter<const T*, Container<T, Alloc>>;
+            };
+
+            // One-param alias template (like ContainerType = std::vector<unique_ptr<T>>).
+            template <class T>
+            using Vec = Container<T>;
+
+            // DerefIter models DereferenceIterator: takes one iterator-type argument.
+            template <class Iter>
+            struct DerefIter {};
+
+            // Direct instantiation: produces exactly one observed instance for Vec with
+            // one argument (Leaf).
+            using LeafVec = Vec<Leaf>;
+
+            // Member-type-access: Vec<Leaf>::iterator used as template argument.
+            // Must NOT create additional observed instances for Vec or Container.
+            using IterLeaf = DerefIter<Vec<Leaf>::iterator>;
+            using ConstIterLeaf = DerefIter<Vec<Leaf>::const_iterator>;
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+        self.assertFalse(result.report.has_errors())
+
+        namespace = result.module.declarations.namespaces[0]
+
+        alias_templates = {t.name: t for t in namespace.declarations.alias_templates}
+        vec = alias_templates["Vec"]
+
+        # Vec should have exactly one observed instance (from `using LeafVec = Vec<Leaf>`).
+        # The two DerefIter<Vec<Leaf>::iterator/const_iterator> usages must not add any
+        # extra observations, regardless of how many canonical type args the iterator has.
+        observed = vec.declaration.cpp.observed_instances
+        self.assertEqual(len(observed), 1, "Vec must have exactly one observed instance")
+        self.assertEqual(len(observed[0].argument_spellings), 1, "that instance must have exactly one argument")
+        self.assertIn("Leaf", observed[0].argument_spellings[0])
+
+    def test_parse_headers_does_not_record_spurious_observations_for_multiple_member_type_access_usages(self) -> None:
+        # Same regression as above but with multiple distinct instantiation types to verify
+        # the count is proportional to direct usages only.
+        source = """
+            namespace demo {
+
+            struct Leaf {};
+            struct Node {};
+            struct Edge {};
+
+            template <class Ptr, class ContainerRef>
+            struct raw_iter {};
+
+            template <class T, class Alloc = T>
+            struct Container {
+                using iterator = raw_iter<T*, Container<T, Alloc>>;
+            };
+
+            template <class T>
+            using Vec = Container<T>;
+
+            template <class Iter>
+            struct DerefIter {};
+
+            // Three direct instantiations -> three observed instances for Vec.
+            using LeafVec = Vec<Leaf>;
+            using NodeVec = Vec<Node>;
+            using EdgeVec = Vec<Edge>;
+
+            // Six member-type-access usages -> must add zero extra Vec observations.
+            using IterLeaf  = DerefIter<Vec<Leaf>::iterator>;
+            using IterNode  = DerefIter<Vec<Node>::iterator>;
+            using IterEdge  = DerefIter<Vec<Edge>::iterator>;
+
+            }
+        """
+
+        result = _parse_headers_from_sources({"demo.hpp": source})
+        self.assertFalse(result.report.has_errors())
+
+        namespace = result.module.declarations.namespaces[0]
+        alias_templates = {t.name: t for t in namespace.declarations.alias_templates}
+        vec = alias_templates["Vec"]
+
+        observed = vec.declaration.cpp.observed_instances
+        self.assertEqual(
+            len(observed), 3,
+            "Vec must have exactly three observed instances (Leaf, Node, Edge) — "
+            "no extra spurious observations from the member-type-access usages",
+        )

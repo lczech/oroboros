@@ -13,15 +13,16 @@ from .class_ import (
     CppClassPyFacet,
 )
 from .element import CppElement
+from .location import SourceLocation
 from .member import CppConstructorBindFacet, CppMethodBindFacet
 from .template_ import (
     CppObservedTemplateInstance,
     CppTemplateArgument,
     CppTemplateBindFacet,
     CppTemplateParameter,
+    _add_manual_template_instance,
+    _materialize_observed_instances,
     _synchronize_template_name,
-    _template_argument_key,
-    _validate_template_arguments,
 )
 from .variable import CppVariableBindFacet
 
@@ -50,6 +51,14 @@ class CppClassTemplateInstanceCppFacet:
 
     # Concrete template arguments selected for this binding target.
     template_arguments: list[CppTemplateArgument] = dataclass_field(default_factory=list)
+    # Whether this instance came from explicit semantic selection or parser observation.
+    instance_origin: str = "manual"
+    # Exact observed instantiation spelling when this instance was materialized from parser data.
+    observed_instantiation_spelling: str | None = None
+    # Exact observed argument spellings preserved for emission-oriented workflows.
+    observed_argument_spellings: list[str] = dataclass_field(default_factory=list)
+    # Source locations where the observed spelling was seen.
+    observed_locations: list[SourceLocation] = dataclass_field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -159,10 +168,11 @@ class CppClassTemplate(CppElement):
     def add_observed_instances(self) -> list[CppClassTemplateInstance]:
         """Materialize all parser-observed instances attached to this template family."""
 
-        return [
-            add_class_template_instance(self, observed_instance.arguments)
-            for observed_instance in self.declaration.cpp.observed_instances
-        ]
+        return _materialize_observed_instances(
+            self,
+            instance_type=CppClassTemplateInstance,
+            instance_cpp_type=CppClassTemplateInstanceCppFacet,
+        )
 
 
 # ==================================================================================================
@@ -176,37 +186,10 @@ def add_class_template_instance(
 ) -> CppClassTemplateInstance:
     """Create or return one concrete class template instance under a template family."""
 
-    existing_instance = _find_existing_class_template_instance(template, arguments)
-    if existing_instance is not None:
-        return existing_instance
-
-    declaration = template.declaration
-    if declaration is None:
-        raise ValueError("Class template family does not contain a generic declaration.")
-
-    _validate_template_arguments(
-        declaration.cpp.template_parameters,
+    return _add_manual_template_instance(
+        template,
         arguments,
         context=f"class template '{template.name}'",
+        instance_type=CppClassTemplateInstance,
+        instance_cpp_type=CppClassTemplateInstanceCppFacet,
     )
-
-    instance = CppClassTemplateInstance(
-        name=template.name,
-        cpp=CppClassTemplateInstanceCppFacet(
-            template_arguments=list(arguments),
-        ),
-    )
-    return template.add_instance(instance)
-
-
-def _find_existing_class_template_instance(
-    template: CppClassTemplate,
-    arguments: list[CppTemplateArgument],
-) -> CppClassTemplateInstance | None:
-    """Return an existing class instance with the same template arguments, if any."""
-
-    argument_key = _template_argument_key(arguments)
-    for instance in template.instances:
-        if _template_argument_key(instance.cpp.template_arguments) == argument_key:
-            return instance
-    return None

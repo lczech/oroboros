@@ -19,6 +19,7 @@ from clang.cindex import (
 )
 
 from ..model import CppOperator, CppVisibility, SourceLocation
+from .result import ParserInvariantError
 
 
 # ==================================================================================================
@@ -582,36 +583,69 @@ def cursor_operator(cursor: Any) -> CppOperator | None:
 # ==================================================================================================
 
 
-def is_struct_cursor(cursor: Any) -> bool:
-    """Return whether one cursor is specifically a struct declaration."""
-
-    return getattr(cursor, "kind", None) == CursorKind.STRUCT_DECL
-
-
 def is_union_cursor(cursor: Any) -> bool:
     """Return whether one cursor is specifically a union declaration."""
 
     return getattr(cursor, "kind", None) == CursorKind.UNION_DECL
 
 
+def is_struct_cursor(cursor: Any) -> bool:
+    """Return whether one cursor is specifically a struct declaration."""
+
+    return getattr(cursor, "kind", None) == CursorKind.STRUCT_DECL
+
+
+def is_class_cursor(cursor: Any) -> bool:
+    """Return whether one cursor is specifically a class declaration."""
+
+    return getattr(cursor, "kind", None) == CursorKind.CLASS_DECL
+
+
 def cursor_class_kind(cursor: Any) -> str:
     """Return whether one class-like cursor uses `class`, `struct`, or `union` syntax."""
 
-    if is_struct_cursor(cursor):
-        return "struct"
     if is_union_cursor(cursor):
         return "union"
-    if getattr(cursor, "kind", None) == CursorKind.CLASS_DECL:
+    if is_struct_cursor(cursor):
+        return "struct"
+    if is_class_cursor(cursor):
         return "class"
 
-    # Real libclang cursors should normally be enough here, but keep the token
-    # fallback for odd synthetic/test cursors where only the spelled keyword is available.
+    # CLASS_TEMPLATE and CLASS_TEMPLATE_PARTIAL_SPECIALIZATION do not encode the
+    # class/struct/union distinction in their cursor kind — libclang has no direct API
+    # for this. Scan header tokens only (before the opening `{`) to avoid false positives
+    # from inner struct/union members inside the class body.
+    # The same scan also covers synthetic or test cursors where cursor kind is absent.
     token_spellings = cursor_token_spellings(cursor)
-    if "union" in token_spellings:
+    brace_index = token_spellings.index("{") if "{" in token_spellings else len(token_spellings)
+    header_tokens = token_spellings[:brace_index]
+
+    # Skip past the template parameter list so that keywords inside it (e.g. `template<struct T>`)
+    # are not mistaken for the class-kind keyword that follows.
+    keyword_tokens = header_tokens
+    if len(header_tokens) >= 2 and header_tokens[0] == "template" and header_tokens[1] == "<":
+        depth = 0
+        for index, token in enumerate(header_tokens[1:], start=1):
+            if set(token) == {"<"}:
+                depth += len(token)
+            elif set(token) == {">"}:
+                depth -= len(token)
+                if depth <= 0:
+                    keyword_tokens = header_tokens[index + 1 :]
+                    break
+
+    if "union" in keyword_tokens:
         return "union"
-    if "struct" in token_spellings:
+    if "struct" in keyword_tokens:
         return "struct"
-    return "class"
+    if "class" in keyword_tokens:
+        return "class"
+
+    raise ParserInvariantError(
+        "Failed to determine class-like declaration spelling from cursor tokens. "
+        f"cursor kind: {getattr(getattr(cursor, 'kind', None), 'name', '<unknown>')}; "
+        f"tokens: {header_tokens!r}"
+    )
 
 
 def is_base_specifier_cursor(cursor: Any) -> bool:

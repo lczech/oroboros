@@ -266,6 +266,9 @@ _IGNORED_DECLARATION_KINDS = frozenset({
     CursorKind.TEMPLATE_NON_TYPE_PARAMETER,
     CursorKind.TEMPLATE_TEMPLATE_PARAMETER,
     CursorKind.TEMPLATE_TYPE_PARAMETER,
+    # Partial specializations are not separately bindable; the primary template is always
+    # the binding target. The compiler selects the right specialization at each call site.
+    CursorKind.CLASS_TEMPLATE_PARTIAL_SPECIALIZATION,
     # Scope-local `using foo::bar;` re-exports are intentionally unmodeled for now.
     CursorKind.USING_DECLARATION,
     # Namespace aliases/directives affect lookup/spelling, not the bindable surface itself.
@@ -275,6 +278,8 @@ _IGNORED_DECLARATION_KINDS = frozenset({
     CursorKind.STATIC_ASSERT,
     CursorKind.CONCEPT_DECL,
     CursorKind.MODULE_IMPORT_DECL,
+    # Declarations whose kind libclang does not expose through its C API.
+    CursorKind.UNEXPOSED_DECL,
     # Objective-C declarations are out of scope for Oroboros.
     CursorKind.OBJC_CATEGORY_DECL,
     CursorKind.OBJC_CATEGORY_IMPL_DECL,

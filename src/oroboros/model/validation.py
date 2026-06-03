@@ -948,7 +948,7 @@ def _validate_template_family(
     from .class_template import CppClassTemplate
     from .function_template import CppFunctionTemplate
     from .method_template import CppMethodTemplate
-    from .template_ import _validate_template_arguments
+    from .template_ import _observed_instance_count_is_valid, _validate_template_arguments
 
     if not isinstance(element, (CppAliasTemplate, CppClassTemplate, CppFunctionTemplate, CppMethodTemplate)):
         return
@@ -980,32 +980,43 @@ def _validate_template_family(
                 subject=instance,
             )
 
-        try:
-            _validate_template_arguments(
+        if getattr(instance.cpp, "instance_origin", "manual") == "observed":
+            if not _observed_instance_count_is_valid(
                 declaration.cpp.template_parameters,
-                instance.cpp.template_arguments,
-                context=f"{type(element).__name__} '{element.name}' instance {index}",
-            )
-        except ValueError as error:
-            _append_validation_error(
-                errors,
-                f"{path}.instances[{index}]",
-                f"has invalid template arguments: {error}",
-                subject=instance,
-            )
+                list(getattr(instance.cpp, "observed_argument_spellings", [])),
+            ):
+                _append_validation_error(
+                    errors,
+                    f"{path}.instances[{index}]",
+                    "has more observed argument spellings than declared template parameters",
+                    subject=instance,
+                )
+        else:
+            try:
+                _validate_template_arguments(
+                    declaration.cpp.template_parameters,
+                    instance.cpp.template_arguments,
+                    context=f"{type(element).__name__} '{element.name}' instance {index}",
+                )
+            except ValueError as error:
+                _append_validation_error(
+                    errors,
+                    f"{path}.instances[{index}]",
+                    f"has invalid template arguments: {error}",
+                    subject=instance,
+                )
 
     for index, observed_instance in enumerate(declaration.cpp.observed_instances):
-        try:
-            _validate_template_arguments(
-                declaration.cpp.template_parameters,
-                observed_instance.arguments,
-                context=f"{type(element).__name__} '{element.name}' observed instance {index}",
-            )
-        except ValueError as error:
+        if not _observed_instance_count_is_valid(
+            declaration.cpp.template_parameters,
+            observed_instance.argument_spellings,
+        ):
+            n_spellings = len(observed_instance.argument_spellings)
+            n_parameters = len(declaration.cpp.template_parameters)
             _append_validation_error(
                 errors,
                 f"{path}.declaration.cpp.observed_instances[{index}]",
-                f"has invalid template arguments: {error}",
+                f"has {n_spellings} argument spellings but template declares only {n_parameters} parameters",
                 subject=observed_instance,
             )
 
@@ -1423,6 +1434,11 @@ def _validation_subject_locations(subject: Any) -> list[SourceLocation]:
         return _unique_source_locations(subject.locations)
 
     cpp_facet = getattr(subject, "cpp", None)
+    observed_locations = getattr(cpp_facet, "observed_locations", None)
+    if isinstance(observed_locations, list) and observed_locations:
+        return _unique_source_locations(
+            [location for location in observed_locations if isinstance(location, SourceLocation)]
+        )
     location = getattr(cpp_facet, "location", None)
     if isinstance(location, CppLocationInfo):
         return _location_info_locations(location)

@@ -458,9 +458,10 @@ class ModelValidationTest(unittest.TestCase):
         function_template.declaration.cpp.template_parameters.append(
             CppTypeTemplateParameter(name="T")
         )
+        # Observed instance has more spellings than declared parameters → invalid.
         function_template.declaration.cpp.observed_instances.append(
             CppObservedTemplateInstance(
-                arguments=[CppNonTypeTemplateArgument(value="4")],
+                argument_spellings=["int", "double"],
             )
         )
         namespace = make_namespace(name="demo", function_templates=[function_template])
@@ -474,9 +475,10 @@ class ModelValidationTest(unittest.TestCase):
         function_template.declaration.cpp.template_parameters.append(
             CppTypeTemplateParameter(name="T")
         )
+        # Observed instance has more spellings than declared parameters — with locations.
         function_template.declaration.cpp.observed_instances.append(
             CppObservedTemplateInstance(
-                arguments=[CppNonTypeTemplateArgument(value="4")],
+                argument_spellings=["int", "double"],
                 locations=[
                     SourceLocation(file=Path("api/demo.hpp"), line=21, column=9),
                     SourceLocation(file=Path("api/other.hpp"), line=8, column=3),
@@ -492,6 +494,28 @@ class ModelValidationTest(unittest.TestCase):
         message = str(context.exception)
         self.assertIn("api/demo.hpp:21:9", message)
         self.assertIn("api/other.hpp:8:3", message)
+
+    def test_validate_semantics_reports_materialized_observed_instance_locations(self) -> None:
+        function_template = CppFunctionTemplate(name="make_value")
+        function_template.declaration.cpp.template_parameters.append(
+            CppTypeTemplateParameter(name="T")
+        )
+        instance = CppFunctionTemplateInstance(name="make_value")
+        instance.cpp.instance_origin = "observed"
+        instance.cpp.observed_argument_spellings = ["int", "double"]
+        instance.cpp.observed_locations = [
+            SourceLocation(file=Path("api/demo.hpp"), line=31, column=11),
+        ]
+        function_template.add_instance(instance)
+        namespace = make_namespace(name="demo", function_templates=[function_template])
+        module = make_module(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError) as context:
+            module.validate_semantics()
+
+        message = str(context.exception)
+        self.assertIn("api/demo.hpp:31:11", message)
+        self.assertIn("has more observed argument spellings than declared template parameters", message)
 
     def test_validate_semantics_rejects_free_functions_owned_by_class_like_scopes(self) -> None:
         cls = make_class(name="Widget")

@@ -32,7 +32,6 @@ from ..model import (
     CppTemplateArgument,
     CppVariable,
 )
-from ..model.template_ import _template_argument_key
 from ..model.type import TemplateInstanceCppType
 from .extract_cpp_facets import (
     extract_alias_cpp_facet,
@@ -750,7 +749,7 @@ def _handle_explicit_class_template_specialization(
     if template_family is not None:
         _record_observed_class_template_specialization(
             template_family,
-            specialization_type.arguments,
+            specialization_type,
             cursor,
         )
 
@@ -806,28 +805,49 @@ def _find_class_template_family_for_specialization(
 
 def _record_observed_class_template_specialization(
     template: CppClassTemplate,
-    arguments: list[CppTemplateArgument],
+    specialization_type: Any,
     cursor: Any,
 ) -> None:
     """Record one explicit specialization as an observed template instance."""
+    from .types import _split_template_arguments
+
+    argument_spellings = _split_template_arguments(
+        ", ".join(_render_template_argument(arg) for arg in specialization_type.arguments)
+    )
 
     observed_instances = template.declaration.cpp.observed_instances
-    argument_key = _template_argument_key(arguments)
     observation_location = cursor_source_location(cursor)
+    key = tuple(argument_spellings)
+    instantiation_spelling = f"{template.qualified_name}<{', '.join(argument_spellings)}>"
 
     for observed_instance in observed_instances:
-        if _template_argument_key(observed_instance.arguments) != argument_key:
-            continue
-        if observation_location is not None and observation_location not in observed_instance.locations:
-            observed_instance.locations.append(observation_location)
-        return
+        if tuple(observed_instance.argument_spellings) == key:
+            if observed_instance.instantiation_spelling is None:
+                observed_instance.instantiation_spelling = instantiation_spelling
+            if observation_location is not None and observation_location not in observed_instance.locations:
+                observed_instance.locations.append(observation_location)
+            return
 
     observed_instances.append(
         CppObservedTemplateInstance(
-            arguments=list(arguments),
+            instantiation_spelling=instantiation_spelling,
+            argument_spellings=argument_spellings,
             locations=[] if observation_location is None else [observation_location],
         )
     )
+
+
+def _render_template_argument(argument: Any) -> str:
+    """Render one structured template argument back to a spelling string."""
+    from ..model import CppNonTypeTemplateArgument, CppTemplateTemplateArgument, CppTypeTemplateArgument
+
+    if isinstance(argument, CppNonTypeTemplateArgument):
+        return argument.value or ""
+    if isinstance(argument, CppTemplateTemplateArgument):
+        return argument.name or ""
+    if isinstance(argument, CppTypeTemplateArgument) and argument.type is not None:
+        return argument.type.render() if hasattr(argument.type, "render") else str(argument.type)
+    return ""
 
 
 def _should_warn_about_explicit_class_template_specialization(

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 """Translate clang type objects into the semantic C++ type model."""
 
-from copy import deepcopy
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -13,11 +12,7 @@ from ..model import (
     ArrayCppType,
     BuiltinCppType,
     CppNonTypeTemplateArgument,
-    CppNonTypeTemplateParameter,
     CppObservedTemplateInstance,
-    CppTemplateTemplateArgument,
-    CppTemplateTemplateParameter,
-    CppTypeTemplateParameter,
     CppTemplateArgument,
     CppTypeTemplateArgument,
     CppType,
@@ -28,7 +23,6 @@ from ..model import (
     RValueReferenceCppType,
     TemplateInstanceCppType,
 )
-from ..model.template_ import _template_argument_key
 from ..model.type import cpp_builtin_kind_from_spelling
 from .cursor_data import cursor_source_location
 
@@ -46,6 +40,7 @@ def build_cpp_type(
     *,
     context: BuildContext | None = None,
     source_cursor: Any | None = None,
+    record_observations: bool = True,
 ) -> CppType | None:
     """Convert one clang type object into the structured semantic type model."""
 
@@ -57,6 +52,7 @@ def build_cpp_type(
         allow_canonical=True,
         context=context,
         source_cursor=source_cursor,
+        record_observations=record_observations,
     )
 
 
@@ -66,6 +62,7 @@ def _build_cpp_type(
     allow_canonical: bool,
     context: BuildContext | None,
     source_cursor: Any | None,
+    record_observations: bool = True,
 ) -> CppType | None:
     """Recursively convert one clang type while avoiding canonical recursion loops."""
 
@@ -82,6 +79,7 @@ def _build_cpp_type(
                 allow_canonical=allow_canonical,
                 context=context,
                 source_cursor=source_cursor,
+                record_observations=record_observations,
             ),
             is_const=is_const,
         )
@@ -93,6 +91,7 @@ def _build_cpp_type(
                 allow_canonical=allow_canonical,
                 context=context,
                 source_cursor=source_cursor,
+                record_observations=record_observations,
             ),
             is_const=is_const,
         )
@@ -104,6 +103,7 @@ def _build_cpp_type(
                 allow_canonical=allow_canonical,
                 context=context,
                 source_cursor=source_cursor,
+                record_observations=record_observations,
             ),
             is_const=is_const,
         )
@@ -115,6 +115,7 @@ def _build_cpp_type(
                 allow_canonical=allow_canonical,
                 context=context,
                 source_cursor=source_cursor,
+                record_observations=record_observations,
             ),
             extent=_get_array_extent(clang_type),
             is_const=is_const,
@@ -127,6 +128,7 @@ def _build_cpp_type(
                 allow_canonical=allow_canonical,
                 context=context,
                 source_cursor=source_cursor,
+                record_observations=record_observations,
             ),
             parameters=[
                 _build_cpp_type(
@@ -134,6 +136,7 @@ def _build_cpp_type(
                     allow_canonical=allow_canonical,
                     context=context,
                     source_cursor=source_cursor,
+                    record_observations=record_observations,
                 )
                 for parameter_type in _call_optional_method(clang_type, "argument_types", [])
             ],
@@ -145,19 +148,50 @@ def _build_cpp_type(
         _type_spelling(clang_type),
         is_const=is_const,
     )
-    template_instance = _parse_template_instance_spelling(spelling, is_const=is_const)
-    if template_instance is not None:
-        # The current template fallback still parses structure from spelling.
-        # Use any libclang-exposed template-argument types only to enrich that
-        # temporary result with declaration links and canonical nested types.
-        _enrich_fallback_type_from_clang(template_instance, clang_type, context)
-        _record_observed_template_instance(
-            template_instance,
-            clang_type,
-            context,
-            source_cursor=source_cursor,
-        )
-        return template_instance
+    if "<" in spelling:
+        # Record the observation from the clang type spelling directly — independent of
+        # how we build the type object below.  This is the authoritative path: spellings
+        # are always correct through alias chains, dependent contexts, and zero-arg forms.
+        if record_observations:
+            _record_observed_template_instance(clang_type, context, source_cursor=source_cursor)
+        # Build the structured TemplateInstanceCppType from spelling.  Falls through to
+        # NamedCppType for zero-argument spellings such as Box<> (no arguments to split).
+        template_instance = _parse_template_instance_spelling(spelling, is_const=is_const)
+        if template_instance is not None:
+            # Enrich arguments with clang's direct arg types to restore declaration links
+            # and non-type type annotations.  Only applies to class template instantiations
+            # (where libclang exposes direct arg types); alias template instantiations
+            # return 0 direct args and are intentionally left as spelling-built types.
+            direct_argument_types = _template_argument_types(clang_type)
+            for index, direct_type in enumerate(direct_argument_types):
+                if index >= len(template_instance.arguments):
+                    break
+                if direct_type is None or _type_kind_matches(direct_type, TypeKind.INVALID):
+                    continue
+                arg = template_instance.arguments[index]
+                if isinstance(arg, CppTypeTemplateArgument):
+                    enriched = _build_cpp_type(
+                        direct_type,
+                        allow_canonical=allow_canonical,
+                        context=context,
+                        source_cursor=source_cursor,
+                        record_observations=record_observations,
+                    )
+                    if enriched is not None:
+                        template_instance.arguments[index] = CppTypeTemplateArgument(type=enriched)
+                elif isinstance(arg, CppNonTypeTemplateArgument) and arg.type is None:
+                    annotation = _build_cpp_type(
+                        direct_type,
+                        allow_canonical=True,
+                        context=context,
+                        source_cursor=None,
+                        record_observations=record_observations,
+                    )
+                    if annotation is not None:
+                        template_instance.arguments[index] = CppNonTypeTemplateArgument(
+                            value=arg.value, type=annotation
+                        )
+            return template_instance
 
     canonical = None
     if allow_canonical:
@@ -168,6 +202,7 @@ def _build_cpp_type(
                 allow_canonical=False,
                 context=context,
                 source_cursor=None,
+                record_observations=record_observations,
             )
 
     named_type = NamedCppType(
@@ -185,39 +220,8 @@ def _build_cpp_type(
 
 
 # ==================================================================================================
-#     Spelling-Based Fallback Parsing
+#     Spelling-Based Syntax Recovery
 # ==================================================================================================
-
-
-# ------------------------------------------------------------------------------
-#     Template Instance Spellings
-# ------------------------------------------------------------------------------
-
-
-def _parse_template_instance_spelling(
-    spelling: str,
-    *,
-    is_const: bool,
-) -> TemplateInstanceCppType | None:
-    """Parse one simple template-instantiation spelling into a structured type."""
-
-    normalized = spelling.strip()
-    if not normalized.endswith(">") or "<" not in normalized:
-        return None
-
-    base_name, argument_text = _split_template_spelling(normalized)
-    if base_name is None or argument_text is None:
-        return None
-
-    argument_spellings = _split_template_arguments(argument_text)
-    if not argument_spellings:
-        return None
-
-    return TemplateInstanceCppType(
-        template_name=base_name,
-        arguments=[build_template_argument_from_spelling(argument_spelling) for argument_spelling in argument_spellings],
-        is_const=is_const,
-    )
 
 
 def _build_type_from_spelling(spelling: str) -> CppType:
@@ -311,111 +315,30 @@ def _normalize_name_type_spelling(
     return normalized
 
 
-def _enrich_fallback_type_from_clang(
-    cpp_type: CppType | None,
-    clang_type: Any,
-    context: BuildContext | None,
-) -> None:
-    """Attach declaration links and canonical info to one spelling-parsed fallback type."""
-    # This is temporary, before we have more complete clang-based parsing for template instances.
+def _parse_template_instance_spelling(
+    spelling: str,
+    *,
+    is_const: bool,
+) -> TemplateInstanceCppType | None:
+    """Parse one simple template-instantiation spelling into a structured type."""
 
-    if cpp_type is None or clang_type is None:
-        return
+    normalized = spelling.strip()
+    if not normalized.endswith(">") or "<" not in normalized:
+        return None
 
-    if isinstance(cpp_type, NamedCppType):
-        if context is not None:
-            _record_named_type_declaration_link(cpp_type, clang_type, context)
-        if cpp_type.canonical is None:
-            canonical_type = _call_optional_method(clang_type, "get_canonical")
-            if canonical_type is not None and not _same_type_identity(clang_type, canonical_type):
-                cpp_type.canonical = _build_cpp_type(
-                    canonical_type,
-                    allow_canonical=False,
-                    context=context,
-                    source_cursor=None,
-                )
-        return
+    base_name, argument_text = _split_template_spelling(normalized)
+    if base_name is None or argument_text is None:
+        return None
 
-    if isinstance(cpp_type, PointerCppType):
-        _enrich_fallback_type_from_clang(
-            cpp_type.pointee,
-            _call_optional_method(clang_type, "get_pointee"),
-            context,
-        )
-        return
+    argument_spellings = _split_template_arguments(argument_text)
+    if not argument_spellings:
+        return None
 
-    if isinstance(cpp_type, LValueReferenceCppType | RValueReferenceCppType):
-        _enrich_fallback_type_from_clang(
-            cpp_type.referred,
-            _call_optional_method(clang_type, "get_pointee"),
-            context,
-        )
-        return
-
-    if isinstance(cpp_type, ArrayCppType):
-        _enrich_fallback_type_from_clang(
-            cpp_type.element_type,
-            _call_optional_method(clang_type, "get_array_element_type"),
-            context,
-        )
-        return
-
-    if isinstance(cpp_type, FunctionCppType):
-        _enrich_fallback_type_from_clang(
-            cpp_type.return_type,
-            _call_optional_method(clang_type, "get_result"),
-            context,
-        )
-        argument_types = list(_call_optional_method(clang_type, "argument_types", []))
-        if len(argument_types) != len(cpp_type.parameters):
-            return
-        for parameter_type, argument_type in zip(
-            cpp_type.parameters,
-            argument_types,
-            strict=True,
-        ):
-            _enrich_fallback_type_from_clang(parameter_type, argument_type, context)
-        return
-
-    if isinstance(cpp_type, TemplateInstanceCppType):
-        template_argument_types = _template_argument_types(clang_type)
-        if len(template_argument_types) != len(cpp_type.arguments):
-            return
-        for argument, template_argument_type in zip(
-            cpp_type.arguments,
-            template_argument_types,
-            strict=True,
-        ):
-            _enrich_fallback_template_argument_from_clang(argument, template_argument_type, context)
-
-
-def _enrich_fallback_template_argument_from_clang(
-    argument: CppTemplateArgument,
-    clang_type: Any,
-    context: BuildContext | None,
-) -> None:
-    """Attach clang-exposed semantic detail to one spelling-parsed template argument."""
-
-    if isinstance(argument, CppTypeTemplateArgument):
-        _enrich_fallback_type_from_clang(argument.type, clang_type, context)
-        return
-
-    if isinstance(argument, CppNonTypeTemplateArgument):
-        cpp_type = _build_cpp_type(
-            clang_type,
-            allow_canonical=True,
-            context=context,
-            source_cursor=None,
-        )
-        if isinstance(cpp_type, NamedCppType) and not cpp_type.name and cpp_type.declaration is None and cpp_type.canonical is None:
-            argument.type = None
-            return
-        argument.type = cpp_type
-
-
-# ------------------------------------------------------------------------------
-#     Template Spelling Splitting
-# ------------------------------------------------------------------------------
+    return TemplateInstanceCppType(
+        template_name=base_name,
+        arguments=[build_template_argument_from_spelling(s) for s in argument_spellings],
+        is_const=is_const,
+    )
 
 
 def _split_template_spelling(spelling: str) -> tuple[str | None, str | None]:
@@ -458,7 +381,6 @@ def _split_template_arguments(argument_text: str) -> list[str]:
                 arguments.append(argument)
             current = []
             continue
-
         current.append(character)
 
     tail = "".join(current).strip()
@@ -540,6 +462,8 @@ _FLOAT_LITERAL_RE = re.compile(
 
 _CHAR_LITERAL_RE = re.compile(r"(?:u8|u|U|L)?'(?:\\.|[^'\\])+'")
 _STRING_LITERAL_RE = re.compile(r'(?:u8|u|U|L)?\"(?:\\.|[^\"\\])*\"')
+
+
 
 
 # ==================================================================================================
@@ -719,65 +643,48 @@ def _record_inactive_project_type_reference_warning(
 
 
 def _record_observed_template_instance(
-    cpp_type: TemplateInstanceCppType,
     clang_type: Any,
     context: BuildContext | None,
     *,
     source_cursor: Any | None,
 ) -> None:
-    """Attach one declaration-surface template instance observation to a parsed family."""
+    """Record one template instantiation observation and recurse into argument types."""
 
     if context is None:
         return
 
-    _record_one_observed_template_instance(
-        cpp_type,
-        clang_type,
-        context,
-        source_cursor=source_cursor,
-    )
+    _record_one_observed_template_instance(clang_type, context, source_cursor=source_cursor)
 
-    template_argument_types = _template_argument_types_with_canonical_fallback(clang_type)
-    if len(template_argument_types) != len(cpp_type.arguments):
-        return
-
-    for argument, template_argument_type in zip(
-        cpp_type.arguments,
-        template_argument_types,
-        strict=True,
-    ):
-        if not isinstance(argument, CppTypeTemplateArgument) or argument.type is None:
-            continue
-        _record_observed_template_instances_in_type(
-            argument.type,
-            template_argument_type,
-            context,
-            source_cursor=source_cursor,
-        )
+    # Recurse into direct argument types so that nested template instantiations
+    # (e.g. Vec<Leaf> inside Container<Vec<Leaf>>) are also observed.
+    for arg_type in _template_argument_types(clang_type):
+        _record_observed_template_instances_in_clang_type(arg_type, context, source_cursor=source_cursor)
 
 
 def _record_one_observed_template_instance(
-    cpp_type: TemplateInstanceCppType,
     clang_type: Any,
     context: BuildContext,
     *,
     source_cursor: Any | None,
 ) -> None:
-    """Record one concrete template instance at the current type node only."""
+    """Append one spelling-keyed observation to the matching template family."""
 
+    spelling = _type_spelling(clang_type)
+    template_name, argument_text = _split_template_spelling(spelling)
+    if template_name is None:
+        return
+
+    # Resolve the template cursor: prefer clang's specialized_template, fall back to a
+    # TEMPLATE_REF child of the source cursor (needed for alias template instantiations
+    # where specialized_template is absent or points to the wrong family).
     template_cursor = _specialized_template_cursor(clang_type)
-    source_template_cursor = _template_cursor_from_source_reference(
-        cpp_type,
-        source_cursor=source_cursor,
-    )
-    if (
-        source_template_cursor is not None
-        and (
-            template_cursor is None
-            or not _template_cursor_matches_spelled_name(template_cursor, cpp_type)
-        )
+    if source_cursor is not None and (
+        template_cursor is None
+        or not _cursor_terminal_name_matches(template_cursor, template_name)
     ):
-        template_cursor = source_template_cursor
+        source_template_cursor = _find_template_ref_cursor(template_name, source_cursor)
+        if source_template_cursor is not None:
+            template_cursor = source_template_cursor
     if template_cursor is None:
         return
 
@@ -791,29 +698,77 @@ def _record_one_observed_template_instance(
     if declaration is None or not hasattr(declaration, "cpp"):
         return
 
-    observed_instances = declaration.cpp.observed_instances
-    complete_arguments = _complete_observed_template_arguments_from_clang(
-        cpp_type.arguments,
-        clang_type,
-        declaration.cpp.template_parameters,
-        context,
-    )
-    argument_key = _template_argument_key(complete_arguments)
+    argument_spellings = _split_template_arguments(argument_text) if argument_text is not None else []
     observation_location = cursor_source_location(source_cursor) if source_cursor is not None else None
 
-    for observed_instance in observed_instances:
-        if _template_argument_key(observed_instance.arguments) != argument_key:
-            continue
-        if observation_location is not None and observation_location not in observed_instance.locations:
-            observed_instance.locations.append(observation_location)
-        return
+    # Build dedup key from the canonical type so that Box<int> and Box<int, double>
+    # (where double is the default) collapse to one observation.  Only use canonical
+    # args when the canonical type refers to the same template family; otherwise (alias
+    # expansion would change the family name) fall back to source argument spellings.
+    dedup_key = _canonical_dedup_key(clang_type, template_name, argument_spellings)
+
+    observed_instances = declaration.cpp.observed_instances
+    for inst in observed_instances:
+        if tuple(inst.argument_spellings) == dedup_key:
+            if inst.instantiation_spelling is None:
+                inst.instantiation_spelling = spelling
+            if observation_location is not None and observation_location not in inst.locations:
+                inst.locations.append(observation_location)
+            return
 
     observed_instances.append(
         CppObservedTemplateInstance(
-            arguments=deepcopy(complete_arguments),
+            instantiation_spelling=spelling,
+            argument_spellings=list(dedup_key),
             locations=[] if observation_location is None else [observation_location],
         )
     )
+
+
+def _record_observed_template_instances_in_clang_type(
+    clang_type: Any,
+    context: BuildContext,
+    *,
+    source_cursor: Any | None,
+) -> None:
+    """Walk one clang type to record any nested template instantiation observations."""
+
+    if clang_type is None:
+        return
+
+    spelling = _type_spelling(clang_type)
+    if "<" in spelling:
+        _record_observed_template_instance(clang_type, context, source_cursor=source_cursor)
+        return
+
+    kind = getattr(clang_type, "kind", None)
+
+    if kind in {TypeKind.POINTER, TypeKind.LVALUEREFERENCE, TypeKind.RVALUEREFERENCE}:
+        _record_observed_template_instances_in_clang_type(
+            _call_optional_method(clang_type, "get_pointee"),
+            context,
+            source_cursor=source_cursor,
+        )
+        return
+
+    if kind in _ARRAY_KINDS:
+        _record_observed_template_instances_in_clang_type(
+            _call_optional_method(clang_type, "get_array_element_type"),
+            context,
+            source_cursor=source_cursor,
+        )
+        return
+
+    if kind in _FUNCTION_KINDS:
+        _record_observed_template_instances_in_clang_type(
+            _call_optional_method(clang_type, "get_result"),
+            context,
+            source_cursor=source_cursor,
+        )
+        for arg_type in _call_optional_method(clang_type, "argument_types", []):
+            _record_observed_template_instances_in_clang_type(
+                arg_type, context, source_cursor=source_cursor
+            )
 
 
 # ==================================================================================================
@@ -821,21 +776,14 @@ def _record_one_observed_template_instance(
 # ==================================================================================================
 
 
-def _template_cursor_from_source_reference(
-    cpp_type: TemplateInstanceCppType,
-    *,
-    source_cursor: Any | None,
-) -> Any | None:
-    """Recover one template cursor from declaration-surface `TEMPLATE_REF` children."""
+def _find_template_ref_cursor(template_name: str, source_cursor: Any) -> Any | None:
+    """Return a TEMPLATE_REF child of source_cursor matching the terminal template name."""
 
-    if source_cursor is None:
-        return None
-
-    template_terminal_name = cpp_type.template_name.split("::")[-1].strip()
+    terminal_name = template_name.split("::")[-1].strip()
     for child_cursor in _call_optional_method(source_cursor, "get_children", []):
         if getattr(child_cursor, "kind", None) != CursorKind.TEMPLATE_REF:
             continue
-        if child_cursor.spelling != template_terminal_name:
+        if child_cursor.spelling != terminal_name:
             continue
         referenced_cursor = getattr(child_cursor, "referenced", None)
         if getattr(referenced_cursor, "kind", None) in {
@@ -847,324 +795,43 @@ def _template_cursor_from_source_reference(
     return None
 
 
-def _template_cursor_matches_spelled_name(
-    template_cursor: Any,
-    cpp_type: TemplateInstanceCppType,
-) -> bool:
-    """Return whether one template cursor matches the source-spelled template name."""
+def _cursor_terminal_name_matches(cursor: Any, template_name: str) -> bool:
+    """Return whether one cursor's spelling matches the terminal component of a template name."""
 
-    cursor_name = getattr(template_cursor, "spelling", "").strip()
-    type_terminal_name = cpp_type.template_name.split("::")[-1].strip()
-    return bool(cursor_name) and cursor_name == type_terminal_name
+    cursor_name = getattr(cursor, "spelling", "").strip()
+    terminal_name = template_name.split("::")[-1].strip()
+    return bool(cursor_name) and cursor_name == terminal_name
 
 
-def _record_observed_template_instances_in_type(
-    cpp_type: CppType | None,
+def _canonical_dedup_key(
     clang_type: Any,
-    context: BuildContext,
-    *,
-    source_cursor: Any | None,
-) -> None:
-    """Record nested template-instance observations reachable through one type node."""
+    template_name: str,
+    source_spellings: list[str],
+) -> tuple[str, ...]:
+    """Return the canonical argument spellings for dedup across defaulted-arg variants.
 
-    if cpp_type is None or clang_type is None:
-        return
-
-    if isinstance(cpp_type, TemplateInstanceCppType):
-        _record_observed_template_instance(
-            cpp_type,
-            clang_type,
-            context,
-            source_cursor=source_cursor,
-        )
-        return
-
-    if isinstance(cpp_type, PointerCppType):
-        _record_observed_template_instances_in_type(
-            cpp_type.pointee,
-            _call_optional_method(clang_type, "get_pointee"),
-            context,
-            source_cursor=source_cursor,
-        )
-        return
-
-    if isinstance(cpp_type, LValueReferenceCppType | RValueReferenceCppType):
-        _record_observed_template_instances_in_type(
-            cpp_type.referred,
-            _call_optional_method(clang_type, "get_pointee"),
-            context,
-            source_cursor=source_cursor,
-        )
-        return
-
-    if isinstance(cpp_type, ArrayCppType):
-        _record_observed_template_instances_in_type(
-            cpp_type.element_type,
-            _call_optional_method(clang_type, "get_array_element_type"),
-            context,
-            source_cursor=source_cursor,
-        )
-        return
-
-    if isinstance(cpp_type, FunctionCppType):
-        _record_observed_template_instances_in_type(
-            cpp_type.return_type,
-            _call_optional_method(clang_type, "get_result"),
-            context,
-            source_cursor=source_cursor,
-        )
-        argument_types = list(_call_optional_method(clang_type, "argument_types", []))
-        if len(argument_types) != len(cpp_type.parameters):
-            return
-        for parameter_type, argument_type in zip(
-            cpp_type.parameters,
-            argument_types,
-            strict=True,
-        ):
-            _record_observed_template_instances_in_type(
-                parameter_type,
-                argument_type,
-                context,
-                source_cursor=source_cursor,
-            )
-
-
-def _complete_observed_template_arguments_from_clang(
-    arguments: list[CppTemplateArgument],
-    clang_type: Any,
-    parameters: list[Any],
-    context: BuildContext | None,
-) -> list[CppTemplateArgument]:
-    """Fill trailing observed arguments from clang when source spelling omits defaults."""
-
-    complete_arguments = [
-        _coerce_observed_template_argument_to_parameter_kind(
-            argument, parameters[index] if index < len(parameters) else None
-        )
-        for index, argument in enumerate(arguments)
-    ]
-    clang_argument_infos = _template_argument_infos_with_canonical_fallback(clang_type)
-    clang_missing_count = len(clang_argument_infos) - len(complete_arguments)
-    if clang_missing_count > 0:
-        missing_parameters = parameters[
-            len(complete_arguments) : len(complete_arguments) + clang_missing_count
-        ]
-        if len(missing_parameters) == clang_missing_count:
-            clang_additions: list[CppTemplateArgument] = []
-            for parameter, clang_argument_info in zip(
-                missing_parameters,
-                clang_argument_infos[len(complete_arguments) :],
-                strict=True,
-            ):
-                missing_argument = _build_missing_observed_template_argument(
-                    parameter,
-                    clang_argument_info,
-                    context=context,
-                )
-                if missing_argument is None:
-                    break
-                clang_additions.append(missing_argument)
-            else:
-                complete_arguments.extend(clang_additions)
-
-    for parameter in parameters[len(complete_arguments):]:
-        default_argument = getattr(parameter, "default", None)
-        if default_argument is None:
-            break
-        complete_arguments.append(deepcopy(default_argument))
-
-    return complete_arguments
-
-
-def _coerce_observed_template_argument_to_parameter_kind(
-    argument: CppTemplateArgument,
-    parameter: Any,
-) -> CppTemplateArgument:
-    """Coerce one parsed observed argument into the declared parameter kind when safe."""
-
-    if (
-        isinstance(parameter, CppNonTypeTemplateParameter)
-        and isinstance(argument, CppTypeTemplateArgument)
-        and isinstance(argument.type, NamedCppType)
-        and bool(argument.type.name)
-    ):
-        return CppNonTypeTemplateArgument(
-            value=argument.type.name,
-            type=deepcopy(parameter.type),
-        )
-
-    if (
-        isinstance(parameter, CppTemplateTemplateParameter)
-        and isinstance(argument, CppTypeTemplateArgument)
-        and isinstance(argument.type, NamedCppType)
-    ):
-        return CppTemplateTemplateArgument(
-            name=argument.type.name,
-            parameters=deepcopy(parameter.parameters),
-        )
-
-    return argument
-
-
-def _template_argument_types_with_canonical_fallback(clang_type: Any) -> list[Any]:
-    """Return clang template argument types, falling back to the canonical type if needed."""
-
-    argument_types = _template_argument_types(clang_type)
-    canonical_type = _call_optional_method(clang_type, "get_canonical")
-    if canonical_type is None or _same_type_identity(clang_type, canonical_type):
-        return argument_types
-
-    canonical_argument_types = _template_argument_types(canonical_type)
-    if len(canonical_argument_types) > len(argument_types):
-        return canonical_argument_types
-
-    return argument_types
-
-
-def _template_argument_infos_with_canonical_fallback(
-    clang_type: Any,
-) -> list[dict[str, Any]]:
-    """Return specialization cursor template-argument info, with canonical fallback."""
-
-    argument_infos = _template_argument_infos(clang_type)
-    canonical_type = _call_optional_method(clang_type, "get_canonical")
-    if canonical_type is None or _same_type_identity(clang_type, canonical_type):
-        return argument_infos
-
-    canonical_argument_infos = _template_argument_infos(canonical_type)
-    if len(canonical_argument_infos) > len(argument_infos):
-        return canonical_argument_infos
-    return argument_infos
-
-
-def _template_argument_infos(clang_type: Any) -> list[dict[str, Any]]:
-    """Return one concrete specialization cursor's template-argument metadata."""
-
-    declaration_cursor = _call_optional_method(clang_type, "get_declaration")
-    if declaration_cursor is None:
-        return []
-
-    get_num_template_arguments = getattr(declaration_cursor, "get_num_template_arguments", None)
-    if not callable(get_num_template_arguments):
-        return []
-
-    argument_count = get_num_template_arguments()
-    if not isinstance(argument_count, int) or argument_count <= 0:
-        return []
-
-    return [
-        {
-            "kind": _template_argument_kind_name(declaration_cursor, index),
-            "type": _template_argument_type_or_none(declaration_cursor, index),
-            "signed_value": _template_argument_signed_value_or_none(declaration_cursor, index),
-            "unsigned_value": _template_argument_unsigned_value_or_none(declaration_cursor, index),
-        }
-        for index in range(argument_count)
-    ]
-
-
-def _build_missing_observed_template_argument(
-    parameter: Any,
-    clang_argument_info: dict[str, Any],
-    *,
-    context: BuildContext | None,
-) -> CppTemplateArgument | None:
-    """Build one missing observed argument from clang according to the parameter kind."""
-
-    if isinstance(parameter, CppTypeTemplateParameter):
-        clang_argument_type = clang_argument_info.get("type")
-        if clang_argument_type is None:
-            return None
-        return CppTypeTemplateArgument(
-            type=_build_cpp_type(
-                clang_argument_type,
-                allow_canonical=True,
-                context=context,
-                source_cursor=None,
-            )
-        )
-
-    if isinstance(parameter, CppNonTypeTemplateParameter):
-        rendered_value = _render_non_type_template_argument_value(parameter, clang_argument_info)
-        if rendered_value is None:
-            return None
-        return CppNonTypeTemplateArgument(
-            value=rendered_value,
-            type=deepcopy(parameter.type),
-        )
-
-    if isinstance(parameter, CppTemplateTemplateParameter):
-        clang_argument_type = clang_argument_info.get("type")
-        built_type = _build_cpp_type(
-            clang_argument_type,
-            allow_canonical=True,
-            context=context,
-            source_cursor=None,
-        ) if clang_argument_type is not None else None
-        if isinstance(built_type, NamedCppType) and built_type.name:
-            return CppTemplateTemplateArgument(
-                name=built_type.name,
-                parameters=deepcopy(parameter.parameters),
-            )
-        return None
-
-    return None
-
-
-def _render_non_type_template_argument_value(
-    parameter: CppNonTypeTemplateParameter,
-    clang_argument_info: dict[str, Any],
-) -> str | None:
-    """Render one non-type template argument value from clang cursor metadata."""
-
-    signed_value = clang_argument_info.get("signed_value")
-    unsigned_value = clang_argument_info.get("unsigned_value")
-    numeric_value = signed_value if signed_value is not None else unsigned_value
-    if numeric_value is None:
-        return None
-
-    parameter_type = getattr(parameter, "type", None)
-    parameter_kind = getattr(parameter_type, "kind", None)
-    if parameter_kind == "bool":
-        return "true" if bool(numeric_value) else "false"
-    return str(numeric_value)
-
-
-def _template_argument_kind_name(cursor: Any, index: int) -> str | None:
-    """Return one specialization cursor template-argument kind name when available."""
-
-    get_kind = getattr(cursor, "get_template_argument_kind", None)
-    if not callable(get_kind):
-        return None
-    kind = get_kind(index)
-    return getattr(kind, "name", str(kind)) if kind is not None else None
-
-
-def _template_argument_type_or_none(cursor: Any, index: int) -> Any | None:
-    """Return one specialization cursor template-argument type when available."""
-
-    get_type = getattr(cursor, "get_template_argument_type", None)
-    if not callable(get_type):
-        return None
-    return get_type(index)
-
-
-def _template_argument_signed_value_or_none(cursor: Any, index: int) -> int | None:
-    """Return one specialization cursor signed template-argument value when available."""
-
-    get_value = getattr(cursor, "get_template_argument_value", None)
-    if not callable(get_value):
-        return None
-    return get_value(index)
-
-
-def _template_argument_unsigned_value_or_none(cursor: Any, index: int) -> int | None:
-    """Return one specialization cursor unsigned template-argument value when available."""
-
-    get_value = getattr(cursor, "get_template_argument_unsigned_value", None)
-    if not callable(get_value):
-        return None
-    return get_value(index)
+    Box<int> and Box<int, double> (default U=double) canonicalize to the same spelling
+    'Box<int, double>', so they share one observation entry.  For alias template
+    instantiations the canonical type has a different family name (alias expansion), so
+    we fall back to the source spellings to avoid cross-family collisions.
+    """
+    canonical = _call_optional_method(clang_type, "get_canonical")
+    if canonical is None or _same_type_identity(clang_type, canonical):
+        return tuple(source_spellings)
+    canonical_spelling = _type_spelling(canonical)
+    canonical_name, canonical_arg_text = _split_template_spelling(canonical_spelling)
+    if canonical_name is None:
+        return tuple(source_spellings)
+    # Use canonical args only when the canonical type still belongs to the same family.
+    if canonical_name.split("::")[-1] != template_name.split("::")[-1]:
+        return tuple(source_spellings)
+    canonical_args = _split_template_arguments(canonical_arg_text) if canonical_arg_text is not None else []
+    # Do not use canonical args when they contain libclang's internal parameter-name
+    # substitutions (e.g. "value-parameter-0-0") — these would erase the user's own
+    # parameter names (e.g. "N", "is_const") that tests and users expect to see.
+    if any("parameter-" in s for s in canonical_args):
+        return tuple(source_spellings)
+    return tuple(canonical_args)
 
 
 def _specialized_template_cursor(clang_type: Any) -> Any | None:

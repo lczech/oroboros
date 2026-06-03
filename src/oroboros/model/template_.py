@@ -118,8 +118,13 @@ class CppTemplateTemplateArgument(CppTemplateArgument):
 class CppObservedTemplateInstance:
     """Store one concrete template instantiation observed in parsed C++ code."""
 
-    # Concrete template arguments observed at one use site.
-    arguments: list[CppTemplateArgument] = dataclass_field(default_factory=list)
+    # Verbatim full instantiation spelling at one use site when recorded by the parser,
+    # e.g. "demo::Vec<int>". Optional because some observation paths only preserve args.
+    instantiation_spelling: str | None = None
+    # Verbatim type spellings of the arguments as libclang reported them at the use site,
+    # e.g. ["demo::Leaf", "42", "demo::WrapTag"]. Empty list for zero-explicit-argument
+    # instantiations such as Box<>. These spellings are the canonical parser-side truth.
+    argument_spellings: list[str] = dataclass_field(default_factory=list)
     # Source locations where this concrete argument list was observed.
     locations: list[SourceLocation] = dataclass_field(default_factory=list)
 
@@ -358,6 +363,225 @@ def _template_parameter_shape_key(parameter: CppTemplateParameter) -> tuple[obje
 
 
 # ==================================================================================================
+#     Observed Instance Helpers
+# ==================================================================================================
+
+
+def _render_template_argument_spelling(argument: CppTemplateArgument) -> str:
+    """Render one semantic template argument back to a C++-like spelling."""
+
+    if isinstance(argument, CppTypeTemplateArgument):
+        return argument.type.render() if argument.type is not None else ""
+
+    if isinstance(argument, CppNonTypeTemplateArgument):
+        return argument.value
+
+    if isinstance(argument, CppTemplateTemplateArgument):
+        return argument.name
+
+    raise TypeError(f"Unsupported template argument for rendering: {type(argument)!r}")
+
+
+def _render_template_argument_spellings(arguments: list[CppTemplateArgument]) -> list[str]:
+    """Render one concrete semantic argument list back to spelling fragments."""
+
+    return [_render_template_argument_spelling(argument) for argument in arguments]
+
+
+def _observed_instance_key(observed_instance: CppObservedTemplateInstance) -> tuple[str, ...]:
+    """Return one stable identity key for one parser-observed instantiation."""
+
+    return tuple(observed_instance.argument_spellings)
+
+
+def _instance_observation_key(instance: CppElement) -> tuple[str, ...]:
+    """Return one spelling key for one materialized template instance."""
+
+    instance_cpp = getattr(instance, "cpp", None)
+    observed_spellings = getattr(instance_cpp, "observed_argument_spellings", None)
+    if observed_spellings is not None and (
+        observed_spellings or getattr(instance_cpp, "instance_origin", None) == "observed"
+    ):
+        return tuple(observed_spellings)
+    return tuple(
+        _render_template_argument_spellings(getattr(instance_cpp, "template_arguments", []))
+    )
+
+
+def _merge_observed_instance_metadata(
+    instance_cpp: object,
+    observed_instance: CppObservedTemplateInstance,
+    *,
+    mark_origin_observed: bool,
+) -> None:
+    """Attach parser-observed spelling data to one materialized instance facet."""
+
+    current_origin = getattr(instance_cpp, "instance_origin", "manual")
+    if mark_origin_observed:
+        setattr(instance_cpp, "instance_origin", "observed")
+    elif current_origin not in {"manual", "observed"}:
+        setattr(instance_cpp, "instance_origin", "manual")
+
+    current_spelling = getattr(instance_cpp, "observed_instantiation_spelling", None)
+    if current_spelling is None and observed_instance.instantiation_spelling:
+        setattr(instance_cpp, "observed_instantiation_spelling", observed_instance.instantiation_spelling)
+
+    current_argument_spellings = list(getattr(instance_cpp, "observed_argument_spellings", []))
+    if not current_argument_spellings:
+        setattr(instance_cpp, "observed_argument_spellings", list(observed_instance.argument_spellings))
+
+    current_locations = list(getattr(instance_cpp, "observed_locations", []))
+    for location in observed_instance.locations:
+        if location not in current_locations:
+            current_locations.append(location)
+    setattr(instance_cpp, "observed_locations", current_locations)
+
+
+def _find_existing_materialized_observed_instance(
+    instances: list[CppElement],
+    observed_instance: CppObservedTemplateInstance,
+) -> CppElement | None:
+    """Return an already-materialized instance matching one observation key."""
+
+    observed_key = _observed_instance_key(observed_instance)
+    for instance in instances:
+        if _instance_observation_key(instance) == observed_key:
+            return instance
+    return None
+
+
+def _find_existing_materialized_instance_for_arguments(
+    instances: list[CppElement],
+    arguments: list[CppTemplateArgument],
+) -> CppElement | None:
+    """Return an already-materialized instance matching one semantic argument list."""
+
+    argument_key = tuple(_render_template_argument_spellings(arguments))
+    for instance in instances:
+        if _instance_observation_key(instance) == argument_key:
+            return instance
+    return None
+
+
+def _promote_materialized_instance_to_manual(
+    instance_cpp: object,
+    arguments: list[CppTemplateArgument],
+) -> None:
+    """Upgrade one previously observed-only instance to a semantic manual instance."""
+
+    setattr(instance_cpp, "template_arguments", list(arguments))
+    setattr(instance_cpp, "instance_origin", "manual")
+
+
+def _observed_instance_count_is_valid(
+    parameters: list[CppTemplateParameter],
+    argument_spellings: list[str],
+) -> bool:
+    """Return whether one opaque observed spelling list is count-compatible."""
+
+    if len(argument_spellings) <= len(parameters):
+        return True
+    return any(getattr(parameter, "is_parameter_pack", False) for parameter in parameters)
+
+
+def _find_existing_semantic_template_instance(
+    instances: list[CppElement],
+    arguments: list[CppTemplateArgument],
+) -> CppElement | None:
+    """Return an existing semantic instance with the same structured arguments."""
+
+    argument_key = _template_argument_key(arguments)
+    for instance in instances:
+        if _template_argument_key(getattr(instance.cpp, "template_arguments", [])) == argument_key:
+            return instance
+    return None
+
+
+def _materialize_observed_instances(
+    template: CppElement,
+    *,
+    instance_type: type[CppElement],
+    instance_cpp_type: type[object],
+) -> list[CppElement]:
+    """Materialize one template family's parser-observed instances."""
+
+    declaration = getattr(template, "declaration", None)
+    if declaration is None:
+        raise ValueError("Template family does not contain a generic declaration.")
+
+    created_instances: list[CppElement] = []
+    for observed_instance in declaration.cpp.observed_instances:
+        existing_instance = _find_existing_materialized_observed_instance(
+            getattr(template, "instances"),
+            observed_instance,
+        )
+        if existing_instance is not None:
+            _merge_observed_instance_metadata(
+                existing_instance.cpp,
+                observed_instance,
+                mark_origin_observed=False,
+            )
+            created_instances.append(existing_instance)
+            continue
+
+        instance = instance_type(
+            name=template.name,
+            cpp=instance_cpp_type(),
+        )
+        _merge_observed_instance_metadata(
+            instance.cpp,
+            observed_instance,
+            mark_origin_observed=True,
+        )
+        created_instances.append(template.add_instance(instance))
+    return created_instances
+
+
+def _add_manual_template_instance(
+    template: CppElement,
+    arguments: list[CppTemplateArgument],
+    *,
+    context: str,
+    instance_type: type[CppElement],
+    instance_cpp_type: type[object],
+) -> CppElement:
+    """Create or reuse one semantic template instance under one template family."""
+
+    declaration = getattr(template, "declaration", None)
+    if declaration is None:
+        raise ValueError("Template family does not contain a generic declaration.")
+
+    _validate_template_arguments(
+        declaration.cpp.template_parameters,
+        arguments,
+        context=context,
+    )
+
+    existing_instance = _find_existing_semantic_template_instance(
+        getattr(template, "instances"),
+        arguments,
+    )
+    if existing_instance is not None:
+        return existing_instance
+
+    existing_materialized_instance = _find_existing_materialized_instance_for_arguments(
+        getattr(template, "instances"),
+        arguments,
+    )
+    if existing_materialized_instance is not None:
+        _promote_materialized_instance_to_manual(existing_materialized_instance.cpp, arguments)
+        return existing_materialized_instance
+
+    instance = instance_type(
+        name=template.name,
+        cpp=instance_cpp_type(
+            template_arguments=list(arguments),
+        ),
+    )
+    return template.add_instance(instance)
+
+
+# ==================================================================================================
 #     Split Type Imports
 # ==================================================================================================
 
@@ -449,46 +673,22 @@ def add_observed_template_instances(
     for alias_template in _iter_alias_templates(scope, recurse=recurse):
         if not include_alias_templates:
             continue
-        for observed_instance in alias_template.declaration.cpp.observed_instances:
-            created_instances.append(
-                add_alias_template_instance(
-                    alias_template,
-                    observed_instance.arguments,
-                )
-            )
+        created_instances.extend(alias_template.add_observed_instances())
 
     for class_template in _iter_class_templates(scope, recurse=recurse):
         if not include_class_templates:
             continue
-        for observed_instance in class_template.declaration.cpp.observed_instances:
-            created_instances.append(
-                add_class_template_instance(
-                    class_template,
-                    observed_instance.arguments,
-                )
-            )
+        created_instances.extend(class_template.add_observed_instances())
 
     for function_template in _iter_function_templates(scope, recurse=recurse):
         if not include_function_templates:
             continue
-        for observed_instance in function_template.declaration.cpp.observed_instances:
-            created_instances.append(
-                add_function_template_instance(
-                    function_template,
-                    observed_instance.arguments,
-                )
-            )
+        created_instances.extend(function_template.add_observed_instances())
 
     for method_template in _iter_method_templates(scope, recurse=recurse):
         if not include_method_templates:
             continue
-        for observed_instance in method_template.declaration.cpp.observed_instances:
-            created_instances.append(
-                add_method_template_instance(
-                    method_template,
-                    observed_instance.arguments,
-                )
-            )
+        created_instances.extend(method_template.add_observed_instances())
 
     return created_instances
 
