@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-"""Extract semantic template parameter values from libclang cursors."""
+"""Extract semantic template declaration data from libclang cursors.
+
+This module handles template declaration parameters and default arguments declared on
+templates, for example `template <class T, int N = 4, template <class> class W = Box>`.
+"""
 
 from typing import TYPE_CHECKING, Any
 
@@ -16,7 +20,8 @@ from ..model import (
     CppTypeTemplateParameter,
 )
 from .cursor_data import cursor_token_spellings, normalize_token_spellings
-from .types import build_cpp_type, build_template_argument_from_spelling
+from .template_type_recovery import build_template_argument_from_spelling
+from .types import build_cpp_type
 
 if TYPE_CHECKING:
     from .build_model import BuildContext

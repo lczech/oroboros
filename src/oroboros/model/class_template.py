@@ -13,15 +13,13 @@ from .class_ import (
     CppClassPyFacet,
 )
 from .element import CppElement
-from .location import SourceLocation
 from .member import CppConstructorBindFacet, CppMethodBindFacet
 from .template_ import (
-    CppObservedTemplateInstance,
+    CppTemplateObservationHint,
     CppTemplateArgument,
     CppTemplateBindFacet,
     CppTemplateParameter,
     _add_manual_template_instance,
-    _materialize_observed_instances,
     _synchronize_template_name,
 )
 from .variable import CppVariableBindFacet
@@ -41,8 +39,8 @@ class CppClassTemplateDeclarationCppFacet(CppClassCppFacet):
 
     # Parsed template parameters declared by this generic template.
     template_parameters: list[CppTemplateParameter] = dataclass_field(default_factory=list)
-    # Concrete template arguments observed at use sites during parsing.
-    observed_instances: list[CppObservedTemplateInstance] = dataclass_field(default_factory=list)
+    # Raw concrete template spellings observed at use sites during parsing.
+    template_observation_hints: list[CppTemplateObservationHint] = dataclass_field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -51,14 +49,6 @@ class CppClassTemplateInstanceCppFacet:
 
     # Concrete template arguments selected for this binding target.
     template_arguments: list[CppTemplateArgument] = dataclass_field(default_factory=list)
-    # Whether this instance came from explicit semantic selection or parser observation.
-    instance_origin: str = "manual"
-    # Exact observed instantiation spelling when this instance was materialized from parser data.
-    observed_instantiation_spelling: str | None = None
-    # Exact observed argument spellings preserved for emission-oriented workflows.
-    observed_argument_spellings: list[str] = dataclass_field(default_factory=list)
-    # Source locations where the observed spelling was seen.
-    observed_locations: list[SourceLocation] = dataclass_field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -124,7 +114,7 @@ class CppClassTemplateInstance(CppElement):
 class CppClassTemplate(CppElement):
     """Group one generic class template declaration with its selected instances."""
 
-    # Parsed generic class template declaration, including observed instances.
+    # Parsed generic class template declaration.
     declaration: CppClassTemplateDeclaration | None = None
     # Selected concrete instantiations to bind for this template family.
     instances: list[CppClassTemplateInstance] = dataclass_field(default_factory=list)
@@ -164,21 +154,6 @@ class CppClassTemplate(CppElement):
         """Attach one selected class template instance to this family."""
 
         return self._append_child(self.instances, instance)
-
-    def add_observed_instances(self) -> list[CppClassTemplateInstance]:
-        """Materialize all parser-observed instances attached to this template family."""
-
-        return _materialize_observed_instances(
-            self,
-            instance_type=CppClassTemplateInstance,
-            instance_cpp_type=CppClassTemplateInstanceCppFacet,
-        )
-
-
-# ==================================================================================================
-#     Helpers
-# ==================================================================================================
-
 
 def add_class_template_instance(
     template: CppClassTemplate,

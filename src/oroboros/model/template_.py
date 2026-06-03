@@ -18,9 +18,7 @@ from .type import CppType, cpp_type_key
 @dataclass(slots=True)
 class CppTemplateBindFacet:
     """Store binding policy attached to one template family."""
-
-    # Whether parser-observed template instances should be materialized by helper policy.
-    materialize_observed_instances: bool | None = None
+    pass
 
 
 # ==================================================================================================
@@ -110,22 +108,17 @@ class CppTemplateTemplateArgument(CppTemplateArgument):
 
 
 # ------------------------------------------------------------------------------
-#     Observed Instances
+#     Observation Hints
 # ------------------------------------------------------------------------------
 
 
 @dataclass(slots=True)
-class CppObservedTemplateInstance:
-    """Store one concrete template instantiation observed in parsed C++ code."""
+class CppTemplateObservationHint:
+    """Store one raw template-instantiation spelling observed in parsed C++ code."""
 
-    # Verbatim full instantiation spelling at one use site when recorded by the parser,
-    # e.g. "demo::Vec<int>". Optional because some observation paths only preserve args.
-    instantiation_spelling: str | None = None
-    # Verbatim type spellings of the arguments as libclang reported them at the use site,
-    # e.g. ["demo::Leaf", "42", "demo::WrapTag"]. Empty list for zero-explicit-argument
-    # instantiations such as Box<>. These spellings are the canonical parser-side truth.
-    argument_spellings: list[str] = dataclass_field(default_factory=list)
-    # Source locations where this concrete argument list was observed.
+    # Whitespace-normalized template spelling observed at one use site, e.g. "demo::Vec<int>".
+    spelling: str
+    # Source locations where this normalized spelling was observed.
     locations: list[SourceLocation] = dataclass_field(default_factory=list)
 
 
@@ -362,128 +355,6 @@ def _template_parameter_shape_key(parameter: CppTemplateParameter) -> tuple[obje
     raise TypeError(f"Unsupported template parameter type: {type(parameter)!r}")
 
 
-# ==================================================================================================
-#     Observed Instance Helpers
-# ==================================================================================================
-
-
-def _render_template_argument_spelling(argument: CppTemplateArgument) -> str:
-    """Render one semantic template argument back to a C++-like spelling."""
-
-    if isinstance(argument, CppTypeTemplateArgument):
-        return argument.type.render() if argument.type is not None else ""
-
-    if isinstance(argument, CppNonTypeTemplateArgument):
-        return argument.value
-
-    if isinstance(argument, CppTemplateTemplateArgument):
-        return argument.name
-
-    raise TypeError(f"Unsupported template argument for rendering: {type(argument)!r}")
-
-
-def _render_template_argument_spellings(arguments: list[CppTemplateArgument]) -> list[str]:
-    """Render one concrete semantic argument list back to spelling fragments."""
-
-    return [_render_template_argument_spelling(argument) for argument in arguments]
-
-
-def _observed_instance_key(observed_instance: CppObservedTemplateInstance) -> tuple[str, ...]:
-    """Return one stable identity key for one parser-observed instantiation."""
-
-    return tuple(observed_instance.argument_spellings)
-
-
-def _instance_observation_key(instance: CppElement) -> tuple[str, ...]:
-    """Return one spelling key for one materialized template instance."""
-
-    instance_cpp = getattr(instance, "cpp", None)
-    observed_spellings = getattr(instance_cpp, "observed_argument_spellings", None)
-    if observed_spellings is not None and (
-        observed_spellings or getattr(instance_cpp, "instance_origin", None) == "observed"
-    ):
-        return tuple(observed_spellings)
-    return tuple(
-        _render_template_argument_spellings(getattr(instance_cpp, "template_arguments", []))
-    )
-
-
-def _merge_observed_instance_metadata(
-    instance_cpp: object,
-    observed_instance: CppObservedTemplateInstance,
-    *,
-    mark_origin_observed: bool,
-) -> None:
-    """Attach parser-observed spelling data to one materialized instance facet."""
-
-    current_origin = getattr(instance_cpp, "instance_origin", "manual")
-    if mark_origin_observed:
-        setattr(instance_cpp, "instance_origin", "observed")
-    elif current_origin not in {"manual", "observed"}:
-        setattr(instance_cpp, "instance_origin", "manual")
-
-    current_spelling = getattr(instance_cpp, "observed_instantiation_spelling", None)
-    if current_spelling is None and observed_instance.instantiation_spelling:
-        setattr(instance_cpp, "observed_instantiation_spelling", observed_instance.instantiation_spelling)
-
-    current_argument_spellings = list(getattr(instance_cpp, "observed_argument_spellings", []))
-    if not current_argument_spellings:
-        setattr(instance_cpp, "observed_argument_spellings", list(observed_instance.argument_spellings))
-
-    current_locations = list(getattr(instance_cpp, "observed_locations", []))
-    for location in observed_instance.locations:
-        if location not in current_locations:
-            current_locations.append(location)
-    setattr(instance_cpp, "observed_locations", current_locations)
-
-
-def _find_existing_materialized_observed_instance(
-    instances: list[CppElement],
-    observed_instance: CppObservedTemplateInstance,
-) -> CppElement | None:
-    """Return an already-materialized instance matching one observation key."""
-
-    observed_key = _observed_instance_key(observed_instance)
-    for instance in instances:
-        if _instance_observation_key(instance) == observed_key:
-            return instance
-    return None
-
-
-def _find_existing_materialized_instance_for_arguments(
-    instances: list[CppElement],
-    arguments: list[CppTemplateArgument],
-) -> CppElement | None:
-    """Return an already-materialized instance matching one semantic argument list."""
-
-    argument_key = tuple(_render_template_argument_spellings(arguments))
-    for instance in instances:
-        if _instance_observation_key(instance) == argument_key:
-            return instance
-    return None
-
-
-def _promote_materialized_instance_to_manual(
-    instance_cpp: object,
-    arguments: list[CppTemplateArgument],
-) -> None:
-    """Upgrade one previously observed-only instance to a semantic manual instance."""
-
-    setattr(instance_cpp, "template_arguments", list(arguments))
-    setattr(instance_cpp, "instance_origin", "manual")
-
-
-def _observed_instance_count_is_valid(
-    parameters: list[CppTemplateParameter],
-    argument_spellings: list[str],
-) -> bool:
-    """Return whether one opaque observed spelling list is count-compatible."""
-
-    if len(argument_spellings) <= len(parameters):
-        return True
-    return any(getattr(parameter, "is_parameter_pack", False) for parameter in parameters)
-
-
 def _find_existing_semantic_template_instance(
     instances: list[CppElement],
     arguments: list[CppTemplateArgument],
@@ -495,46 +366,6 @@ def _find_existing_semantic_template_instance(
         if _template_argument_key(getattr(instance.cpp, "template_arguments", [])) == argument_key:
             return instance
     return None
-
-
-def _materialize_observed_instances(
-    template: CppElement,
-    *,
-    instance_type: type[CppElement],
-    instance_cpp_type: type[object],
-) -> list[CppElement]:
-    """Materialize one template family's parser-observed instances."""
-
-    declaration = getattr(template, "declaration", None)
-    if declaration is None:
-        raise ValueError("Template family does not contain a generic declaration.")
-
-    created_instances: list[CppElement] = []
-    for observed_instance in declaration.cpp.observed_instances:
-        existing_instance = _find_existing_materialized_observed_instance(
-            getattr(template, "instances"),
-            observed_instance,
-        )
-        if existing_instance is not None:
-            _merge_observed_instance_metadata(
-                existing_instance.cpp,
-                observed_instance,
-                mark_origin_observed=False,
-            )
-            created_instances.append(existing_instance)
-            continue
-
-        instance = instance_type(
-            name=template.name,
-            cpp=instance_cpp_type(),
-        )
-        _merge_observed_instance_metadata(
-            instance.cpp,
-            observed_instance,
-            mark_origin_observed=True,
-        )
-        created_instances.append(template.add_instance(instance))
-    return created_instances
 
 
 def _add_manual_template_instance(
@@ -563,14 +394,6 @@ def _add_manual_template_instance(
     )
     if existing_instance is not None:
         return existing_instance
-
-    existing_materialized_instance = _find_existing_materialized_instance_for_arguments(
-        getattr(template, "instances"),
-        arguments,
-    )
-    if existing_materialized_instance is not None:
-        _promote_materialized_instance_to_manual(existing_materialized_instance.cpp, arguments)
-        return existing_materialized_instance
 
     instance = instance_type(
         name=template.name,
@@ -632,7 +455,6 @@ from .method_template import (  # noqa: E402
 
 
 TemplateFamily = CppAliasTemplate | CppClassTemplate | CppFunctionTemplate | CppMethodTemplate
-TemplateScope = CppElement
 
 
 def add_template_instance(
@@ -650,246 +472,3 @@ def add_template_instance(
     if isinstance(template, CppMethodTemplate):
         return add_method_template_instance(template, arguments)
     raise TypeError(f"Unsupported template family type: {type(template)!r}")
-
-
-def add_observed_template_instances(
-    scope: TemplateScope,
-    *,
-    include_alias_templates: bool = True,
-    include_class_templates: bool = True,
-    include_function_templates: bool = True,
-    include_method_templates: bool = True,
-    recurse: bool = True,
-) -> list[CppElement]:
-    """Materialize template instances previously observed in the parsed C++ subtree.
-
-    "Observed" here means concrete template instantiations that were encountered
-    while parsing the C++ codebase, not instances requested manually through
-    binding configuration.
-    """
-
-    created_instances: list[CppElement] = []
-
-    for alias_template in _iter_alias_templates(scope, recurse=recurse):
-        if not include_alias_templates:
-            continue
-        created_instances.extend(alias_template.add_observed_instances())
-
-    for class_template in _iter_class_templates(scope, recurse=recurse):
-        if not include_class_templates:
-            continue
-        created_instances.extend(class_template.add_observed_instances())
-
-    for function_template in _iter_function_templates(scope, recurse=recurse):
-        if not include_function_templates:
-            continue
-        created_instances.extend(function_template.add_observed_instances())
-
-    for method_template in _iter_method_templates(scope, recurse=recurse):
-        if not include_method_templates:
-            continue
-        created_instances.extend(method_template.add_observed_instances())
-
-    return created_instances
-
-
-def add_enabled_observed_template_instances(
-    scope: TemplateScope,
-    *,
-    include_alias_templates: bool = True,
-    include_class_templates: bool = True,
-    include_function_templates: bool = True,
-    include_method_templates: bool = True,
-    recurse: bool = True,
-) -> list[CppElement]:
-    """Materialize only the observed template instances enabled by effective bind policy."""
-
-    created_instances: list[CppElement] = []
-
-    for alias_template in _iter_alias_templates(scope, recurse=recurse):
-        if not include_alias_templates or not _template_materializes_observed_instances(alias_template):
-            continue
-        created_instances.extend(alias_template.add_observed_instances())
-
-    for class_template in _iter_class_templates(scope, recurse=recurse):
-        if not include_class_templates or not _template_materializes_observed_instances(class_template):
-            continue
-        created_instances.extend(class_template.add_observed_instances())
-
-    for function_template in _iter_function_templates(scope, recurse=recurse):
-        if not include_function_templates or not _template_materializes_observed_instances(function_template):
-            continue
-        created_instances.extend(function_template.add_observed_instances())
-
-    for method_template in _iter_method_templates(scope, recurse=recurse):
-        if not include_method_templates or not _template_materializes_observed_instances(method_template):
-            continue
-        created_instances.extend(method_template.add_observed_instances())
-
-    return created_instances
-
-
-def _iter_class_templates(
-    scope: TemplateScope,
-    *,
-    recurse: bool,
-) -> list[CppClassTemplate]:
-    """Collect class template families below one scope."""
-
-    templates: list[CppClassTemplate] = []
-    if isinstance(scope, CppClassTemplate):
-        templates.append(scope)
-    elif _is_supported_template_scope(scope):
-        templates.extend(_template_scope_declarations(scope).class_templates)
-    else:
-        raise TypeError(f"Unsupported template scope type: {type(scope)!r}")
-
-    if not recurse:
-        return templates
-
-    nested_scopes = _iter_nested_template_scopes(scope)
-    for nested_scope in nested_scopes:
-        templates.extend(_iter_class_templates(nested_scope, recurse=True))
-    return templates
-
-
-def _iter_alias_templates(
-    scope: TemplateScope,
-    *,
-    recurse: bool,
-) -> list[CppAliasTemplate]:
-    """Collect alias template families below one scope."""
-
-    templates: list[CppAliasTemplate] = []
-    if isinstance(scope, CppAliasTemplate):
-        templates.append(scope)
-    elif _is_supported_template_scope(scope):
-        templates.extend(_template_scope_declarations(scope).alias_templates)
-    else:
-        raise TypeError(f"Unsupported template scope type: {type(scope)!r}")
-
-    if not recurse:
-        return templates
-
-    nested_scopes = _iter_nested_template_scopes(scope)
-    for nested_scope in nested_scopes:
-        templates.extend(_iter_alias_templates(nested_scope, recurse=True))
-    return templates
-
-
-def _iter_function_templates(
-    scope: TemplateScope,
-    *,
-    recurse: bool,
-) -> list[CppFunctionTemplate]:
-    """Collect function template families below one scope."""
-
-    templates: list[CppFunctionTemplate] = []
-    if isinstance(scope, CppFunctionTemplate):
-        templates.append(scope)
-    elif isinstance(scope, CppClassMembers):
-        pass
-    elif _is_supported_template_scope(scope):
-        templates.extend(_template_scope_declarations(scope).function_templates)
-    else:
-        raise TypeError(f"Unsupported template scope type: {type(scope)!r}")
-
-    if not recurse:
-        return templates
-
-    nested_scopes = _iter_nested_template_scopes(scope)
-    for nested_scope in nested_scopes:
-        templates.extend(_iter_function_templates(nested_scope, recurse=True))
-    return templates
-
-
-def _iter_method_templates(
-    scope: TemplateScope,
-    *,
-    recurse: bool,
-) -> list[CppMethodTemplate]:
-    """Collect method template families below one scope."""
-
-    templates: list[CppMethodTemplate] = []
-    if isinstance(scope, CppMethodTemplate):
-        templates.append(scope)
-    elif isinstance(scope, CppClassMembers):
-        templates.extend(_template_scope_declarations(scope).method_templates)
-    elif _is_supported_template_scope(scope):
-        pass
-    else:
-        raise TypeError(f"Unsupported template scope type: {type(scope)!r}")
-
-    if not recurse:
-        return templates
-
-    nested_scopes = _iter_nested_template_scopes(scope)
-    for nested_scope in nested_scopes:
-        templates.extend(_iter_method_templates(nested_scope, recurse=True))
-    return templates
-
-
-def _iter_nested_template_scopes(scope: TemplateScope) -> list[CppElement]:
-    """Return nested scopes that may themselves contain template declarations."""
-
-    if isinstance(scope, CppClassTemplate):
-        return [scope.declaration]
-    if not _is_supported_template_scope(scope):
-        raise TypeError(f"Unsupported template scope type: {type(scope)!r}")
-
-    declarations = _template_scope_declarations(scope)
-    nested_scopes = list(getattr(declarations, "namespaces", [])) + list(getattr(declarations, "classes", []))
-    nested_scopes.extend(
-        template.declaration for template in getattr(declarations, "class_templates", [])
-    )
-    return nested_scopes
-
-
-def _template_materializes_observed_instances(template: TemplateFamily) -> bool:
-    """Resolve whether one template family should materialize parser-observed instances."""
-
-    direct_setting = template.bind.materialize_observed_instances
-    if direct_setting is not None:
-        return direct_setting
-
-    if isinstance(template, CppAliasTemplate):
-        default_bucket_name = "alias_template"
-    elif isinstance(template, CppClassTemplate):
-        default_bucket_name = "class_template"
-    elif isinstance(template, CppFunctionTemplate):
-        default_bucket_name = "function_template"
-    elif isinstance(template, CppMethodTemplate):
-        default_bucket_name = "method_template"
-    else:
-        raise TypeError(f"Unsupported template family type: {type(template)!r}")
-
-    current: CppElement | None = template.owner
-    while current is not None:
-        defaults = getattr(current, "defaults", None)
-        if defaults is not None:
-            default_bucket = getattr(defaults, default_bucket_name, None)
-            if default_bucket is not None and default_bucket.materialize_observed_instances is not None:
-                return default_bucket.materialize_observed_instances
-        current = current.owner
-
-    return False
-
-
-def _is_supported_template_scope(scope: TemplateScope) -> bool:
-    """Return whether one element kind can own template-family declarations."""
-
-    return isinstance(scope, (CppModule, CppNamespace, CppClassMembers))
-
-
-def _template_scope_declarations(scope: TemplateScope) -> object:
-    """Return the declaration container for one supported template-owning scope."""
-
-    if not _is_supported_template_scope(scope):
-        raise TypeError(f"Unsupported template scope type: {type(scope)!r}")
-
-    declarations = getattr(scope, "declarations", None)
-    if declarations is None:
-        raise TypeError(
-            f"Supported template scope {type(scope).__name__} does not expose declarations."
-        )
-    return declarations

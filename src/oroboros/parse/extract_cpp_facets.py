@@ -45,6 +45,7 @@ from .cursor_data import (
     is_base_specifier_cursor,
     is_struct_cursor,
 )
+from .template_observations import record_template_observation_hints_in_type
 from .types import build_cpp_type
 
 if TYPE_CHECKING:
@@ -89,7 +90,7 @@ def extract_parameter_cpp_facet(
 
     return CppParameterCppFacet(
         original_name=cursor.spelling or None,
-        type=build_cpp_type(
+        type=_extract_surface_cpp_type(
             getattr(cursor, "type", None),
             context=context,
             source_cursor=cursor,
@@ -182,7 +183,7 @@ def extract_method_cpp_facet(
 
     from ..model import CppMethodCppFacet
     documentation = _resolve_facet_documentation(cursor, context=context)
-    return_type = build_cpp_type(
+    return_type = _extract_surface_cpp_type(
         getattr(cursor, "result_type", None),
         context=context,
         source_cursor=cursor,
@@ -269,7 +270,7 @@ def extract_variable_cpp_facet(
 
     return CppVariableCppFacet(
         original_name=cursor.spelling or None,
-        type=build_cpp_type(
+        type=_extract_surface_cpp_type(
             getattr(cursor, "type", None),
             context=context,
             source_cursor=cursor,
@@ -303,7 +304,7 @@ def extract_function_cpp_facet(
 
     from ..model import CppFunctionCppFacet
     documentation = _resolve_facet_documentation(cursor, context=context)
-    return_type = build_cpp_type(
+    return_type = _extract_surface_cpp_type(
         getattr(cursor, "result_type", None),
         context=context,
         source_cursor=cursor,
@@ -330,7 +331,7 @@ def extract_function_template_declaration_cpp_facet(
 
     from ..model import CppFunctionTemplateDeclarationCppFacet
     documentation = _resolve_facet_documentation(cursor, context=context)
-    return_type = build_cpp_type(
+    return_type = _extract_surface_cpp_type(
         getattr(cursor, "result_type", None),
         context=context,
         source_cursor=cursor,
@@ -358,7 +359,7 @@ def extract_method_template_declaration_cpp_facet(
 
     from ..model import CppMethodTemplateDeclarationCppFacet
     documentation = _resolve_facet_documentation(cursor, context=context)
-    return_type = build_cpp_type(
+    return_type = _extract_surface_cpp_type(
         getattr(cursor, "result_type", None),
         context=context,
         source_cursor=cursor,
@@ -451,7 +452,7 @@ def extract_alias_cpp_facet(
 
     return CppAliasCppFacet(
         original_name=cursor.spelling or None,
-        target=build_cpp_type(
+        target=_extract_surface_cpp_type(
             cursor_alias_target_type(cursor),
             context=context,
             source_cursor=cursor,
@@ -480,7 +481,6 @@ def extract_alias_template_declaration_cpp_facet(
         cursor_alias_template_target_type(cursor),
         context=context,
         source_cursor=target_cursor if target_cursor is not None else cursor,
-        record_observations=False,
     )
 
     return CppAliasTemplateDeclarationCppFacet(
@@ -526,7 +526,7 @@ def extract_class_bases(
         if not is_base_specifier_cursor(child_cursor):
             continue
 
-        base_type = build_cpp_type(
+        base_type = _extract_surface_cpp_type(
             getattr(child_cursor, "type", None),
             context=context,
             source_cursor=child_cursor,
@@ -558,3 +558,23 @@ def _build_operator_metadata(
     if operator.kind == "conversion" and operator.conversion_type is None and return_type is not None:
         operator.conversion_type = deepcopy(return_type)
     return operator
+
+
+def _extract_surface_cpp_type(
+    clang_type: Any,
+    *,
+    context: BuildContext | None,
+    source_cursor: Any,
+) -> Any:
+    """Record declaration-surface template hints, then build the structured type."""
+
+    record_template_observation_hints_in_type(
+        clang_type,
+        context=context,
+        source_cursor=source_cursor,
+    )
+    return build_cpp_type(
+        clang_type,
+        context=context,
+        source_cursor=source_cursor,
+    )

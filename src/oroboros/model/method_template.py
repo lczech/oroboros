@@ -6,15 +6,13 @@ from dataclasses import dataclass, field as dataclass_field
 
 from .element import CppElement
 from .function import CppParameter
-from .location import SourceLocation
 from .member import CppMethodBindFacet, CppMethodCppFacet, CppMethodPyFacet
 from .template_ import (
-    CppObservedTemplateInstance,
+    CppTemplateObservationHint,
     CppTemplateArgument,
     CppTemplateBindFacet,
     CppTemplateParameter,
     _add_manual_template_instance,
-    _materialize_observed_instances,
     _synchronize_template_name,
 )
 
@@ -30,8 +28,8 @@ class CppMethodTemplateDeclarationCppFacet(CppMethodCppFacet):
 
     # Parsed template parameters declared by this generic template.
     template_parameters: list[CppTemplateParameter] = dataclass_field(default_factory=list)
-    # Concrete template arguments observed at use sites during parsing.
-    observed_instances: list[CppObservedTemplateInstance] = dataclass_field(default_factory=list)
+    # Raw concrete template spellings observed at use sites during parsing.
+    template_observation_hints: list[CppTemplateObservationHint] = dataclass_field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -40,14 +38,6 @@ class CppMethodTemplateInstanceCppFacet:
 
     # Concrete template arguments selected for this binding target.
     template_arguments: list[CppTemplateArgument] = dataclass_field(default_factory=list)
-    # Whether this instance came from explicit semantic selection or parser observation.
-    instance_origin: str = "manual"
-    # Exact observed instantiation spelling when this instance came from parser data.
-    observed_instantiation_spelling: str | None = None
-    # Exact observed argument spellings preserved for later emission.
-    observed_argument_spellings: list[str] = dataclass_field(default_factory=list)
-    # Source locations where the observed spelling was seen.
-    observed_locations: list[SourceLocation] = dataclass_field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -107,7 +97,7 @@ class CppMethodTemplateInstance(CppElement):
 class CppMethodTemplate(CppElement):
     """Group one generic method template declaration with its selected instances."""
 
-    # Parsed generic method template declaration, including observed instances.
+    # Parsed generic method template declaration.
     declaration: CppMethodTemplateDeclaration | None = None
     # Selected concrete instantiations to bind for this template family.
     instances: list[CppMethodTemplateInstance] = dataclass_field(default_factory=list)
@@ -147,21 +137,6 @@ class CppMethodTemplate(CppElement):
         """Attach one selected method template instance to this family."""
 
         return self._append_child(self.instances, instance)
-
-    def add_observed_instances(self) -> list[CppMethodTemplateInstance]:
-        """Materialize all parser-observed instances attached to this template family."""
-
-        return _materialize_observed_instances(
-            self,
-            instance_type=CppMethodTemplateInstance,
-            instance_cpp_type=CppMethodTemplateInstanceCppFacet,
-        )
-
-
-# ==================================================================================================
-#     Helpers
-# ==================================================================================================
-
 
 def add_method_template_instance(
     template: CppMethodTemplate,

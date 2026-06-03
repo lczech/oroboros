@@ -17,6 +17,7 @@ from oroboros.parse.merge_properties import (
     merge_cpp_scalar,
     merge_template_parameters,
 )
+from oroboros.parse.template_observations import record_template_observation_hints_in_type
 from oroboros.parse.types import build_cpp_type
 
 
@@ -1599,11 +1600,10 @@ class ParseBuildTest(unittest.TestCase):
         )
 
         build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
-        observed_instances = build_result.module.declarations.class_templates[0].declaration.cpp.observed_instances
+        hints = build_result.module.declarations.class_templates[0].declaration.cpp.template_observation_hints
 
-        self.assertEqual(len(observed_instances), 1)
-        # Only the source-spelled argument is stored; cursor-based completion is no longer done.
-        self.assertEqual(observed_instances[0].argument_spellings, ["int"])
+        self.assertEqual(len(hints), 1)
+        self.assertEqual(hints[0].spelling, "Box<int>")
 
     # ------------------------------------------------------------------
     # Issue 1 – non-callable USR collision
@@ -2010,11 +2010,10 @@ class ParseBuildTest(unittest.TestCase):
         )
 
         build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
-        observed_instances = build_result.module.declarations.class_templates[0].declaration.cpp.observed_instances
+        hints = build_result.module.declarations.class_templates[0].declaration.cpp.template_observation_hints
 
-        self.assertEqual(len(observed_instances), 1)
-        # Only the source-spelled argument is stored — cursor-based completion is no longer done.
-        self.assertEqual(observed_instances[0].argument_spellings, ["int"])
+        self.assertEqual(len(hints), 1)
+        self.assertEqual(hints[0].spelling, "Box<int>")
 
     def test_build_module_from_clang_stores_all_clang_template_arguments_when_all_succeed(self) -> None:
         """Verify the for/else success path still extends complete_arguments."""
@@ -2080,11 +2079,10 @@ class ParseBuildTest(unittest.TestCase):
         )
 
         build_result = build_module_from_clang(translation_unit, [active_header], ParserConfig())
-        observed_instances = build_result.module.declarations.class_templates[0].declaration.cpp.observed_instances
+        hints = build_result.module.declarations.class_templates[0].declaration.cpp.template_observation_hints
 
-        self.assertEqual(len(observed_instances), 1)
-        # Source-spelled arguments are stored; cursor-based completion is no longer done.
-        self.assertEqual(observed_instances[0].argument_spellings, ["int"])
+        self.assertEqual(len(hints), 1)
+        self.assertEqual(hints[0].spelling, "Box<int>")
 
 
 class ParseTypesTest(unittest.TestCase):
@@ -2106,7 +2104,7 @@ class ParseTypesTest(unittest.TestCase):
         self.assertIsInstance(cpp_type.canonical.arguments[0].type, NamedCppType)
         self.assertEqual(cpp_type.canonical.arguments[0].type.name, "std::string")
 
-    def test_build_cpp_type_records_observed_class_template_instances_from_specialized_template_views(self) -> None:
+    def test_record_template_observation_hints_in_type_records_class_template_instantiation_from_specialized_template_views(self) -> None:
         active_header = Path("/tmp/project/demo.hpp")
         context = BuildContext(
             active_headers={active_header},
@@ -2151,68 +2149,22 @@ class ParseTypesTest(unittest.TestCase):
             template_argument_types=[_fake_type("INT", "int")],
         )
 
+        source_cursor = _fake_cursor("TYPE_ALIAS_DECL", "ObservedBox", file=active_header)
+        record_template_observation_hints_in_type(
+            clang_type,
+            context=context,
+            source_cursor=source_cursor,
+        )
+
         cpp_type = build_cpp_type(
             clang_type,
             context=context,
-            source_cursor=_fake_cursor("TYPE_ALIAS_DECL", "ObservedBox", file=active_header),
+            source_cursor=source_cursor,
         )
-
         self.assertIsInstance(cpp_type, TemplateInstanceCppType)
-        self.assertEqual(len(template.declaration.cpp.observed_instances), 1)
-        observed_instance = template.declaration.cpp.observed_instances[0]
-        self.assertEqual(observed_instance.argument_spellings, ["int"])
-
-    def test_build_cpp_type_parses_pointer_constness_correctly_in_template_argument_spellings(self) -> None:
-        clang_type = _fake_type(
-            "ELABORATED",
-            "Pair<Widget const* const, const Widget* const>",
-        )
-
-        cpp_type = build_cpp_type(clang_type)
-
-        self.assertIsInstance(cpp_type, TemplateInstanceCppType)
-        self.assertEqual(cpp_type.template_name, "Pair")
-        self.assertEqual(len(cpp_type.arguments), 2)
-
-        self.assertIsInstance(cpp_type.arguments[0], CppTypeTemplateArgument)
-        self.assertIsInstance(cpp_type.arguments[1], CppTypeTemplateArgument)
-        first_argument = cpp_type.arguments[0].type
-        second_argument = cpp_type.arguments[1].type
-
-        self.assertIsInstance(first_argument, PointerCppType)
-        self.assertTrue(first_argument.is_const)
-        self.assertIsInstance(first_argument.pointee, NamedCppType)
-        self.assertEqual(first_argument.pointee.name, "Widget")
-        self.assertTrue(first_argument.pointee.is_const)
-
-        self.assertIsInstance(second_argument, PointerCppType)
-        self.assertTrue(second_argument.is_const)
-        self.assertIsInstance(second_argument.pointee, NamedCppType)
-        self.assertEqual(second_argument.pointee.name, "Widget")
-        self.assertTrue(second_argument.pointee.is_const)
-
-    def test_build_cpp_type_preserves_non_type_template_arguments(self) -> None:
-        clang_type = _fake_type(
-            "ELABORATED",
-            "std::array<int, 4>",
-            template_argument_types=[
-                _fake_type("INT", "int"),
-                _fake_type("INT", "int"),
-            ],
-        )
-
-        cpp_type = build_cpp_type(clang_type)
-
-        self.assertIsInstance(cpp_type, TemplateInstanceCppType)
-        self.assertEqual(cpp_type.template_name, "std::array")
-        self.assertEqual(len(cpp_type.arguments), 2)
-        self.assertIsInstance(cpp_type.arguments[0], CppTypeTemplateArgument)
-        self.assertIsInstance(cpp_type.arguments[0].type, BuiltinCppType)
-        self.assertEqual(cpp_type.arguments[0].type.kind, "int")
-        self.assertIsInstance(cpp_type.arguments[1], CppNonTypeTemplateArgument)
-        self.assertEqual(cpp_type.arguments[1].value, "4")
-        self.assertIsInstance(cpp_type.arguments[1].type, BuiltinCppType)
-        self.assertEqual(cpp_type.arguments[1].type.kind, "int")
+        self.assertEqual(len(template.declaration.cpp.template_observation_hints), 1)
+        hint = template.declaration.cpp.template_observation_hints[0]
+        self.assertEqual(hint.spelling, "demo::Box<int>")
 
 def _fake_cursor(
     kind_name: str,

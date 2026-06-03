@@ -8,19 +8,6 @@ from tests.support.model_builders import make_class, make_class_template_declara
 
 
 class ModelTemplateTest(unittest.TestCase):
-    def _assert_observed_materialized_instance(
-        self,
-        instance: CppElement,
-        *,
-        spellings: list[str],
-        locations: list[SourceLocation] | None = None,
-    ) -> None:
-        self.assertEqual(instance.cpp.instance_origin, "observed")
-        self.assertEqual(instance.cpp.template_arguments, [])
-        self.assertEqual(instance.cpp.observed_argument_spellings, spellings)
-        if locations is not None:
-            self.assertEqual(instance.cpp.observed_locations, locations)
-
     def test_manual_alias_template_instance_creation_uses_template_wrappers(self) -> None:
         alias_template = CppAliasTemplate(name="Vec")
         alias_template.declaration.cpp.template_parameters.append(
@@ -108,355 +95,31 @@ class ModelTemplateTest(unittest.TestCase):
         )
         self.assertIs(module.declarations.namespaces[0], namespace)
 
-    def test_observed_template_instances_materialize_recursively_in_subtrees(self) -> None:
-        alias_template = CppAliasTemplate(name="Alias")
-        alias_template.declaration.cpp.template_parameters.append(
-            CppTypeTemplateParameter(name="T")
-        )
-        alias_template.declaration.cpp.observed_instances.append(
-            CppObservedTemplateInstance(argument_spellings=["short"])
-        )
-        inner_method_template = CppMethodTemplate(name="make_inner")
-        inner_method_template.declaration.cpp.template_parameters.append(
-            CppTypeTemplateParameter(name="T")
-        )
-        inner_method_template.declaration.cpp.observed_instances.append(
-            CppObservedTemplateInstance(argument_spellings=["double"])
-        )
-        class_template = CppClassTemplate(
-            name="Vector",
-            declaration=make_class_template_declaration(
-                name="Vector",
-                method_templates=[inner_method_template],
-            ),
-        )
-        class_template.declaration.cpp.template_parameters.append(
-            CppTypeTemplateParameter(name="T")
-        )
-        class_template.declaration.cpp.observed_instances.append(
-            CppObservedTemplateInstance(argument_spellings=["int"])
-        )
-        namespace = make_namespace(
-            name="demo",
-            alias_templates=[alias_template],
-            class_templates=[class_template],
-        )
-
-        created_instances = add_observed_template_instances(namespace)
-
-        self.assertEqual(len(created_instances), 3)
-        self.assertEqual(len(alias_template.instances), 1)
-        self.assertEqual(len(class_template.instances), 1)
-        self.assertEqual(len(inner_method_template.instances), 1)
-        self.assertIsInstance(alias_template.instances[0], CppAliasTemplateInstance)
-        self.assertIsInstance(class_template.instances[0], CppClassTemplateInstance)
-        self.assertIsInstance(
-            inner_method_template.instances[0],
-            CppMethodTemplateInstance,
-        )
-        self._assert_observed_materialized_instance(
-            alias_template.instances[0],
-            spellings=["short"],
-        )
-        self._assert_observed_materialized_instance(
-            class_template.instances[0],
-            spellings=["int"],
-        )
-        self._assert_observed_materialized_instance(
-            inner_method_template.instances[0],
-            spellings=["double"],
-        )
-
-    def test_template_family_add_observed_instances_materializes_only_that_family(self) -> None:
-        alias_template = CppAliasTemplate(name="Alias")
-        alias_template.declaration.cpp.template_parameters.append(
-            CppTypeTemplateParameter(name="T")
-        )
-        alias_template.declaration.cpp.observed_instances.append(
-            CppObservedTemplateInstance(argument_spellings=["short"])
-        )
+    def test_template_observation_hints_keep_normalized_spelling_and_locations(self) -> None:
         class_template = CppClassTemplate(name="Vector")
-        class_template.declaration.cpp.template_parameters.append(
-            CppTypeTemplateParameter(name="T")
-        )
-        class_template.declaration.cpp.observed_instances.append(
-            CppObservedTemplateInstance(argument_spellings=["int"])
-        )
-        function_template = CppFunctionTemplate(name="make_value")
-        method_template = CppMethodTemplate(name="convert")
-        function_template.declaration.cpp.template_parameters.append(
-            CppTypeTemplateParameter(name="T")
-        )
-        function_template.declaration.cpp.observed_instances.append(
-            CppObservedTemplateInstance(argument_spellings=["double"])
-        )
-        method_template.declaration.cpp.template_parameters.append(
-            CppTypeTemplateParameter(name="T")
-        )
-        method_template.declaration.cpp.observed_instances.append(
-            CppObservedTemplateInstance(argument_spellings=["char"])
-        )
-
-        created_alias_instances = alias_template.add_observed_instances()
-        created_class_instances = class_template.add_observed_instances()
-        created_function_instances = function_template.add_observed_instances()
-        created_method_instances = method_template.add_observed_instances()
-
-        self.assertEqual(len(created_alias_instances), 1)
-        self.assertEqual(len(created_class_instances), 1)
-        self.assertEqual(len(created_function_instances), 1)
-        self.assertEqual(len(created_method_instances), 1)
-        self.assertIs(created_alias_instances[0], alias_template.instances[0])
-        self.assertIs(created_class_instances[0], class_template.instances[0])
-        self.assertIs(created_function_instances[0], function_template.instances[0])
-        self.assertIs(created_method_instances[0], method_template.instances[0])
-        self._assert_observed_materialized_instance(alias_template.instances[0], spellings=["short"])
-        self._assert_observed_materialized_instance(class_template.instances[0], spellings=["int"])
-        self._assert_observed_materialized_instance(function_template.instances[0], spellings=["double"])
-        self._assert_observed_materialized_instance(method_template.instances[0], spellings=["char"])
-
-    def test_observed_materialization_reuses_manual_instance_and_attaches_observation_metadata(self) -> None:
-        class_template = CppClassTemplate(name="Vector")
-        class_template.declaration.cpp.template_parameters.append(
-            CppTypeTemplateParameter(name="T")
-        )
-        observed_location = SourceLocation(file=Path("api/demo.hpp"), line=12, column=7)
-        class_template.declaration.cpp.observed_instances.append(
-            CppObservedTemplateInstance(
-                instantiation_spelling="Vector<int>",
-                argument_spellings=["int"],
-                locations=[observed_location],
+        first_location = SourceLocation(file=Path("api/demo.hpp"), line=12, column=7)
+        second_location = SourceLocation(file=Path("api/demo.hpp"), line=20, column=3)
+        class_template.declaration.cpp.template_observation_hints.append(
+            CppTemplateObservationHint(
+                spelling="demo::Vector<int>",
+                locations=[first_location, second_location],
             )
         )
 
-        manual_instance = add_class_template_instance(
-            class_template,
-            [CppTypeTemplateArgument(type=NamedCppType(name="int"))],
-        )
-        created_instances = class_template.add_observed_instances()
+        self.assertEqual(len(class_template.declaration.cpp.template_observation_hints), 1)
+        hint = class_template.declaration.cpp.template_observation_hints[0]
+        self.assertEqual(hint.spelling, "demo::Vector<int>")
+        self.assertEqual(hint.locations, [first_location, second_location])
 
-        self.assertEqual(len(created_instances), 1)
-        self.assertIs(created_instances[0], manual_instance)
-        self.assertEqual(manual_instance.cpp.instance_origin, "manual")
-        self.assertEqual(manual_instance.cpp.observed_argument_spellings, ["int"])
-        self.assertEqual(manual_instance.cpp.observed_instantiation_spelling, "Vector<int>")
-        self.assertEqual(manual_instance.cpp.observed_locations, [observed_location])
-        self.assertEqual(len(manual_instance.cpp.template_arguments), 1)
-
-    def test_manual_instance_creation_reuses_existing_observed_materialized_instance(self) -> None:
-        class_template = CppClassTemplate(name="Vector")
-        class_template.declaration.cpp.template_parameters.append(
-            CppTypeTemplateParameter(name="T")
-        )
-        observed_location = SourceLocation(file=Path("api/demo.hpp"), line=18, column=5)
-        class_template.declaration.cpp.observed_instances.append(
-            CppObservedTemplateInstance(
-                instantiation_spelling="Vector<int>",
-                argument_spellings=["int"],
-                locations=[observed_location],
-            )
-        )
-
-        observed_instance = class_template.add_observed_instances()[0]
-        manual_instance = add_class_template_instance(
-            class_template,
-            [CppTypeTemplateArgument(type=NamedCppType(name="int"))],
-        )
-
-        self.assertIs(manual_instance, observed_instance)
-        self.assertEqual(manual_instance.cpp.instance_origin, "manual")
-        self.assertEqual(len(manual_instance.cpp.template_arguments), 1)
-        self.assertEqual(manual_instance.cpp.observed_argument_spellings, ["int"])
-        self.assertEqual(manual_instance.cpp.observed_locations, [observed_location])
-
-    def test_observed_template_instance_materialization_can_filter_alias_templates(self) -> None:
+    def test_template_observation_hints_exist_on_all_template_declaration_kinds(self) -> None:
         alias_template = CppAliasTemplate(name="Alias")
-        alias_template.declaration.cpp.template_parameters.append(
-            CppTypeTemplateParameter(name="T")
-        )
-        alias_template.declaration.cpp.observed_instances.append(
-            CppObservedTemplateInstance(argument_spellings=["int"])
-        )
-        namespace = make_namespace(
-            name="demo",
-            alias_templates=[alias_template],
-        )
-
-        created_instances = add_observed_template_instances(
-            namespace,
-            include_alias_templates=False,
-        )
-
-        self.assertEqual(created_instances, [])
-        self.assertEqual(alias_template.instances, [])
-
-    def test_observed_template_instance_materialization_can_filter_function_templates(self) -> None:
-        function_template = CppFunctionTemplate(name="make_value")
-        function_template.declaration.cpp.template_parameters.append(
-            CppTypeTemplateParameter(name="T")
-        )
-        function_template.declaration.cpp.observed_instances.append(
-            CppObservedTemplateInstance(argument_spellings=["int"])
-        )
-        namespace = make_namespace(
-            name="demo",
-            function_templates=[function_template],
-        )
-
-        created_instances = add_observed_template_instances(
-            namespace,
-            include_function_templates=False,
-        )
-
-        self.assertEqual(created_instances, [])
-        self.assertEqual(function_template.instances, [])
-
-    def test_observed_template_instance_materialization_can_filter_method_templates(self) -> None:
-        method_template = CppMethodTemplate(name="convert")
-        method_template.declaration.cpp.template_parameters.append(
-            CppTypeTemplateParameter(name="T")
-        )
-        method_template.declaration.cpp.observed_instances.append(
-            CppObservedTemplateInstance(argument_spellings=["int"])
-        )
-        owner = make_class(name="Widget", method_templates=[method_template])
-        namespace = make_namespace(
-            name="demo",
-            classes=[owner],
-        )
-
-        created_instances = add_observed_template_instances(
-            namespace,
-            include_method_templates=False,
-        )
-
-        self.assertEqual(created_instances, [])
-        self.assertEqual(method_template.instances, [])
-
-    def test_enabled_observed_template_instance_materialization_uses_inherited_defaults(self) -> None:
-        alias_template = CppAliasTemplate(name="Alias")
-        alias_template.declaration.cpp.template_parameters.append(
-            CppTypeTemplateParameter(name="T")
-        )
-        alias_template.declaration.cpp.observed_instances.append(
-            CppObservedTemplateInstance(argument_spellings=["short"])
-        )
         class_template = CppClassTemplate(name="Vector")
-        class_template.declaration.cpp.template_parameters.append(
-            CppTypeTemplateParameter(name="T")
-        )
-        class_template.declaration.cpp.observed_instances.append(
-            CppObservedTemplateInstance(argument_spellings=["int"])
-        )
         function_template = CppFunctionTemplate(name="make_value")
         method_template = CppMethodTemplate(name="convert")
-        function_template.declaration.cpp.template_parameters.append(
-            CppTypeTemplateParameter(name="T")
-        )
-        function_template.declaration.cpp.observed_instances.append(
-            CppObservedTemplateInstance(argument_spellings=["double"])
-        )
-        method_template.declaration.cpp.template_parameters.append(
-            CppTypeTemplateParameter(name="T")
-        )
-        method_template.declaration.cpp.observed_instances.append(
-            CppObservedTemplateInstance(argument_spellings=["char"])
-        )
-        owner = make_class(name="Widget", method_templates=[method_template])
-        namespace = make_namespace(
-            name="demo",
-            alias_templates=[alias_template],
-            class_templates=[class_template],
-            function_templates=[function_template],
-            classes=[owner],
-        )
-        module = make_module(name="bindings", namespaces=[namespace])
-        module.defaults.alias_template.materialize_observed_instances = True
-        module.defaults.class_template.materialize_observed_instances = True
-        module.defaults.function_template.materialize_observed_instances = False
-        module.defaults.class_.active = None
-        function_template.bind.materialize_observed_instances = True
-        owner.defaults.method_template.materialize_observed_instances = True
 
-        created_instances = add_enabled_observed_template_instances(module)
-
-        self.assertEqual(len(created_instances), 4)
-        self.assertEqual(len(alias_template.instances), 1)
-        self.assertEqual(len(class_template.instances), 1)
-        self.assertEqual(len(function_template.instances), 1)
-        self.assertEqual(len(method_template.instances), 1)
-        self._assert_observed_materialized_instance(alias_template.instances[0], spellings=["short"])
-        self._assert_observed_materialized_instance(class_template.instances[0], spellings=["int"])
-        self._assert_observed_materialized_instance(function_template.instances[0], spellings=["double"])
-        self._assert_observed_materialized_instance(method_template.instances[0], spellings=["char"])
-
-    def test_enabled_observed_template_instance_materialization_respects_override_precedence(self) -> None:
-        module_alias_template = CppAliasTemplate(name="ModuleAlias")
-        module_alias_template.declaration.cpp.template_parameters.append(
-            CppTypeTemplateParameter(name="T")
-        )
-        module_alias_template.declaration.cpp.observed_instances.append(
-            CppObservedTemplateInstance(argument_spellings=["int"])
-        )
-        module_template = CppClassTemplate(name="ModuleVector")
-        module_template.declaration.cpp.template_parameters.append(
-            CppTypeTemplateParameter(name="T")
-        )
-        module_template.declaration.cpp.observed_instances.append(
-            CppObservedTemplateInstance(argument_spellings=["int"])
-        )
-        namespace_template = CppClassTemplate(name="NamespaceVector")
-        namespace_template.declaration.cpp.template_parameters.append(
-            CppTypeTemplateParameter(name="T")
-        )
-        namespace_template.declaration.cpp.observed_instances.append(
-            CppObservedTemplateInstance(argument_spellings=["double"])
-        )
-        direct_template = CppClassTemplate(name="DirectVector")
-        direct_template.declaration.cpp.template_parameters.append(
-            CppTypeTemplateParameter(name="T")
-        )
-        direct_template.declaration.cpp.observed_instances.append(
-            CppObservedTemplateInstance(argument_spellings=["char"])
-        )
-        owner = make_class(
-            name="Owner",
-            class_templates=[direct_template],
-        )
-        namespace = make_namespace(
-            name="demo",
-            alias_templates=[module_alias_template],
-            class_templates=[module_template, namespace_template],
-            classes=[owner],
-        )
-        module = make_module(name="bindings", namespaces=[namespace])
-        module.defaults.alias_template.materialize_observed_instances = False
-        module.defaults.class_template.materialize_observed_instances = True
-        namespace.defaults.class_template.materialize_observed_instances = False
-        owner.defaults.class_template.materialize_observed_instances = True
-        module_alias_template.bind.materialize_observed_instances = True
-        direct_template.bind.materialize_observed_instances = False
-
-        created_instances = add_enabled_observed_template_instances(module)
-
-        self.assertEqual(len(created_instances), 1)
-        self.assertEqual(len(module_alias_template.instances), 1)
-        self.assertEqual(module_template.instances, [])
-        self.assertEqual(namespace_template.instances, [])
-        self.assertEqual(direct_template.instances, [])
-
-        direct_template.bind.materialize_observed_instances = True
-
-        created_instances = add_enabled_observed_template_instances(module)
-
-        self.assertEqual(len(created_instances), 2)
-        self.assertEqual(module_template.instances, [])
-        self.assertEqual(namespace_template.instances, [])
-        self.assertEqual(len(direct_template.instances), 1)
-        self._assert_observed_materialized_instance(
-            direct_template.instances[0],
-            spellings=["char"],
-        )
+        for template in [alias_template, class_template, function_template, method_template]:
+            with self.subTest(template=type(template).__name__):
+                self.assertEqual(template.declaration.cpp.template_observation_hints, [])
 
     def test_template_instance_validation_rejects_wrong_argument_kind(self) -> None:
         class_template = CppClassTemplate(name="Vector")
@@ -481,12 +144,6 @@ class ModelTemplateTest(unittest.TestCase):
                 alias_template,
                 [CppNonTypeTemplateArgument(value="4")],
             )
-
-    def test_observed_template_instance_materialization_rejects_unsupported_scope_types(self) -> None:
-        function = CppFunction(name="make_value")
-
-        with self.assertRaisesRegex(TypeError, "Unsupported template scope type"):
-            add_observed_template_instances(function)
 
     def test_add_template_instance_rejects_unsupported_template_family_types(self) -> None:
         with self.assertRaisesRegex(TypeError, "Unsupported template family type"):

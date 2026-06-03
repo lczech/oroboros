@@ -27,9 +27,7 @@ from ..model import (
     CppMethodTemplateDeclaration,
     CppModule,
     CppNamespace,
-    CppObservedTemplateInstance,
     CppParameter,
-    CppTemplateArgument,
     CppVariable,
 )
 from ..model.type import TemplateInstanceCppType
@@ -77,6 +75,7 @@ from .element_registry import (
     resolve_class_semantic_owner,
 )
 from .result import ParserInvariantError
+from .template_observations import record_template_observation_hints_in_type
 from .types import build_cpp_type
 
 if TYPE_CHECKING:
@@ -746,15 +745,7 @@ def _handle_explicit_class_template_specialization(
         return False
 
     template_family = _find_class_template_family_for_specialization(owner, cursor.spelling)
-    if template_family is not None:
-        _record_observed_class_template_specialization(
-            template_family,
-            specialization_type,
-            cursor,
-        )
-
-    if _should_warn_about_explicit_class_template_specialization(owner, context):
-        _warn_explicit_class_template_specialization(cursor, template_family, context)
+    _report_explicit_class_template_specialization(cursor, template_family, owner, context)
 
     # The current model does not represent explicit class specializations as
     # full declaration trees. Keep their concrete arguments when we can, and
@@ -773,6 +764,11 @@ def _explicit_class_template_specialization_type(
     if cursor_type is None:
         return None
 
+    record_template_observation_hints_in_type(
+        cursor_type,
+        context=context,
+        source_cursor=cursor,
+    )
     cpp_type = build_cpp_type(
         cursor_type,
         context=context,
@@ -803,53 +799,6 @@ def _find_class_template_family_for_specialization(
     return None
 
 
-def _record_observed_class_template_specialization(
-    template: CppClassTemplate,
-    specialization_type: Any,
-    cursor: Any,
-) -> None:
-    """Record one explicit specialization as an observed template instance."""
-    from .types import _split_template_arguments
-
-    argument_spellings = _split_template_arguments(
-        ", ".join(_render_template_argument(arg) for arg in specialization_type.arguments)
-    )
-
-    observed_instances = template.declaration.cpp.observed_instances
-    observation_location = cursor_source_location(cursor)
-    key = tuple(argument_spellings)
-    instantiation_spelling = f"{template.qualified_name}<{', '.join(argument_spellings)}>"
-
-    for observed_instance in observed_instances:
-        if tuple(observed_instance.argument_spellings) == key:
-            if observed_instance.instantiation_spelling is None:
-                observed_instance.instantiation_spelling = instantiation_spelling
-            if observation_location is not None and observation_location not in observed_instance.locations:
-                observed_instance.locations.append(observation_location)
-            return
-
-    observed_instances.append(
-        CppObservedTemplateInstance(
-            instantiation_spelling=instantiation_spelling,
-            argument_spellings=argument_spellings,
-            locations=[] if observation_location is None else [observation_location],
-        )
-    )
-
-
-def _render_template_argument(argument: Any) -> str:
-    """Render one structured template argument back to a spelling string."""
-    from ..model import CppNonTypeTemplateArgument, CppTemplateTemplateArgument, CppTypeTemplateArgument
-
-    if isinstance(argument, CppNonTypeTemplateArgument):
-        return argument.value or ""
-    if isinstance(argument, CppTemplateTemplateArgument):
-        return argument.name or ""
-    if isinstance(argument, CppTypeTemplateArgument) and argument.type is not None:
-        return argument.type.render() if hasattr(argument.type, "render") else str(argument.type)
-    return ""
-
-
 def _should_warn_about_explicit_class_template_specialization(
     owner: CppElement,
     context: BuildContext,
@@ -867,23 +816,37 @@ def _owner_is_std_namespace(owner: CppElement) -> bool:
     return getattr(owner, "qualified_name", "") == "std"
 
 
-def _warn_explicit_class_template_specialization(
+def _report_explicit_class_template_specialization(
     cursor: Any,
     template_family: CppClassTemplate | None,
+    owner: CppElement,
     context: BuildContext,
 ) -> None:
-    """Emit one actionable warning about unsupported explicit specialization bodies."""
+    """Emit one diagnostic about unsupported explicit specialization bodies."""
 
     if template_family is None:
-        family_hint = (
-            "The primary template was not found under the current scope, so this "
-            "specialization is ignored entirely."
+        record_semantic_warning(
+            context,
+            f"Explicit class-template specialization for {describe_cursor_entity(cursor)} "
+            "could not be matched to an active primary template family, so no template "
+            "observation hint was recorded.",
+            code="parse.explicit_class_template_specialization_unmatched",
+            severity=(
+                "warning"
+                if _should_warn_about_explicit_class_template_specialization(owner, context)
+                else "note"
+            ),
+            cursor=cursor,
         )
-    else:
-        family_hint = (
-            f"The primary template family '{template_family.qualified_name}' is active, "
-            "so its concrete arguments may still be observed."
-        )
+        return
+
+    if not _should_warn_about_explicit_class_template_specialization(owner, context):
+        return
+
+    family_hint = (
+        f"The primary template family '{template_family.qualified_name}' is active, "
+        "so its concrete spelling is recorded only as a template observation hint."
+    )
 
     record_semantic_warning(
         context,
