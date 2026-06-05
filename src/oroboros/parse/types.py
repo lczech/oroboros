@@ -27,7 +27,7 @@ from ..model import (
 from .cursor_data import cursor_source_location
 from .template_type_recovery import (
     _normalize_name_type_spelling,
-    _parse_template_instance_spelling,
+    _recover_template_instance_type,
 )
 
 if TYPE_CHECKING:
@@ -45,7 +45,13 @@ def build_cpp_type(
     context: BuildContext | None = None,
     source_cursor: Any | None = None,
 ) -> CppType | None:
-    """Convert one clang type object into the structured semantic type model."""
+    """Convert one libclang type into one semantic `CppType` tree.
+
+    This is the main entrypoint used while extracting declaration-surface
+    information such as parameter, return, field, base, and alias-target
+    types. It keeps the clang-backed orchestration here, then delegates any
+    spelling-driven template recovery to `template_type_recovery.py`.
+    """
 
     if clang_type is None:
         return None
@@ -65,7 +71,13 @@ def _build_cpp_type(
     context: BuildContext | None,
     source_cursor: Any | None,
 ) -> CppType | None:
-    """Recursively convert one clang type while avoiding canonical recursion loops."""
+    """Recursively translate one clang type node into the semantic type model.
+
+    This helper does the real work behind `build_cpp_type()`: wrapper kinds,
+    builtin kinds, template-instantiation recovery, canonical fallback, and
+    declaration-link recording. The `allow_canonical` flag prevents infinite
+    loops when canonical types point back at the same semantic shape.
+    """
 
     is_const = _call_optional_bool_method(clang_type, "is_const_qualified")
 
@@ -146,39 +158,24 @@ def _build_cpp_type(
     if "<" in spelling:
         # Build the structured TemplateInstanceCppType from spelling.  Falls through to
         # NamedCppType for zero-argument spellings such as Box<> (no arguments to split).
-        template_instance = _parse_template_instance_spelling(spelling, is_const=is_const)
+        template_instance = _recover_template_instance_type(
+            spelling,
+            is_const=is_const,
+            direct_argument_types=_template_argument_types(clang_type),
+            build_type_argument_type=lambda direct_type: _build_cpp_type(
+                direct_type,
+                allow_canonical=allow_canonical,
+                context=context,
+                source_cursor=source_cursor,
+            ),
+            build_non_type_annotation=lambda direct_type: _build_cpp_type(
+                direct_type,
+                allow_canonical=True,
+                context=context,
+                source_cursor=None,
+            ),
+        )
         if template_instance is not None:
-            # Enrich arguments with clang's direct arg types to restore declaration links
-            # and non-type type annotations.  Only applies to class template instantiations
-            # (where libclang exposes direct arg types); alias template instantiations
-            # return 0 direct args and are intentionally left as spelling-built types.
-            direct_argument_types = _template_argument_types(clang_type)
-            for index, direct_type in enumerate(direct_argument_types):
-                if index >= len(template_instance.arguments):
-                    break
-                if direct_type is None or _type_kind_matches(direct_type, TypeKind.INVALID):
-                    continue
-                arg = template_instance.arguments[index]
-                if isinstance(arg, CppTypeTemplateArgument):
-                    enriched = _build_cpp_type(
-                        direct_type,
-                        allow_canonical=allow_canonical,
-                        context=context,
-                        source_cursor=source_cursor,
-                    )
-                    if enriched is not None:
-                        template_instance.arguments[index] = CppTypeTemplateArgument(type=enriched)
-                elif isinstance(arg, CppNonTypeTemplateArgument) and arg.type is None:
-                    annotation = _build_cpp_type(
-                        direct_type,
-                        allow_canonical=True,
-                        context=context,
-                        source_cursor=None,
-                    )
-                    if annotation is not None:
-                        template_instance.arguments[index] = CppNonTypeTemplateArgument(
-                            value=arg.value, type=annotation
-                        )
             return template_instance
 
     canonical = None
@@ -207,7 +204,13 @@ def _build_cpp_type(
 
 
 def _template_argument_types(clang_type: Any) -> list[Any]:
-    """Return clang template argument types when libclang exposes them."""
+    """Collect direct clang template-argument types from one libclang type.
+
+    The template recovery layer uses these values to refine ambiguous spelling
+    recovery, for example upgrading an opaque `Widget` argument into a real
+    type argument when libclang proves that slot is typed. Missing entries are
+    acceptable; recovery falls back to spelling-only behavior when needed.
+    """
 
     get_argument_count = getattr(clang_type, "get_num_template_arguments", None)
     get_argument_type = getattr(clang_type, "get_template_argument_type", None)
@@ -326,7 +329,13 @@ def _record_named_type_declaration_link(
     *,
     source_cursor: Any | None = None,
 ) -> None:
-    """Capture one referenced declaration USR for a named type when available."""
+    """Record the declaration target for one named-type fallback when available.
+
+    This runs only after richer wrapper and template recovery paths have
+    already had their chance. It lets later stages resolve simple named type
+    references back to parsed declarations without doing broader semantic
+    reconstruction from spelling alone.
+    """
 
     if context is None:
         return
@@ -377,7 +386,13 @@ def _record_inactive_project_type_reference_warning(
     source_cursor: Any | None,
     context: BuildContext,
 ) -> None:
-    """Warn when an active declaration references a known inactive project type."""
+    """Warn when active code points at a known but inactive project declaration.
+
+    The parser still preserves the source spelling as a named type, but this
+    warning makes the dropped semantic link visible to the user. That keeps the
+    active-header boundary explicit instead of silently pretending the target
+    declaration was never discovered.
+    """
 
     use_location = cursor_source_location(source_cursor) if source_cursor is not None else None
     warning = (

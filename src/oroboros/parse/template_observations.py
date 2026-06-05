@@ -28,7 +28,13 @@ def record_template_observation_hints_in_type(
     context: BuildContext | None,
     source_cursor: Any | None,
 ) -> None:
-    """Record raw template observation hints from one declaration-surface type."""
+    """Record raw template observation hints from one declaration-surface type.
+
+    Extractors call this only for user-visible type surfaces such as parameter,
+    return, field, base, and alias-target types. The result is intentionally
+    non-semantic: normalized source spellings plus locations, not materialized
+    template binding instances or inferred argument meaning.
+    """
 
     if context is None or source_cursor is None:
         return
@@ -45,7 +51,13 @@ def _record_template_observation_hints_in_clang_type(
     *,
     source_cursor: Any,
 ) -> None:
-    """Walk one clang type and record any template spellings reachable from it."""
+    """Walk one clang type and record any nested template spellings reachable from it.
+
+    This traversal mirrors the declaration-surface type shape so users can see
+    not just `Holder<Box<int>>` but also the nested `Box<int>` spelling when it
+    appears inside one observed surface type. It stays separate from type
+    construction so observations never become hidden side effects of `build_cpp_type()`.
+    """
 
     if clang_type is None:
         return
@@ -102,7 +114,13 @@ def _record_one_template_observation_hint(
     *,
     source_cursor: Any,
 ) -> bool:
-    """Append one normalized spelling hint to one confidently resolved template family."""
+    """Attach one normalized hint to one confidently resolved template family.
+
+    This is the conservative gate in the observation pipeline: if we cannot
+    resolve the owning family cleanly from the source cursor or specialized
+    template cursor, we skip the hint rather than guessing. Wrong family
+    attribution is treated as worse than missing observation data.
+    """
 
     spelling = _type_spelling(clang_type)
     template_name, argument_text = _split_template_spelling(spelling)

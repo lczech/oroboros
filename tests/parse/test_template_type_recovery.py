@@ -8,6 +8,7 @@ from clang.cindex import TypeKind
 from oroboros.model import (
     BuiltinCppType,
     CppNonTypeTemplateArgument,
+    CppOpaqueTemplateArgument,
     CppTypeTemplateArgument,
     NamedCppType,
     PointerCppType,
@@ -57,8 +58,8 @@ class TemplateTypeRecoveryTest(unittest.TestCase):
         self.assertEqual(nested_type.template_name, "Pair")
         self.assertEqual(len(nested_type.arguments), 2)
         self.assertIsInstance(nested_type.arguments[0].type, BuiltinCppType)
-        self.assertIsInstance(nested_type.arguments[1].type, NamedCppType)
-        self.assertEqual(nested_type.arguments[1].type.name, "Widget")
+        self.assertIsInstance(nested_type.arguments[1], CppOpaqueTemplateArgument)
+        self.assertEqual(nested_type.arguments[1].spelling, "Widget")
 
     def test_build_cpp_type_uses_recovery_module_for_non_type_template_arguments(self) -> None:
         clang_type = _fake_type(
@@ -83,45 +84,74 @@ class TemplateTypeRecoveryTest(unittest.TestCase):
         self.assertIsInstance(cpp_type.arguments[1].type, BuiltinCppType)
         self.assertEqual(cpp_type.arguments[1].type.kind, "int")
 
-    def test_build_cpp_type_from_spelling_bails_out_for_expression_like_template_arguments(self) -> None:
-        cpp_type = build_cpp_type_from_spelling("Mask<make_flag(1, 2)>")
-
-        self.assertIsInstance(cpp_type, NamedCppType)
-        self.assertEqual(cpp_type.name, "Mask<make_flag(1, 2)>")
-
-    def test_build_cpp_type_preserves_canonical_structure_when_source_recovery_bails_out(self) -> None:
-        canonical = _fake_type(
-            "ELABORATED",
-            "std::array<int, 4>",
-            template_argument_types=[
-                _fake_type("INT", "int"),
-                _fake_type("INT", "int"),
-            ],
-        )
+    def test_build_cpp_type_upgrades_opaque_named_argument_to_type_when_clang_proves_it(self) -> None:
         clang_type = _fake_type(
             "ELABORATED",
-            "Mask<make_flag(1, 2)>",
-            canonical=canonical,
+            "Box<Widget>",
+            template_argument_types=[_fake_type("RECORD", "Widget")],
         )
 
         cpp_type = build_cpp_type(clang_type)
 
-        self.assertIsInstance(cpp_type, NamedCppType)
-        self.assertEqual(cpp_type.name, "Mask<make_flag(1, 2)>")
-        self.assertIsInstance(cpp_type.canonical, TemplateInstanceCppType)
-        self.assertEqual(cpp_type.canonical.template_name, "std::array")
+        self.assertIsInstance(cpp_type, TemplateInstanceCppType)
+        self.assertIsInstance(cpp_type.arguments[0], CppTypeTemplateArgument)
+        self.assertIsInstance(cpp_type.arguments[0].type, NamedCppType)
+        self.assertEqual(cpp_type.arguments[0].type.name, "Widget")
 
-    def test_build_cpp_type_from_spelling_bails_out_for_braced_template_arguments(self) -> None:
+    def test_build_cpp_type_converts_opaque_named_argument_to_non_type_when_clang_type_differs(self) -> None:
+        clang_type = _fake_type(
+            "ELABORATED",
+            "Box<N>",
+            template_argument_types=[_fake_type("INT", "int")],
+        )
+
+        cpp_type = build_cpp_type(clang_type)
+
+        self.assertIsInstance(cpp_type, TemplateInstanceCppType)
+        self.assertIsInstance(cpp_type.arguments[0], CppNonTypeTemplateArgument)
+        self.assertEqual(cpp_type.arguments[0].value, "N")
+        self.assertIsInstance(cpp_type.arguments[0].type, BuiltinCppType)
+        self.assertEqual(cpp_type.arguments[0].type.kind, "int")
+
+    def test_build_cpp_type_from_spelling_recovers_expression_like_template_argument_as_opaque(self) -> None:
+        cpp_type = build_cpp_type_from_spelling("Mask<make_flag(1, 2)>")
+
+        self.assertIsInstance(cpp_type, TemplateInstanceCppType)
+        self.assertEqual(cpp_type.template_name, "Mask")
+        self.assertIsInstance(cpp_type.arguments[0], CppOpaqueTemplateArgument)
+        self.assertEqual(cpp_type.arguments[0].spelling, "make_flag(1,2)")
+
+    def test_build_cpp_type_from_spelling_recovers_braced_template_argument_as_opaque(self) -> None:
         cpp_type = build_cpp_type_from_spelling("Mask<Point{1, 2}>")
 
-        self.assertIsInstance(cpp_type, NamedCppType)
-        self.assertEqual(cpp_type.name, "Mask<Point{1, 2}>")
+        self.assertIsInstance(cpp_type, TemplateInstanceCppType)
+        self.assertEqual(cpp_type.template_name, "Mask")
+        self.assertIsInstance(cpp_type.arguments[0], CppOpaqueTemplateArgument)
+        self.assertEqual(cpp_type.arguments[0].spelling, "Point{1,2}")
 
-    def test_build_cpp_type_from_spelling_bails_out_for_quoted_template_arguments(self) -> None:
+    def test_build_cpp_type_from_spelling_recovers_quoted_template_argument_as_non_type_literal(self) -> None:
         cpp_type = build_cpp_type_from_spelling('Mask<"a,b">')
 
+        self.assertIsInstance(cpp_type, TemplateInstanceCppType)
+        self.assertEqual(cpp_type.template_name, "Mask")
+        self.assertIsInstance(cpp_type.arguments[0], CppNonTypeTemplateArgument)
+        self.assertEqual(cpp_type.arguments[0].value, '"a,b"')
+
+    def test_build_cpp_type_from_spelling_uses_opaque_argument_for_plain_template_template_name(self) -> None:
+        cpp_type = build_cpp_type_from_spelling("Holder<int, Box>")
+
+        self.assertIsInstance(cpp_type, TemplateInstanceCppType)
+        self.assertEqual(cpp_type.template_name, "Holder")
+        self.assertIsInstance(cpp_type.arguments[0], CppTypeTemplateArgument)
+        self.assertIsInstance(cpp_type.arguments[0].type, BuiltinCppType)
+        self.assertIsInstance(cpp_type.arguments[1], CppOpaqueTemplateArgument)
+        self.assertEqual(cpp_type.arguments[1].spelling, "Box")
+
+    def test_build_cpp_type_from_spelling_bails_when_template_argument_boundaries_are_not_trustworthy(self) -> None:
+        cpp_type = build_cpp_type_from_spelling("Mask<foo(1, 2>, Bar>")
+
         self.assertIsInstance(cpp_type, NamedCppType)
-        self.assertEqual(cpp_type.name, 'Mask<"a,b">')
+        self.assertEqual(cpp_type.name, "Mask<foo(1, 2>, Bar>")
 
     def test_build_template_argument_from_spelling_builds_type_argument_for_nested_template(self) -> None:
         argument = build_template_argument_from_spelling("Pair<int, Widget>")
@@ -129,6 +159,35 @@ class TemplateTypeRecoveryTest(unittest.TestCase):
         self.assertIsInstance(argument, CppTypeTemplateArgument)
         self.assertIsInstance(argument.type, TemplateInstanceCppType)
         self.assertEqual(argument.type.template_name, "Pair")
+
+    def test_build_template_argument_from_spelling_uses_opaque_argument_for_ambiguous_plain_name(self) -> None:
+        argument = build_template_argument_from_spelling("Widget")
+
+        self.assertIsInstance(argument, CppOpaqueTemplateArgument)
+        self.assertEqual(argument.spelling, "Widget")
+
+    def test_build_cpp_type_annotates_literal_non_type_argument_with_clang_value_type(self) -> None:
+        # A literal NTTP like `42` is recognized as CppNonTypeTemplateArgument(value="42", type=None)
+        # from spelling alone. When clang provides a direct argument type (e.g. int), the type
+        # annotation should be filled in on the same argument.
+        clang_type = _fake_type(
+            "ELABORATED",
+            "Buf<42>",
+            template_argument_types=[
+                _fake_type("INT", "int"),
+            ],
+        )
+
+        cpp_type = build_cpp_type(clang_type)
+
+        self.assertIsInstance(cpp_type, TemplateInstanceCppType)
+        self.assertEqual(cpp_type.template_name, "Buf")
+        self.assertEqual(len(cpp_type.arguments), 1)
+        argument = cpp_type.arguments[0]
+        self.assertIsInstance(argument, CppNonTypeTemplateArgument)
+        self.assertEqual(argument.value, "42")
+        self.assertIsInstance(argument.type, BuiltinCppType)
+        self.assertEqual(argument.type.kind, "int")
 
 
 def _fake_type(

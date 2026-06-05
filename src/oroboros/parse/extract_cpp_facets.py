@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-"""Extract parsed `.cpp` facet data from libclang cursors."""
+"""Extract parsed `.cpp` facet data from libclang cursors.
+
+This module is the declaration-surface layer of the parser. It gathers the
+facts that belong directly on semantic elements, such as locations, docs,
+availability, surface types, and template-parameter signatures, while leaving
+type translation and template observation details to their dedicated modules.
+"""
 
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any
@@ -566,7 +572,13 @@ def _extract_surface_cpp_type(
     context: BuildContext | None,
     source_cursor: Any,
 ) -> Any:
-    """Record declaration-surface template hints, then build the structured type."""
+    """Handle one declaration-surface type in the order this parser expects.
+
+    Surface types are the places where we want both raw observation hints and
+    the structured semantic `CppType`. This helper keeps that ordering explicit:
+    first record any template spellings visible at the source surface, then
+    build the actual semantic type tree from the same clang type.
+    """
 
     record_template_observation_hints_in_type(
         clang_type,

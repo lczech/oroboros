@@ -2100,9 +2100,8 @@ class ParseTypesTest(unittest.TestCase):
         self.assertIsInstance(cpp_type.canonical, TemplateInstanceCppType)
         self.assertEqual(cpp_type.canonical.template_name, "std::vector")
         self.assertEqual(len(cpp_type.canonical.arguments), 1)
-        self.assertIsInstance(cpp_type.canonical.arguments[0], CppTypeTemplateArgument)
-        self.assertIsInstance(cpp_type.canonical.arguments[0].type, NamedCppType)
-        self.assertEqual(cpp_type.canonical.arguments[0].type.name, "std::string")
+        self.assertIsInstance(cpp_type.canonical.arguments[0], CppOpaqueTemplateArgument)
+        self.assertEqual(cpp_type.canonical.arguments[0].spelling, "std::string")
 
     def test_record_template_observation_hints_in_type_records_class_template_instantiation_from_specialized_template_views(self) -> None:
         active_header = Path("/tmp/project/demo.hpp")

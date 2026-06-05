@@ -338,6 +338,7 @@ def _render_template_argument(argument: "CppTemplateArgument") -> str:
 
     from .template_ import (
         CppNonTypeTemplateArgument,
+        CppOpaqueTemplateArgument,
         CppTemplateTemplateArgument,
         CppTypeTemplateArgument,
     )
@@ -350,5 +351,8 @@ def _render_template_argument(argument: "CppTemplateArgument") -> str:
 
     if isinstance(argument, CppTemplateTemplateArgument):
         return argument.name
+
+    if isinstance(argument, CppOpaqueTemplateArgument):
+        return argument.spelling
 
     raise TypeError(f"Unsupported template argument for rendering: {type(argument)!r}")

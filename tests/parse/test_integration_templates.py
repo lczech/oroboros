@@ -687,9 +687,8 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         self.assertIsInstance(vec_allocator_parameter.default.type, TemplateInstanceCppType)
         self.assertEqual(vec_allocator_parameter.default.type.template_name, "Allocator")
         self.assertEqual(len(vec_allocator_parameter.default.type.arguments), 1)
-        self.assertIsInstance(vec_allocator_parameter.default.type.arguments[0], CppTypeTemplateArgument)
-        self.assertIsInstance(vec_allocator_parameter.default.type.arguments[0].type, NamedCppType)
-        self.assertEqual(vec_allocator_parameter.default.type.arguments[0].type.name, "T")
+        self.assertIsInstance(vec_allocator_parameter.default.type.arguments[0], CppOpaqueTemplateArgument)
+        self.assertEqual(vec_allocator_parameter.default.type.arguments[0].spelling, "T")
 
         alias_parameter = alias_template.declaration.cpp.template_parameters[0]
         self.assertIsInstance(alias_parameter.default, CppTypeTemplateArgument)
@@ -716,9 +715,8 @@ class ParseIntegrationTemplateTest(unittest.TestCase):
         self.assertIsInstance(method_allocator_parameter.default, CppTypeTemplateArgument)
         self.assertIsInstance(method_allocator_parameter.default.type, TemplateInstanceCppType)
         self.assertEqual(method_allocator_parameter.default.type.template_name, "Allocator")
-        self.assertIsInstance(method_allocator_parameter.default.type.arguments[0], CppTypeTemplateArgument)
-        self.assertIsInstance(method_allocator_parameter.default.type.arguments[0].type, NamedCppType)
-        self.assertEqual(method_allocator_parameter.default.type.arguments[0].type.name, "T")
+        self.assertIsInstance(method_allocator_parameter.default.type.arguments[0], CppOpaqueTemplateArgument)
+        self.assertEqual(method_allocator_parameter.default.type.arguments[0].spelling, "T")
 
         holder_parameter = holder_template.declaration.cpp.template_parameters[0]
         self.assertIsInstance(holder_parameter.default, CppTemplateTemplateArgument)

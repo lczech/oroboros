@@ -107,6 +107,17 @@ class CppTemplateTemplateArgument(CppTemplateArgument):
     parameters: list["CppTemplateParameter"] = dataclass_field(default_factory=list)
 
 
+@dataclass(slots=True)
+class CppOpaqueTemplateArgument(CppTemplateArgument):
+    """Represent one template argument whose semantic kind is intentionally unresolved."""
+
+    # Whitespace-normalized source spelling for one argument whose boundaries are trusted.
+    spelling: str = ""
+
+    def __post_init__(self) -> None:
+        self.spelling = "".join(self.spelling.split())
+
+
 # ------------------------------------------------------------------------------
 #     Observation Hints
 # ------------------------------------------------------------------------------
@@ -228,6 +239,11 @@ def _validate_template_argument_kind(
     """Validate one structural template argument kind against one parameter slot."""
 
     if isinstance(parameter, CppTypeTemplateParameter):
+        if isinstance(argument, CppOpaqueTemplateArgument):
+            raise ValueError(
+                f"{context} received parse-only opaque argument {argument.spelling!r} for '{parameter.name}'; "
+                "replace it with a semantic type argument before binding."
+            )
         if not isinstance(argument, CppTypeTemplateArgument):
             raise ValueError(
                 f"{context} expects a type argument for '{parameter.name}', "
@@ -236,6 +252,11 @@ def _validate_template_argument_kind(
         return
 
     if isinstance(parameter, CppNonTypeTemplateParameter):
+        if isinstance(argument, CppOpaqueTemplateArgument):
+            raise ValueError(
+                f"{context} received parse-only opaque argument {argument.spelling!r} for '{parameter.name}'; "
+                "replace it with a semantic non-type argument before binding."
+            )
         if not isinstance(argument, CppNonTypeTemplateArgument):
             raise ValueError(
                 f"{context} expects a non-type argument for '{parameter.name}', "
@@ -244,6 +265,11 @@ def _validate_template_argument_kind(
         return
 
     if isinstance(parameter, CppTemplateTemplateParameter):
+        if isinstance(argument, CppOpaqueTemplateArgument):
+            raise ValueError(
+                f"{context} received parse-only opaque argument {argument.spelling!r} for '{parameter.name}'; "
+                "replace it with a semantic template-template argument before binding."
+            )
         if not isinstance(argument, CppTemplateTemplateArgument):
             raise ValueError(
                 f"{context} expects a template-template argument for '{parameter.name}', "
@@ -332,6 +358,9 @@ def _single_template_argument_key(argument: CppTemplateArgument) -> tuple[object
             argument.name,
             tuple(_template_parameter_shape_key(parameter) for parameter in argument.parameters),
         )
+
+    if isinstance(argument, CppOpaqueTemplateArgument):
+        return ("opaque", argument.spelling)
 
     raise TypeError(f"Unsupported template argument type: {type(argument)!r}")
 

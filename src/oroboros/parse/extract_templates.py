@@ -13,14 +13,14 @@ from clang.cindex import CursorKind
 from ..model import (
     CppNonTypeTemplateArgument,
     CppNonTypeTemplateParameter,
-    CppTemplateParameter,
     CppTemplateTemplateArgument,
+    CppTemplateParameter,
     CppTemplateTemplateParameter,
     CppTypeTemplateArgument,
     CppTypeTemplateParameter,
 )
 from .cursor_data import cursor_token_spellings, normalize_token_spellings
-from .template_type_recovery import build_template_argument_from_spelling
+from .template_type_recovery import build_cpp_type_from_spelling
 from .types import build_cpp_type
 
 if TYPE_CHECKING:
@@ -37,7 +37,13 @@ def extract_template_parameters(
     *,
     context: BuildContext | None = None,
 ) -> list[CppTemplateParameter]:
-    """Collect direct template parameter declarations from one template cursor."""
+    """Collect the direct parameter slots declared on one template cursor.
+
+    This is the template-declaration side of the parser, used when building the
+    generic signature for class, function, method, and alias templates. It
+    walks only the declared parameter list here; concrete template uses are
+    handled later by template type recovery and observation recording.
+    """
 
     parameters: list[CppTemplateParameter] = []
     for child_cursor in cursor.get_children():
@@ -52,7 +58,13 @@ def extract_template_parameter(
     *,
     context: BuildContext | None = None,
 ) -> CppTemplateParameter | None:
-    """Convert one libclang template-parameter cursor into the semantic model."""
+    """Convert one libclang template-parameter cursor into one semantic slot.
+
+    This helper classifies the three declaration kinds separately: type,
+    non-type, and template-template parameters. It is called only while
+    materializing template declarations, so any default-argument recovery here
+    should respect the declared parameter kind instead of guessing from use-site text.
+    """
 
     token_spellings = cursor_token_spellings(cursor)
     is_parameter_pack = "..." in token_spellings
@@ -102,16 +114,21 @@ def extract_template_parameter(
 def _build_type_template_parameter_default_argument(
     cursor: Any,
 ) -> CppTypeTemplateArgument | None:
-    """Return one structured default type argument from a template type-parameter cursor."""
+    """Recover one default type argument declared on a type template parameter.
+
+    This path has stronger context than general template-argument recovery: the
+    parameter declaration already tells us the default must be a type. We still
+    reuse spelling-based type recovery for the inner structure, but we wrap the
+    result directly as a semantic type argument instead of allowing an opaque slot.
+    """
 
     default_spelling = _template_parameter_default_spelling(cursor, trim_trailing_closers=True)
     if default_spelling is None:
         return None
 
-    default_argument = build_template_argument_from_spelling(default_spelling)
-    if isinstance(default_argument, CppTypeTemplateArgument):
-        return default_argument
-    return CppTypeTemplateArgument()
+    return CppTypeTemplateArgument(
+        type=build_cpp_type_from_spelling(default_spelling),
+    )
 
 
 def _build_non_type_template_parameter_default_argument(
@@ -119,7 +136,13 @@ def _build_non_type_template_parameter_default_argument(
     *,
     context: BuildContext | None = None,
 ) -> CppNonTypeTemplateArgument | None:
-    """Return one structured default value argument from a non-type template-parameter cursor."""
+    """Recover one default value argument declared on a non-type template parameter.
+
+    Here the declaration already guarantees that the default is a value rather
+    than a type. We therefore keep the source spelling as the value expression
+    and separately ask `build_cpp_type()` for the declared slot type when
+    libclang exposes it.
+    """
 
     default_spelling = _template_parameter_default_spelling(cursor)
     if default_spelling is None:
@@ -139,7 +162,13 @@ def _build_template_template_parameter_default_argument(
     *,
     context: BuildContext | None = None,
 ) -> CppTemplateTemplateArgument | None:
-    """Return one structured default template-template argument from a parameter cursor."""
+    """Recover one default template-template argument from its parameter cursor.
+
+    Unlike ordinary type defaults, this path is driven by the referenced
+    template family cursor when libclang exposes one. That lets the parser keep
+    the default family name plus its inner parameter signature without doing
+    broader semantic reconstruction from plain spelling alone.
+    """
 
     default_spelling = _template_parameter_default_spelling(cursor, trim_trailing_closers=True)
     if default_spelling is None:
@@ -158,7 +187,13 @@ def _template_parameter_default_spelling(
     *,
     trim_trailing_closers: bool = False,
 ) -> str | None:
-    """Return one normalized default-argument spelling from a template-parameter cursor."""
+    """Render the source spelling for one declared template default argument.
+
+    The parameter builders above all share this helper because libclang does
+    not hand us one clean “default argument” node here. Instead we slice and
+    normalize the relevant token range, then let the parameter-kind-specific
+    builders decide how that spelling should be interpreted.
+    """
 
     default_tokens = _template_parameter_default_tokens(cursor)
     if trim_trailing_closers:

@@ -403,6 +403,22 @@ class ModelValidationTest(unittest.TestCase):
         with self.assertRaises(ModelSemanticValidationError):
             module.validate_semantics()
 
+    def test_validate_semantics_rejects_opaque_template_binding_instance_arguments(self) -> None:
+        function_template = CppFunctionTemplate(name="make_value")
+        function_template.declaration.cpp.template_parameters.append(
+            CppTypeTemplateParameter(name="T")
+        )
+        instance = add_function_template_instance(
+            function_template,
+            [CppTypeTemplateArgument(type=NamedCppType(name="int"))],
+        )
+        instance.cpp.template_arguments = [CppOpaqueTemplateArgument(spelling="Widget")]
+        namespace = make_namespace(name="demo", function_templates=[function_template])
+        module = make_module(name="bindings", namespaces=[namespace])
+
+        with self.assertRaises(ModelSemanticValidationError):
+            module.validate_semantics()
+
     def test_validate_semantics_rejects_invalid_named_type_declaration_targets(self) -> None:
         target_function = CppFunction(name="make_widget")
         using_function = CppFunction(
